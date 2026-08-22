@@ -1,2 +1,0 @@
-# NovaStream
-Created by Rork
