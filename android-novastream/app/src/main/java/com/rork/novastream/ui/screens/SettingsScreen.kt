@@ -12,9 +12,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -137,38 +134,21 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(Modifier.height(12.dp))
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(2),
-                        modifier = Modifier.height(184.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        userScrollEnabled = false,
-                    ) {
-                        items(Language.entries.toList(), key = { it.code }) { language ->
-                            FilterChip(
-                                selected = settings.language == language,
-                                onClick = {
-                                    viewModel.settingsStore.update { it.copy(language = language) }
-                                },
-                                label = {
-                                    Text(
-                                        text = language.nativeLabel,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Language.entries.chunked(2).forEach { rowLanguages ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                rowLanguages.forEach { language ->
+                                    LanguageChip(
+                                        language = language,
+                                        selected = settings.language == language,
+                                        onClick = {
+                                            viewModel.settingsStore.update { it.copy(language = language) }
+                                        },
+                                        modifier = Modifier.weight(1f),
                                     )
-                                },
-                                leadingIcon = if (settings.language == language) {
-                                    {
-                                        Icon(
-                                            Icons.Rounded.Check,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(16.dp),
-                                        )
-                                    }
-                                } else null,
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.fillMaxWidth(),
-                            )
+                                }
+                                if (rowLanguages.size == 1) Spacer(Modifier.weight(1f))
+                            }
                         }
                     }
                 }
@@ -564,6 +544,37 @@ fun SettingsScreen(
             },
         )
     }
+}
+
+@Composable
+private fun LanguageChip(
+    language: Language,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = {
+            Text(
+                text = language.nativeLabel,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        },
+        leadingIcon = if (selected) {
+            {
+                Icon(
+                    Icons.Rounded.Check,
+                    contentDescription = null,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+        } else null,
+        shape = RoundedCornerShape(12.dp),
+        modifier = modifier.height(44.dp),
+    )
 }
 
 @Composable
