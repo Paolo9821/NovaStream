@@ -1,0 +1,10 @@
+{
+  "apps": [
+    {
+      "name": "NovaStream",
+      "path": "android-novastream",
+      "framework": "kotlin"
+    }
+  ],
+  "$schema": "https://rork.com/schema/rork.json"
+}
