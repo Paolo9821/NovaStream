@@ -36,12 +36,15 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.rork.novastream.data.local.LicenseStatus
 import com.rork.novastream.data.model.MediaKind
 import com.rork.novastream.data.model.SyncState
 import com.rork.novastream.ui.components.CategoryBadge
@@ -76,6 +79,8 @@ fun HomeScreen(
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val unlocked by viewModel.parentalUnlocked.collectAsStateWithLifecycle()
     val favorites by viewModel.favorites.collectAsStateWithLifecycle()
+    val license by viewModel.license.collectAsStateWithLifecycle()
+    var activationVisible by remember { mutableStateOf(false) }
 
     val active = remember(accounts, activeId) { accounts.firstOrNull { it.id == activeId } }
     val counts = remember(catalog, settings, unlocked) {
@@ -103,6 +108,16 @@ fun HomeScreen(
                     playlistLabel = active?.let { strings.playlistPrefix.format(it.name) }
                         ?: strings.noActivePlaylist,
                     encryption = "${strings.encryptedLocally} · ${viewModel.encryptionLabel}",
+                )
+            }
+        }
+
+        (license.status as? LicenseStatus.Trial)?.let { trial ->
+            item("trial") {
+                TrialBanner(
+                    trial = trial,
+                    language = settings.language,
+                    onActivate = { activationVisible = true },
                 )
             }
         }
@@ -245,6 +260,14 @@ fun HomeScreen(
                 }
             }
         }
+    }
+
+    if (activationVisible) {
+        ActivationSheet(
+            identity = license.identity,
+            onDismiss = { activationVisible = false },
+            onActivate = { code -> viewModel.activateLicense(code) },
+        )
     }
 }
 

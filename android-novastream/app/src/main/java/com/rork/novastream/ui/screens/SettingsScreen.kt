@@ -23,6 +23,7 @@ import androidx.compose.material.icons.rounded.NetworkCheck
 import androidx.compose.material.icons.rounded.Smartphone
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Tv
+import androidx.compose.material.icons.rounded.VpnKey
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -59,12 +60,14 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rork.novastream.data.local.DeviceProfile
 import com.rork.novastream.data.local.DnsPreset
+import com.rork.novastream.data.local.LicenseStatus
 import com.rork.novastream.data.local.ThemeMode
 import com.rork.novastream.data.model.SyncState
 import com.rork.novastream.ui.components.PrivacyNote
 import com.rork.novastream.ui.i18n.Language
 import com.rork.novastream.ui.i18n.LocalStrings
 import com.rork.novastream.ui.i18n.Strings
+import com.rork.novastream.ui.theme.LocalNovaAccents
 import com.rork.novastream.ui.vm.AppViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -88,7 +91,10 @@ fun SettingsScreen(
     val epgState by viewModel.epgState.collectAsStateWithLifecycle()
     val activeId by viewModel.activeAccountId.collectAsStateWithLifecycle()
     val accounts by viewModel.accounts.collectAsStateWithLifecycle()
+    val license by viewModel.license.collectAsStateWithLifecycle()
+    val accents = LocalNovaAccents.current
 
+    var activationVisible by remember { mutableStateOf(false) }
     var pinDialogOpen by remember { mutableStateOf(false) }
     var groupsDialogOpen by remember { mutableStateOf(false) }
     var wipeDialogOpen by remember { mutableStateOf(false) }
@@ -149,6 +155,36 @@ fun SettingsScreen(
                                 }
                                 if (rowLanguages.size == 1) Spacer(Modifier.weight(1f))
                             }
+                        }
+                    }
+                }
+            }
+
+            item("license") {
+                SettingsCard(title = strings.licenseSection) {
+                    val status = license.status
+                    Text(
+                        text = when (status) {
+                            is LicenseStatus.Licensed -> strings.licenseStatusLicensed
+                            is LicenseStatus.Trial ->
+                                strings.licenseStatusTrial.format(status.daysRemaining)
+                            is LicenseStatus.Expired -> strings.licenseExpiredTitle
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (status is LicenseStatus.Licensed) accents.live
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    DeviceIdentityCard(identity = license.identity)
+                    if (status !is LicenseStatus.Licensed) {
+                        Spacer(Modifier.height(12.dp))
+                        Button(
+                            onClick = { activationVisible = true },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Icon(Icons.Rounded.VpnKey, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text(strings.enterActivationCode)
                         }
                     }
                 }
@@ -495,6 +531,14 @@ fun SettingsScreen(
                 }
             }
         }
+    }
+
+    if (activationVisible) {
+        ActivationSheet(
+            identity = license.identity,
+            onDismiss = { activationVisible = false },
+            onActivate = { code -> viewModel.activateLicense(code) },
+        )
     }
 
     if (pinDialogOpen) {

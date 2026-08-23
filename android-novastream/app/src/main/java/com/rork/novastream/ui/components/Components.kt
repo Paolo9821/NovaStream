@@ -47,6 +47,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import coil3.compose.AsyncImage
 import com.rork.novastream.data.model.MediaEntry
 import com.rork.novastream.data.model.MediaKind
@@ -344,6 +345,27 @@ fun PrivacyNote(
                 )
             }
         }
+    }
+}
+
+/** Square NovaStream logo used on the system screens (terms, license). */
+@Composable
+fun BrandMark(
+    modifier: Modifier = Modifier,
+    size: androidx.compose.ui.unit.Dp = 44.dp,
+) {
+    Box(
+        modifier = modifier
+            .size(size)
+            .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(size / 3.2f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = "N",
+            color = MaterialTheme.colorScheme.onPrimary,
+            fontSize = (size.value * 0.52f).sp,
+            fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+        )
     }
 }
 

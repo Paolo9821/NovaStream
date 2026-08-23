@@ -4,6 +4,9 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.rork.novastream.data.local.AppSettings
+import com.rork.novastream.data.local.DeviceIdentity
+import com.rork.novastream.data.local.LicenseState
+import com.rork.novastream.data.local.LicenseStore
 import com.rork.novastream.data.local.SettingsStore
 import com.rork.novastream.data.model.Catalog
 import com.rork.novastream.data.model.EpgGuide
@@ -48,6 +51,20 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     val settingsStore: SettingsStore get() = repository.settingsStore
     val encryptionLabel: String get() = repository.secureStore.algorithmLabel
+
+    private val licenseStore = LicenseStore(application, repository.secureStore)
+
+    /** Terms acceptance plus the trial/license state bound to this device. */
+    val license: StateFlow<LicenseState> = licenseStore.state
+    val deviceIdentity: DeviceIdentity get() = licenseStore.identity
+
+    fun acceptTerms() = licenseStore.acceptTerms()
+
+    /** Re-evaluates the trial clock, e.g. when the app returns to the foreground. */
+    fun refreshLicense() = licenseStore.refresh()
+
+    /** Returns false when the code does not belong to this device. */
+    fun activateLicense(code: String): Boolean = licenseStore.activate(code)
 
     private val _parentalUnlocked = MutableStateFlow(false)
     val parentalUnlocked: StateFlow<Boolean> = _parentalUnlocked.asStateFlow()
