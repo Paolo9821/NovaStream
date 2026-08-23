@@ -10,6 +10,9 @@ import java.util.Locale
 
 enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
+/** Which kind of device the app is running on, chosen once during onboarding. */
+enum class DeviceProfile { PHONE, TV }
+
 enum class DnsPreset(
     val primary: String,
     val secondary: String,
@@ -25,6 +28,8 @@ enum class DnsPreset(
 }
 
 data class AppSettings(
+    val onboardingDone: Boolean = false,
+    val deviceProfile: DeviceProfile = DeviceProfile.PHONE,
     val language: Language = Language.ENGLISH,
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val dnsPreset: DnsPreset = DnsPreset.SYSTEM,
@@ -47,6 +52,10 @@ class SettingsStore(context: Context) {
     val settings: StateFlow<AppSettings> = _settings.asStateFlow()
 
     private fun load(): AppSettings = AppSettings(
+        onboardingDone = prefs.getBoolean(KEY_ONBOARDING_DONE, false),
+        deviceProfile = runCatching {
+            DeviceProfile.valueOf(prefs.getString(KEY_DEVICE_PROFILE, null) ?: "PHONE")
+        }.getOrDefault(DeviceProfile.PHONE),
         language = Language.fromCode(
             prefs.getString(KEY_LANGUAGE, null) ?: Locale.getDefault().language
         ),
@@ -66,6 +75,8 @@ class SettingsStore(context: Context) {
 
     private fun persist(settings: AppSettings) {
         prefs.edit()
+            .putBoolean(KEY_ONBOARDING_DONE, settings.onboardingDone)
+            .putString(KEY_DEVICE_PROFILE, settings.deviceProfile.name)
             .putString(KEY_LANGUAGE, settings.language.code)
             .putString(KEY_THEME, settings.themeMode.name)
             .putString(KEY_DNS, settings.dnsPreset.name)
@@ -83,6 +94,15 @@ class SettingsStore(context: Context) {
 
     fun update(transform: (AppSettings) -> AppSettings) {
         persist(transform(_settings.value))
+    }
+
+    /** Stores the device chosen on the welcome screen so it is never asked again. */
+    fun completeOnboarding(profile: DeviceProfile) {
+        update { it.copy(deviceProfile = profile, onboardingDone = true) }
+    }
+
+    fun setDeviceProfile(profile: DeviceProfile) {
+        update { it.copy(deviceProfile = profile) }
     }
 
     fun setPin(pin: String) {
@@ -105,6 +125,8 @@ class SettingsStore(context: Context) {
     }
 
     private companion object {
+        const val KEY_ONBOARDING_DONE = "onboarding_done"
+        const val KEY_DEVICE_PROFILE = "device_profile"
         const val KEY_LANGUAGE = "language"
         const val KEY_THEME = "theme_mode"
         const val KEY_DNS = "dns_preset"

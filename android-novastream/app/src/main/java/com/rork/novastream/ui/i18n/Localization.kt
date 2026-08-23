@@ -212,6 +212,17 @@ data class Strings(
     val forwardTen: String = "Forward 10 seconds",
     val seekBarLabel: String = "Playback position",
     val liveBadge: String = "LIVE",
+
+    val welcomeTitle: String = "Welcome to NovaStream",
+    val welcomeSubtitle: String = "Tell us where you will watch: the interface adapts to your device.",
+    val deviceTvTitle: String = "Television",
+    val deviceTvBody: String = "Android TV, box or stick. Large layout, remote-friendly navigation and side menu.",
+    val devicePhoneTitle: String = "Phone or tablet",
+    val devicePhoneBody: String = "Touch layout with a bottom tab bar, optimised for the small screen.",
+    val welcomeContinue: String = "Continue",
+    val welcomeChangeLater: String = "You can change this any time in Settings.",
+    val deviceSection: String = "Device",
+    val deviceSectionSubtitle: String = "Choose the layout that fits the screen you are using.",
 )
 
 private val English = Strings()
@@ -397,6 +408,16 @@ private val Italian = Strings(
     forwardTen = "Avanti di 10 secondi",
     seekBarLabel = "Punto di riproduzione",
     liveBadge = "DIRETTA",
+    welcomeTitle = "Benvenuto in NovaStream",
+    welcomeSubtitle = "Dicci dove guarderai: l'interfaccia si adatta al tuo dispositivo.",
+    deviceTvTitle = "Televisione",
+    deviceTvBody = "Android TV, box o stick. Layout grande, navigazione col telecomando e menu laterale.",
+    devicePhoneTitle = "Cellulare o tablet",
+    devicePhoneBody = "Layout touch con barra in basso, ottimizzato per lo schermo piccolo.",
+    welcomeContinue = "Continua",
+    welcomeChangeLater = "Puoi cambiarlo quando vuoi dalle impostazioni.",
+    deviceSection = "Dispositivo",
+    deviceSectionSubtitle = "Scegli il layout adatto allo schermo che stai usando.",
 )
 
 private val Spanish = Strings(
@@ -580,6 +601,16 @@ private val Spanish = Strings(
     forwardTen = "Avanzar 10 segundos",
     seekBarLabel = "Punto de reproducción",
     liveBadge = "EN VIVO",
+    welcomeTitle = "Bienvenido a NovaStream",
+    welcomeSubtitle = "Dinos dónde vas a ver: la interfaz se adapta a tu dispositivo.",
+    deviceTvTitle = "Televisión",
+    deviceTvBody = "Android TV, box o stick. Diseño grande, navegación con mando y menú lateral.",
+    devicePhoneTitle = "Móvil o tablet",
+    devicePhoneBody = "Diseño táctil con barra inferior, optimizado para pantallas pequeñas.",
+    welcomeContinue = "Continuar",
+    welcomeChangeLater = "Puedes cambiarlo cuando quieras en los ajustes.",
+    deviceSection = "Dispositivo",
+    deviceSectionSubtitle = "Elige el diseño adecuado para la pantalla que usas.",
 )
 
 private val French = Strings(
@@ -763,6 +794,16 @@ private val French = Strings(
     forwardTen = "Avancer de 10 secondes",
     seekBarLabel = "Position de lecture",
     liveBadge = "DIRECT",
+    welcomeTitle = "Bienvenue sur NovaStream",
+    welcomeSubtitle = "Dites-nous où vous regarderez : l'interface s'adapte à votre appareil.",
+    deviceTvTitle = "Télévision",
+    deviceTvBody = "Android TV, box ou clé. Grande mise en page, navigation à la télécommande et menu latéral.",
+    devicePhoneTitle = "Téléphone ou tablette",
+    devicePhoneBody = "Mise en page tactile avec barre en bas, optimisée pour les petits écrans.",
+    welcomeContinue = "Continuer",
+    welcomeChangeLater = "Vous pouvez le changer à tout moment dans les réglages.",
+    deviceSection = "Appareil",
+    deviceSectionSubtitle = "Choisissez la mise en page adaptée à votre écran.",
 )
 
 private val German = Strings(
@@ -946,6 +987,16 @@ private val German = Strings(
     forwardTen = "10 Sekunden vor",
     seekBarLabel = "Wiedergabeposition",
     liveBadge = "LIVE",
+    welcomeTitle = "Willkommen bei NovaStream",
+    welcomeSubtitle = "Sag uns, wo du schaust: Die Oberfläche passt sich deinem Gerät an.",
+    deviceTvTitle = "Fernseher",
+    deviceTvBody = "Android TV, Box oder Stick. Großes Layout, Fernbedienung und Seitenmenü.",
+    devicePhoneTitle = "Handy oder Tablet",
+    devicePhoneBody = "Touch-Layout mit unterer Leiste, optimiert für kleine Bildschirme.",
+    welcomeContinue = "Weiter",
+    welcomeChangeLater = "Du kannst das jederzeit in den Einstellungen ändern.",
+    deviceSection = "Gerät",
+    deviceSectionSubtitle = "Wähle das Layout, das zu deinem Bildschirm passt.",
 )
 
 private val Portuguese = Strings(
@@ -1129,6 +1180,16 @@ private val Portuguese = Strings(
     forwardTen = "Avançar 10 segundos",
     seekBarLabel = "Posição de reprodução",
     liveBadge = "DIRETO",
+    welcomeTitle = "Bem-vindo ao NovaStream",
+    welcomeSubtitle = "Diz-nos onde vais ver: a interface adapta-se ao teu dispositivo.",
+    deviceTvTitle = "Televisão",
+    deviceTvBody = "Android TV, box ou stick. Layout grande, navegação por comando e menu lateral.",
+    devicePhoneTitle = "Telemóvel ou tablet",
+    devicePhoneBody = "Layout tátil com barra inferior, otimizado para ecrãs pequenos.",
+    welcomeContinue = "Continuar",
+    welcomeChangeLater = "Podes mudar quando quiseres nas definições.",
+    deviceSection = "Dispositivo",
+    deviceSectionSubtitle = "Escolhe o layout certo para o ecrã que usas.",
 )
 
 private val Romanian = Strings(
@@ -1312,6 +1373,16 @@ private val Romanian = Strings(
     forwardTen = "Înainte 10 secunde",
     seekBarLabel = "Poziția redării",
     liveBadge = "DIRECT",
+    welcomeTitle = "Bine ai venit în NovaStream",
+    welcomeSubtitle = "Spune-ne unde vei privi: interfața se adaptează dispozitivului tău.",
+    deviceTvTitle = "Televizor",
+    deviceTvBody = "Android TV, box sau stick. Aspect mare, navigare cu telecomanda și meniu lateral.",
+    devicePhoneTitle = "Telefon sau tabletă",
+    devicePhoneBody = "Aspect tactil cu bară jos, optimizat pentru ecrane mici.",
+    welcomeContinue = "Continuă",
+    welcomeChangeLater = "Poți schimba oricând din setări.",
+    deviceSection = "Dispozitiv",
+    deviceSectionSubtitle = "Alege aspectul potrivit pentru ecranul folosit.",
 )
 
 private val Turkish = Strings(
@@ -1495,6 +1566,16 @@ private val Turkish = Strings(
     forwardTen = "10 saniye ileri",
     seekBarLabel = "Oynatma konumu",
     liveBadge = "CANLI",
+    welcomeTitle = "NovaStream'e hoş geldiniz",
+    welcomeSubtitle = "Nerede izleyeceğinizi seçin: arayüz cihazınıza uyum sağlar.",
+    deviceTvTitle = "Televizyon",
+    deviceTvBody = "Android TV, kutu veya stick. Büyük düzen, kumandayla gezinme ve yan menü.",
+    devicePhoneTitle = "Telefon veya tablet",
+    devicePhoneBody = "Alt sekme çubuğuyla dokunmatik düzen, küçük ekranlar için optimize.",
+    welcomeContinue = "Devam",
+    welcomeChangeLater = "Bunu istediğiniz zaman ayarlardan değiştirebilirsiniz.",
+    deviceSection = "Cihaz",
+    deviceSectionSubtitle = "Kullandığınız ekrana uygun düzeni seçin.",
 )
 
 fun stringsFor(language: Language): Strings = when (language) {

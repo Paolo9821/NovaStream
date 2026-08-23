@@ -23,7 +23,9 @@ import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.NetworkCheck
+import androidx.compose.material.icons.rounded.Smartphone
 import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.Tv
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -58,6 +60,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.rork.novastream.data.local.DeviceProfile
 import com.rork.novastream.data.local.DnsPreset
 import com.rork.novastream.data.local.ThemeMode
 import com.rork.novastream.data.model.SyncState
@@ -166,6 +169,41 @@ fun SettingsScreen(
                                 shape = RoundedCornerShape(12.dp),
                                 modifier = Modifier.fillMaxWidth(),
                             )
+                        }
+                    }
+                }
+            }
+
+            item("device") {
+                SettingsCard(title = strings.deviceSection) {
+                    Text(
+                        text = strings.deviceSectionSubtitle,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                        DeviceProfile.entries.forEachIndexed { index, profile ->
+                            SegmentedButton(
+                                selected = settings.deviceProfile == profile,
+                                onClick = { viewModel.settingsStore.setDeviceProfile(profile) },
+                                shape = SegmentedButtonDefaults.itemShape(index, DeviceProfile.entries.size),
+                                icon = {
+                                    Icon(
+                                        imageVector = if (profile == DeviceProfile.TV) Icons.Rounded.Tv
+                                        else Icons.Rounded.Smartphone,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                    )
+                                },
+                            ) {
+                                Text(
+                                    text = if (profile == DeviceProfile.TV) strings.deviceTvTitle
+                                    else strings.devicePhoneTitle,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
                         }
                     }
                 }

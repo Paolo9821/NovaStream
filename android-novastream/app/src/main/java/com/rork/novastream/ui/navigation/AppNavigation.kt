@@ -29,6 +29,8 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.rork.novastream.data.local.DeviceProfile
 import com.rork.novastream.data.model.MediaKind
 import com.rork.novastream.ui.i18n.LocalStrings
 import com.rork.novastream.ui.screens.AccountsScreen
@@ -71,7 +73,8 @@ fun AppNavigation(viewModel: AppViewModel) {
     val isTopLevel = destinations.any { it.route == currentRoute }
 
     val configuration = LocalConfiguration.current
-    val useRail = configuration.screenWidthDp >= 720
+    val settings by viewModel.settings.collectAsStateWithLifecycle()
+    val useRail = settings.deviceProfile == DeviceProfile.TV || configuration.screenWidthDp >= 720
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
