@@ -3,10 +3,13 @@ package com.rork.novastream.ui.vm
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.rork.novastream.data.local.AdminStore
 import com.rork.novastream.data.local.AppSettings
 import com.rork.novastream.data.local.DeviceIdentity
 import com.rork.novastream.data.local.LicenseState
+import com.rork.novastream.data.local.LicenseCodes
 import com.rork.novastream.data.local.LicenseStore
+import com.rork.novastream.data.local.SalesConfig
 import com.rork.novastream.data.local.SettingsStore
 import com.rork.novastream.data.model.Catalog
 import com.rork.novastream.data.model.EpgGuide
@@ -65,6 +68,22 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Returns false when the code does not belong to this device. */
     fun activateLicense(code: String): Boolean = licenseStore.activate(code)
+
+    private val adminStore = AdminStore(application)
+
+    /** Reseller contact used by the "Buy a license" action. */
+    val sales: StateFlow<SalesConfig> = adminStore.sales
+    val isUsingDefaultAdminPassphrase: Boolean get() = adminStore.isUsingDefaultPassphrase
+
+    fun verifyAdminPassphrase(input: String): Boolean = adminStore.verifyPassphrase(input)
+
+    fun setAdminPassphrase(value: String): Boolean = adminStore.setPassphrase(value)
+
+    fun updateSales(config: SalesConfig) = adminStore.updateSales(config)
+
+    /** Issues the activation code for a customer identifier, offline. */
+    fun generateActivationCode(deviceId: String): String =
+        LicenseCodes.forDevice(deviceId.trim())
 
     private val _parentalUnlocked = MutableStateFlow(false)
     val parentalUnlocked: StateFlow<Boolean> = _parentalUnlocked.asStateFlow()

@@ -72,6 +72,7 @@ import androidx.compose.ui.unit.dp
 import com.rork.novastream.data.local.DeviceIdentity
 import com.rork.novastream.data.local.LicenseCodes
 import com.rork.novastream.data.local.LicenseStatus
+import com.rork.novastream.data.local.SalesConfig
 import com.rork.novastream.ui.components.BrandMark
 import com.rork.novastream.ui.i18n.Language
 import com.rork.novastream.ui.i18n.LocalStrings
@@ -93,6 +94,7 @@ fun LicenseLockedScreen(
     identity: DeviceIdentity,
     expiredAtMs: Long,
     language: Language,
+    sales: SalesConfig,
     onActivate: (String) -> Boolean,
 ) {
     val strings = LocalStrings.current
@@ -162,19 +164,14 @@ fun LicenseLockedScreen(
             Spacer(Modifier.height(12.dp))
             OutlinedButton(
                 onClick = {
-                    val intent = Intent(Intent.ACTION_SEND).apply {
-                        type = "text/plain"
-                        putExtra(Intent.EXTRA_SUBJECT, strings.licenseRequestSubject)
-                        putExtra(
-                            Intent.EXTRA_TEXT,
-                            strings.licenseRequestBody.format(identity.macAddress, identity.deviceId),
-                        )
-                    }
-                    runCatching {
-                        context.startActivity(
-                            Intent.createChooser(intent, strings.buyLicense)
-                        )
-                    }
+                    launchPurchase(
+                        context = context,
+                        sales = sales,
+                        subject = strings.licenseRequestSubject,
+                        message = strings.licenseRequestBody
+                            .format(identity.macAddress, identity.deviceId),
+                        chooserTitle = strings.buyLicense,
+                    )
                 },
                 modifier = Modifier
                     .fillMaxWidth()
@@ -183,11 +180,14 @@ fun LicenseLockedScreen(
             ) {
                 Icon(Icons.Rounded.ShoppingCart, contentDescription = null, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(10.dp))
-                Text(strings.buyLicense, fontWeight = FontWeight.SemiBold)
+                Text(
+                    text = if (sales.storeName.isNotBlank()) sales.storeName else strings.buyLicense,
+                    fontWeight = FontWeight.SemiBold,
+                )
             }
             Spacer(Modifier.height(16.dp))
             Text(
-                text = strings.resellerHint,
+                text = sales.priceNote.ifBlank { strings.resellerHint },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -203,6 +203,59 @@ fun LicenseLockedScreen(
             onDismiss = { sheetVisible = false },
             onActivate = onActivate,
         )
+    }
+}
+
+/** Purchase entry point shown in Settings while no license is bound yet. */
+@Composable
+fun BuyLicenseCard(
+    sales: SalesConfig,
+    identity: DeviceIdentity,
+    modifier: Modifier = Modifier,
+) {
+    val strings = LocalStrings.current
+    val context = LocalContext.current
+
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface,
+    ) {
+        Column(Modifier.padding(18.dp)) {
+            Text(
+                text = strings.buyLicenseWhere,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = when {
+                    sales.priceNote.isNotBlank() -> sales.priceNote
+                    sales.isConfigured && sales.storeName.isNotBlank() -> sales.storeName
+                    else -> strings.buyLicenseFallback
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(14.dp))
+            Button(
+                onClick = {
+                    launchPurchase(
+                        context = context,
+                        sales = sales,
+                        subject = strings.licenseRequestSubject,
+                        message = strings.licenseRequestBody
+                            .format(identity.macAddress, identity.deviceId),
+                        chooserTitle = strings.buyLicense,
+                    )
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(Icons.Rounded.ShoppingCart, contentDescription = null, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(10.dp))
+                Text(strings.buyLicenseAction, fontWeight = FontWeight.SemiBold)
+            }
+        }
     }
 }
 

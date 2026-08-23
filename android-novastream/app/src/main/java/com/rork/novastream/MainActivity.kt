@@ -38,6 +38,7 @@ class MainActivity : ComponentActivity() {
             val viewModel: AppViewModel = viewModel()
             val settings by viewModel.settings.collectAsStateWithLifecycle()
             val license by viewModel.license.collectAsStateWithLifecycle()
+            val sales by viewModel.sales.collectAsStateWithLifecycle()
             val darkTheme = when (settings.themeMode) {
                 ThemeMode.SYSTEM -> isSystemInDarkTheme()
                 ThemeMode.LIGHT -> false
@@ -76,6 +77,7 @@ class MainActivity : ComponentActivity() {
                             identity = license.identity,
                             expiredAtMs = status.expiredAtMs,
                             language = settings.language,
+                            sales = sales,
                             onActivate = { code -> viewModel.activateLicense(code) },
                         )
 

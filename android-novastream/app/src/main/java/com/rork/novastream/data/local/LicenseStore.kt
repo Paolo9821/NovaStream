@@ -39,6 +39,9 @@ data class LicenseState(
  */
 object LicenseCodes {
 
+    /** Shown in the admin panel so the owner knows how codes are derived. */
+    const val SALT_PREVIEW: String = "novastream-license::"
+
     private const val ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
     private const val GROUP = 4
     private const val LENGTH = 16
@@ -46,7 +49,7 @@ object LicenseCodes {
     /** The one code that activates the device with this identifier. */
     fun forDevice(deviceId: String): String {
         val digest = MessageDigest.getInstance("SHA-256")
-            .digest("novastream-license::$deviceId".toByteArray(Charsets.UTF_8))
+            .digest("$SALT_PREVIEW$deviceId".toByteArray(Charsets.UTF_8))
         val raw = (0 until LENGTH)
             .map { ALPHABET[(digest[it].toInt() and 0xFF) % ALPHABET.length] }
             .joinToString("")

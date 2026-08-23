@@ -252,6 +252,10 @@ data class Strings(
     val licenseSection: String = "License",
     val licenseStatusLicensed: String = "License active on this device",
     val licenseStatusTrial: String = "Free trial · %d days remaining",
+    val buyLicenseWhere: String = "Where to buy",
+    val buyLicenseFallback: String = "Ask the person or shop that gave you NovaStream for an activation code.",
+    val buyLicenseAction: String = "Contact the seller",
+    val appVersionLine: String = "NovaStream 1.0",
 )
 
 private val English = Strings()
