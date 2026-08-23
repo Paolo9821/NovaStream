@@ -206,6 +206,12 @@ data class Strings(
 
     val playbackError: String = "This stream cannot be played. Check your connection or try again later.",
     val closePlayer: String = "Close the player",
+    val playAction: String = "Play",
+    val pauseAction: String = "Pause",
+    val rewindTen: String = "Back 10 seconds",
+    val forwardTen: String = "Forward 10 seconds",
+    val seekBarLabel: String = "Playback position",
+    val liveBadge: String = "LIVE",
 )
 
 private val English = Strings()
@@ -385,6 +391,12 @@ private val Italian = Strings(
     wipeConfirm = "Cancella tutto",
     playbackError = "Impossibile riprodurre questo flusso. Verifica la connessione o riprova più tardi.",
     closePlayer = "Chiudi il player",
+    playAction = "Riproduci",
+    pauseAction = "Pausa",
+    rewindTen = "Indietro di 10 secondi",
+    forwardTen = "Avanti di 10 secondi",
+    seekBarLabel = "Punto di riproduzione",
+    liveBadge = "DIRETTA",
 )
 
 private val Spanish = Strings(
@@ -562,6 +574,12 @@ private val Spanish = Strings(
     wipeConfirm = "Borrar todo",
     playbackError = "No se puede reproducir este flujo. Comprueba la conexión o inténtalo más tarde.",
     closePlayer = "Cerrar el reproductor",
+    playAction = "Reproducir",
+    pauseAction = "Pausa",
+    rewindTen = "Retroceder 10 segundos",
+    forwardTen = "Avanzar 10 segundos",
+    seekBarLabel = "Punto de reproducción",
+    liveBadge = "EN VIVO",
 )
 
 private val French = Strings(
@@ -739,6 +757,12 @@ private val French = Strings(
     wipeConfirm = "Tout effacer",
     playbackError = "Impossible de lire ce flux. Vérifiez la connexion ou réessayez plus tard.",
     closePlayer = "Fermer le lecteur",
+    playAction = "Lecture",
+    pauseAction = "Pause",
+    rewindTen = "Reculer de 10 secondes",
+    forwardTen = "Avancer de 10 secondes",
+    seekBarLabel = "Position de lecture",
+    liveBadge = "DIRECT",
 )
 
 private val German = Strings(
@@ -916,6 +940,12 @@ private val German = Strings(
     wipeConfirm = "Alles löschen",
     playbackError = "Dieser Stream kann nicht abgespielt werden. Prüfe die Verbindung oder versuche es später erneut.",
     closePlayer = "Player schließen",
+    playAction = "Abspielen",
+    pauseAction = "Pause",
+    rewindTen = "10 Sekunden zurück",
+    forwardTen = "10 Sekunden vor",
+    seekBarLabel = "Wiedergabeposition",
+    liveBadge = "LIVE",
 )
 
 private val Portuguese = Strings(
@@ -1093,6 +1123,12 @@ private val Portuguese = Strings(
     wipeConfirm = "Apagar tudo",
     playbackError = "Não é possível reproduzir este fluxo. Verifique a ligação ou tente mais tarde.",
     closePlayer = "Fechar o reprodutor",
+    playAction = "Reproduzir",
+    pauseAction = "Pausa",
+    rewindTen = "Recuar 10 segundos",
+    forwardTen = "Avançar 10 segundos",
+    seekBarLabel = "Posição de reprodução",
+    liveBadge = "DIRETO",
 )
 
 private val Romanian = Strings(
@@ -1270,6 +1306,12 @@ private val Romanian = Strings(
     wipeConfirm = "Șterge tot",
     playbackError = "Acest flux nu poate fi redat. Verifică conexiunea sau încearcă mai târziu.",
     closePlayer = "Închide playerul",
+    playAction = "Redă",
+    pauseAction = "Pauză",
+    rewindTen = "Înapoi 10 secunde",
+    forwardTen = "Înainte 10 secunde",
+    seekBarLabel = "Poziția redării",
+    liveBadge = "DIRECT",
 )
 
 private val Turkish = Strings(
@@ -1447,6 +1489,12 @@ private val Turkish = Strings(
     wipeConfirm = "Her şeyi sil",
     playbackError = "Bu yayın oynatılamıyor. Bağlantınızı kontrol edin veya sonra tekrar deneyin.",
     closePlayer = "Oynatıcıyı kapat",
+    playAction = "Oynat",
+    pauseAction = "Duraklat",
+    rewindTen = "10 saniye geri",
+    forwardTen = "10 saniye ileri",
+    seekBarLabel = "Oynatma konumu",
+    liveBadge = "CANLI",
 )
 
 fun stringsFor(language: Language): Strings = when (language) {
