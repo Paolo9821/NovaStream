@@ -38,9 +38,11 @@ class DohResolver(private val http: HttpClient) {
             else -> settings.dnsPreset.dohUrl
         }
         val resolverLabel = when (settings.dnsPreset) {
-            DnsPreset.CUSTOM -> settings.customDnsPrimary.ifBlank { "Personalizzato" }
-            DnsPreset.SYSTEM -> "Sistema"
-            else -> settings.dnsPreset.label
+            DnsPreset.CUSTOM -> settings.customDnsPrimary.ifBlank { "Custom" }
+            DnsPreset.SYSTEM -> "System"
+            DnsPreset.GOOGLE -> "Google"
+            DnsPreset.CLOUDFLARE -> "Cloudflare"
+            DnsPreset.QUAD9 -> "Quad9"
         }
 
         if (endpoint.isBlank()) return@withContext systemResolve(cleanHost, resolverLabel)

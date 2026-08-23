@@ -6,15 +6,18 @@ import androidx.lifecycle.viewModelScope
 import com.rork.novastream.data.local.AppSettings
 import com.rork.novastream.data.local.SettingsStore
 import com.rork.novastream.data.model.Catalog
+import com.rork.novastream.data.model.EpgGuide
 import com.rork.novastream.data.model.Episode
 import com.rork.novastream.data.model.MediaEntry
 import com.rork.novastream.data.model.MediaKind
 import com.rork.novastream.data.model.PlaylistAccount
+import com.rork.novastream.data.model.Programme
 import com.rork.novastream.data.model.SortOption
 import com.rork.novastream.data.model.SyncState
 import com.rork.novastream.data.model.WatchProgress
 import com.rork.novastream.data.net.DnsCheck
 import com.rork.novastream.data.net.SpeedResult
+import com.rork.novastream.data.parser.XmltvParser
 import com.rork.novastream.data.repo.IptvRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -26,6 +29,7 @@ data class CatalogQuery(
     val sort: SortOption = SortOption.RECENTLY_ADDED,
     val year: Int? = null,
     val group: String? = null,
+    val favoritesOnly: Boolean = false,
 )
 
 class AppViewModel(application: Application) : AndroidViewModel(application) {
@@ -38,6 +42,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val syncState: StateFlow<SyncState> = repository.syncState
     val progress: StateFlow<List<WatchProgress>> = repository.progress
     val settings: StateFlow<AppSettings> = repository.settingsStore.settings
+    val favorites: StateFlow<Set<String>> = repository.favorites
+    val epg: StateFlow<EpgGuide> = repository.epg
+    val epgState: StateFlow<SyncState> = repository.epgState
 
     val settingsStore: SettingsStore get() = repository.settingsStore
     val encryptionLabel: String get() = repository.secureStore.algorithmLabel
@@ -75,8 +82,6 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val activeAccount: PlaylistAccount?
         get() = repository.activeAccount
 
-    fun accountById(id: String?): PlaylistAccount? = accounts.value.firstOrNull { it.id == id }
-
     fun entryById(id: String): MediaEntry? = catalog.value.entries.firstOrNull { it.id == id }
 
     /** Entries of a kind with parental blocking applied. */
@@ -88,6 +93,17 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun countOf(kind: MediaKind): Int = visibleEntries(kind).size
+
+    fun favoriteEntries(): List<MediaEntry> {
+        val ids = favorites.value
+        if (ids.isEmpty()) return emptyList()
+        val visibleIds = MediaKind.entries.flatMap { visibleEntries(it) }
+        return visibleIds.filter { ids.contains(it.id) }
+    }
+
+    fun isFavorite(entryId: String): Boolean = favorites.value.contains(entryId)
+
+    fun toggleFavorite(entryId: String) = repository.toggleFavorite(entryId)
 
     fun allGroups(): List<String> = catalog.value.entries
         .map { it.group }
@@ -116,10 +132,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun filteredEntries(kind: MediaKind, query: CatalogQuery): List<MediaEntry> {
         val search = query.search.trim()
+        val favoriteIds = favorites.value
         val filtered = visibleEntries(kind).asSequence()
             .filter { search.isEmpty() || it.title.contains(search, ignoreCase = true) }
             .filter { query.year == null || it.year == query.year }
             .filter { query.group == null || it.group == query.group }
+            .filter { !query.favoritesOnly || favoriteIds.contains(it.id) }
             .toList()
 
         return when (query.sort) {
@@ -135,6 +153,24 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun related(entry: MediaEntry): List<MediaEntry> = visibleEntries(entry.kind)
         .filter { it.group == entry.group && it.id != entry.id }
         .take(12)
+
+    /** Programmes of a live channel, matched by tvg-id first and by name as a fallback. */
+    fun programmesFor(entry: MediaEntry): List<Programme> {
+        val guide = epg.value
+        if (guide.isEmpty) return emptyList()
+        val direct = entry.tvgId?.lowercase()?.takeIf { guide.byChannel.containsKey(it) }
+        val key = direct
+            ?: guide.nameIndex[XmltvParser.normalizeName(entry.title)]
+            ?: entry.tvgId?.let { guide.nameIndex[XmltvParser.normalizeName(it)] }
+            ?: return emptyList()
+        return guide.byChannel[key].orEmpty()
+    }
+
+    fun currentProgramme(entry: MediaEntry, nowMs: Long): Programme? =
+        programmesFor(entry).firstOrNull { it.isOnAir(nowMs) }
+
+    fun upcomingProgrammes(entry: MediaEntry, nowMs: Long): List<Programme> =
+        programmesFor(entry).filter { it.stopEpochMs >= nowMs }
 
     fun addAccount(account: PlaylistAccount, onDone: (Result<PlaylistAccount>) -> Unit) {
         viewModelScope.launch {
@@ -154,7 +190,19 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { repository.refreshActive() }
     }
 
+    fun refreshEpg() {
+        viewModelScope.launch { repository.refreshEpg() }
+    }
+
+    fun updateEpgUrl(url: String) {
+        activeAccount?.let { repository.updateEpgUrl(it.id, url) }
+    }
+
+    fun effectiveEpgUrl(): String = activeAccount?.let { repository.effectiveEpgUrl(it) }.orEmpty()
+
     fun clearSyncState() = repository.clearSyncState()
+
+    fun clearEpgState() = repository.clearEpgState()
 
     fun loadEpisodes(entry: MediaEntry) {
         if (entry.seriesId == null) {

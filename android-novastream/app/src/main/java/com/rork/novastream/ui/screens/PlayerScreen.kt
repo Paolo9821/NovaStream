@@ -46,6 +46,7 @@ import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import com.rork.novastream.ui.i18n.LocalStrings
 import com.rork.novastream.ui.vm.AppViewModel
 
 @OptIn(UnstableApi::class)
@@ -56,6 +57,7 @@ fun PlayerScreen(
     streamUrl: String,
     onBack: () -> Unit,
 ) {
+    val strings = LocalStrings.current
     val context = LocalContext.current
     val settings = viewModel.settings.value
     val entry = remember(entryId) { viewModel.entryById(entryId) }
@@ -96,7 +98,7 @@ fun PlayerScreen(
             }
 
             override fun onPlayerError(playerError: PlaybackException) {
-                error = "Impossibile riprodurre questo flusso. Verifica la connessione o riprova più tardi."
+                error = strings.playbackError
             }
         }
         player.addListener(listener)
@@ -167,8 +169,8 @@ fun PlayerScreen(
                         player.setMediaItem(MediaItem.fromUri(streamUrl))
                         player.prepare()
                         player.play()
-                    }) { Text("Riprova") }
-                    OutlinedButton(onClick = onBack) { Text("Chiudi") }
+                    }) { Text(strings.retry) }
+                    OutlinedButton(onClick = onBack) { Text(strings.close) }
                 }
             }
         }
@@ -183,7 +185,7 @@ fun PlayerScreen(
             IconButton(onClick = onBack) {
                 Icon(
                     imageVector = Icons.Rounded.Close,
-                    contentDescription = "Chiudi il player",
+                    contentDescription = strings.closePlayer,
                     tint = Color.White,
                 )
             }

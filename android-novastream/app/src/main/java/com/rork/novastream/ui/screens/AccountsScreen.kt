@@ -1,6 +1,7 @@
 package com.rork.novastream.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -64,6 +65,8 @@ import com.rork.novastream.data.model.PlaylistAccount
 import com.rork.novastream.data.model.SyncState
 import com.rork.novastream.data.repo.IptvRepository
 import com.rork.novastream.ui.components.PrivacyNote
+import com.rork.novastream.ui.i18n.LocalStrings
+import com.rork.novastream.ui.i18n.Strings
 import com.rork.novastream.ui.vm.AppViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -75,6 +78,7 @@ fun AccountsScreen(
     viewModel: AppViewModel,
     onBack: () -> Unit,
 ) {
+    val strings = LocalStrings.current
     val accounts by viewModel.accounts.collectAsStateWithLifecycle()
     val activeId by viewModel.activeAccountId.collectAsStateWithLifecycle()
     val syncState by viewModel.syncState.collectAsStateWithLifecycle()
@@ -88,10 +92,10 @@ fun AccountsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Gestione account") },
+                title = { Text(strings.accountsTitle) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Indietro")
+                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = strings.back)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -113,10 +117,10 @@ fun AccountsScreen(
         ) {
             item("header") {
                 Column {
-                    Text("I tuoi account", style = MaterialTheme.typography.headlineSmall)
+                    Text(strings.yourAccounts, style = MaterialTheme.typography.headlineSmall)
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        text = "Cambia playlist quando vuoi: la lista precedente viene cancellata dal dispositivo e riscaricata dal nuovo server.",
+                        text = strings.accountsSubtitle,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -150,6 +154,7 @@ fun AccountsScreen(
                 AccountRow(
                     account = account,
                     isActive = account.id == activeId,
+                    strings = strings,
                     onSwitch = { pendingSwitch = account },
                     onDelete = { pendingDelete = account },
                 )
@@ -157,8 +162,8 @@ fun AccountsScreen(
 
             item("privacy") {
                 PrivacyNote(
-                    title = "Privacy totale",
-                    body = "Credenziali di tutti gli account cifrate sul dispositivo con ${viewModel.encryptionLabel}, mai condivise.",
+                    title = strings.privacyTotal,
+                    body = strings.privacyAccountsBody.format(viewModel.encryptionLabel),
                 )
             }
 
@@ -170,7 +175,7 @@ fun AccountsScreen(
                 ) {
                     Icon(Icons.Rounded.Add, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
-                    Text(if (formOpen) "Chiudi il modulo" else "Aggiungi account (m3u o Xtream)")
+                    Text(if (formOpen) strings.closeFormAction else strings.addAccountAction)
                 }
             }
 
@@ -179,6 +184,7 @@ fun AccountsScreen(
                     AccountForm(
                         submitting = submitting,
                         error = formError,
+                        strings = strings,
                         onSubmit = { account ->
                             submitting = true
                             formError = null
@@ -197,18 +203,16 @@ fun AccountsScreen(
     pendingSwitch?.let { account ->
         AlertDialog(
             onDismissRequest = { pendingSwitch = null },
-            title = { Text("Passare a ${account.name}?") },
-            text = {
-                Text("Canali, film e serie dell'account attuale verranno cancellati dal dispositivo e riscaricati dal server di ${account.name}.")
-            },
+            title = { Text(strings.switchDialogTitle.format(account.name)) },
+            text = { Text(strings.switchDialogBody.format(account.name)) },
             confirmButton = {
                 TextButton(onClick = {
                     viewModel.switchAccount(account.id)
                     pendingSwitch = null
-                }) { Text("Cambia account") }
+                }) { Text(strings.switchDialogConfirm) }
             },
             dismissButton = {
-                TextButton(onClick = { pendingSwitch = null }) { Text("Annulla") }
+                TextButton(onClick = { pendingSwitch = null }) { Text(strings.cancel) }
             },
         )
     }
@@ -216,16 +220,16 @@ fun AccountsScreen(
     pendingDelete?.let { account ->
         AlertDialog(
             onDismissRequest = { pendingDelete = null },
-            title = { Text("Eliminare ${account.name}?") },
-            text = { Text("Le credenziali cifrate e la lista scaricata verranno rimosse definitivamente dal dispositivo.") },
+            title = { Text(strings.deleteDialogTitle.format(account.name)) },
+            text = { Text(strings.deleteDialogBody) },
             confirmButton = {
                 TextButton(onClick = {
                     viewModel.removeAccount(account.id)
                     pendingDelete = null
-                }) { Text("Elimina") }
+                }) { Text(strings.delete) }
             },
             dismissButton = {
-                TextButton(onClick = { pendingDelete = null }) { Text("Annulla") }
+                TextButton(onClick = { pendingDelete = null }) { Text(strings.cancel) }
             },
         )
     }
@@ -235,6 +239,7 @@ fun AccountsScreen(
 private fun AccountRow(
     account: PlaylistAccount,
     isActive: Boolean,
+    strings: Strings,
     onSwitch: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -243,10 +248,7 @@ private fun AccountRow(
         shape = RoundedCornerShape(16.dp),
         color = if (isActive) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.45f)
         else MaterialTheme.colorScheme.surface,
-        border = if (isActive) androidx.compose.foundation.BorderStroke(
-            1.5.dp,
-            MaterialTheme.colorScheme.primary
-        ) else null,
+        border = if (isActive) BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null,
     ) {
         Row(
             modifier = Modifier.padding(14.dp),
@@ -281,9 +283,9 @@ private fun AccountRow(
                 Spacer(Modifier.height(2.dp))
                 Text(
                     text = buildString {
-                        append(if (isActive) "Attivo" else "Non attivo")
+                        append(if (isActive) strings.activeLabel else strings.inactiveLabel)
                         append(" · ")
-                        append(lastSyncLabel(account.lastSyncEpochMs))
+                        append(lastSyncLabel(account.lastSyncEpochMs, strings))
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -292,18 +294,18 @@ private fun AccountRow(
             if (isActive) {
                 Icon(
                     imageVector = Icons.Rounded.CheckCircle,
-                    contentDescription = "Account attivo",
+                    contentDescription = strings.activeLabel,
                     tint = MaterialTheme.colorScheme.primary,
                 )
             } else {
                 IconButton(onClick = onSwitch) {
-                    Icon(Icons.Rounded.SwapHoriz, contentDescription = "Cambia account")
+                    Icon(Icons.Rounded.SwapHoriz, contentDescription = strings.switchAccountAction)
                 }
             }
             IconButton(onClick = onDelete) {
                 Icon(
                     imageVector = Icons.Rounded.Delete,
-                    contentDescription = "Elimina account",
+                    contentDescription = strings.deleteAccountAction,
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -316,6 +318,7 @@ private fun AccountRow(
 private fun AccountForm(
     submitting: Boolean,
     error: String?,
+    strings: Strings,
     onSubmit: (PlaylistAccount) -> Unit,
 ) {
     var type by remember { mutableStateOf(AccountType.XTREAM) }
@@ -324,6 +327,7 @@ private fun AccountForm(
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var m3uUrl by remember { mutableStateOf("") }
+    var epgUrl by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
 
     Surface(
@@ -340,18 +344,18 @@ private fun AccountForm(
                     selected = type == AccountType.M3U,
                     onClick = { type = AccountType.M3U },
                     shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
-                ) { Text("URL m3u") }
+                ) { Text(strings.tabM3u) }
                 SegmentedButton(
                     selected = type == AccountType.XTREAM,
                     onClick = { type = AccountType.XTREAM },
                     shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
-                ) { Text("Codici Xtream") }
+                ) { Text(strings.tabXtream) }
             }
 
             OutlinedTextField(
                 value = name,
                 onValueChange = { name = it },
-                label = { Text("Nome playlist") },
+                label = { Text(strings.fieldPlaylistName) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -360,7 +364,7 @@ private fun AccountForm(
                 OutlinedTextField(
                     value = server,
                     onValueChange = { server = it },
-                    label = { Text("Server") },
+                    label = { Text(strings.fieldServer) },
                     placeholder = { Text("http://srv.example.com:8080") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
@@ -369,14 +373,14 @@ private fun AccountForm(
                 OutlinedTextField(
                     value = username,
                     onValueChange = { username = it },
-                    label = { Text("Username") },
+                    label = { Text(strings.fieldUsername) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 OutlinedTextField(
                     value = password,
                     onValueChange = { password = it },
-                    label = { Text("Password") },
+                    label = { Text(strings.fieldPassword) },
                     singleLine = true,
                     visualTransformation = if (passwordVisible) VisualTransformation.None
                     else PasswordVisualTransformation(),
@@ -385,7 +389,8 @@ private fun AccountForm(
                             Icon(
                                 imageVector = if (passwordVisible) Icons.Rounded.VisibilityOff
                                 else Icons.Rounded.Visibility,
-                                contentDescription = if (passwordVisible) "Nascondi password" else "Mostra password",
+                                contentDescription = if (passwordVisible) strings.hidePassword
+                                else strings.showPassword,
                             )
                         }
                     },
@@ -396,13 +401,26 @@ private fun AccountForm(
                 OutlinedTextField(
                     value = m3uUrl,
                     onValueChange = { m3uUrl = it },
-                    label = { Text("URL della playlist m3u") },
+                    label = { Text(strings.fieldM3uUrl) },
                     placeholder = { Text("http://srv.example.com/get.php?...") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
+
+            OutlinedTextField(
+                value = epgUrl,
+                onValueChange = { epgUrl = it },
+                label = { Text(strings.fieldEpgUrl) },
+                placeholder = { Text("http://srv.example.com/xmltv.php") },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                supportingText = {
+                    Text(strings.fieldEpgUrlHint, style = MaterialTheme.typography.bodySmall)
+                },
+                modifier = Modifier.fillMaxWidth(),
+            )
 
             if (error != null) {
                 Text(
@@ -416,12 +434,15 @@ private fun AccountForm(
                 onClick = {
                     val account = PlaylistAccount(
                         id = IptvRepository.newAccountId(),
-                        name = name.trim().ifBlank { if (type == AccountType.XTREAM) "Playlist Xtream" else "Playlist m3u" },
+                        name = name.trim().ifBlank {
+                            if (type == AccountType.XTREAM) "Xtream" else "m3u"
+                        },
                         type = type,
                         m3uUrl = m3uUrl.trim(),
                         server = server.trim(),
                         username = username.trim(),
                         password = password,
+                        epgUrl = epgUrl.trim(),
                     )
                     onSubmit(account)
                 },
@@ -436,24 +457,24 @@ private fun AccountForm(
                         color = MaterialTheme.colorScheme.onPrimary,
                     )
                     Spacer(Modifier.width(10.dp))
-                    Text("Verifica e import in corso…")
+                    Text(strings.verifyingImport)
                 } else {
-                    Text("Importa e crittografa")
+                    Text(strings.importAndEncrypt)
                 }
             }
 
             OutlinedButton(
                 onClick = {
-                    name = ""; server = ""; username = ""; password = ""; m3uUrl = ""
+                    name = ""; server = ""; username = ""; password = ""; m3uUrl = ""; epgUrl = ""
                 },
                 modifier = Modifier.fillMaxWidth(),
-            ) { Text("Svuota i campi") }
+            ) { Text(strings.clearFields) }
         }
     }
 }
 
-private fun lastSyncLabel(epochMs: Long): String {
-    if (epochMs <= 0L) return "Mai sincronizzato"
-    val formatter = SimpleDateFormat("d MMM yyyy, HH:mm", Locale.ITALIAN)
-    return "Aggiornato ${formatter.format(Date(epochMs))}"
+private fun lastSyncLabel(epochMs: Long, strings: Strings): String {
+    if (epochMs <= 0L) return strings.neverSynced
+    val formatter = SimpleDateFormat("d MMM yyyy, HH:mm", Locale.getDefault())
+    return strings.updatedPrefix.format(formatter.format(Date(epochMs)))
 }

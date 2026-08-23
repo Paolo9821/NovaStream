@@ -27,6 +27,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -49,11 +50,15 @@ import coil3.compose.AsyncImage
 import com.rork.novastream.data.model.Episode
 import com.rork.novastream.data.model.MediaEntry
 import com.rork.novastream.data.model.MediaKind
+import com.rork.novastream.data.model.Programme
+import com.rork.novastream.ui.components.FavoriteHeart
 import com.rork.novastream.ui.components.FocusableSurface
 import com.rork.novastream.ui.components.PosterCard
 import com.rork.novastream.ui.components.accentFor
 import com.rork.novastream.ui.components.containerFor
 import com.rork.novastream.ui.components.iconFor
+import com.rork.novastream.ui.i18n.LocalStrings
+import com.rork.novastream.ui.theme.LocalNovaAccents
 import com.rork.novastream.ui.vm.AppViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -65,12 +70,21 @@ fun DetailScreen(
     onPlay: (String, String) -> Unit,
     onOpenRelated: (String) -> Unit,
 ) {
+    val strings = LocalStrings.current
     val catalog by viewModel.catalog.collectAsStateWithLifecycle()
     val episodes by viewModel.episodes.collectAsStateWithLifecycle()
     val episodesLoading by viewModel.episodesLoading.collectAsStateWithLifecycle()
+    val favorites by viewModel.favorites.collectAsStateWithLifecycle()
+    val epg by viewModel.epg.collectAsStateWithLifecycle()
 
     val entry = remember(catalog, entryId) { viewModel.entryById(entryId) }
     val related = remember(catalog, entryId) { entry?.let { viewModel.related(it) }.orEmpty() }
+    val now = remember(entryId) { System.currentTimeMillis() }
+    val programmes = remember(entryId, epg) {
+        entry?.takeIf { it.kind == MediaKind.LIVE }
+            ?.let { viewModel.upcomingProgrammes(it, now).take(8) }
+            .orEmpty()
+    }
 
     LaunchedEffect(entryId) {
         entry?.let { if (it.kind == MediaKind.SERIES) viewModel.loadEpisodes(it) }
@@ -79,10 +93,28 @@ fun DetailScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(titleFor(entry?.kind)) },
+                title = {
+                    Text(
+                        when (entry?.kind) {
+                            MediaKind.LIVE -> strings.detailChannelTitle
+                            MediaKind.SERIES -> strings.detailSeriesTitle
+                            else -> strings.detailMovieTitle
+                        }
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Indietro")
+                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = strings.back)
+                    }
+                },
+                actions = {
+                    if (entry != null) {
+                        FavoriteHeart(
+                            isFavorite = favorites.contains(entry.id),
+                            onToggle = { viewModel.toggleFavorite(entry.id) },
+                            onSurface = true,
+                            modifier = Modifier.padding(end = 10.dp),
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -99,7 +131,7 @@ fun DetailScreen(
                     .padding(padding),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("Contenuto non disponibile", style = MaterialTheme.typography.bodyLarge)
+                Text(strings.contentUnavailable, style = MaterialTheme.typography.bodyLarge)
             }
             return@Scaffold
         }
@@ -166,16 +198,52 @@ fun DetailScreen(
                         Icon(Icons.Rounded.PlayArrow, contentDescription = null)
                         Spacer(Modifier.width(10.dp))
                         Text(
-                            text = if (entry.kind == MediaKind.LIVE) "Guarda ora" else "Riproduci ora",
+                            text = if (entry.kind == MediaKind.LIVE) strings.watchNow else strings.playNow,
                             style = MaterialTheme.typography.titleMedium,
                         )
                     }
                 }
-            } else {
+            }
+
+            if (entry.kind == MediaKind.LIVE) {
+                item("guide-header") {
+                    Text(
+                        text = strings.guide,
+                        style = MaterialTheme.typography.titleLarge,
+                        modifier = Modifier.padding(start = 20.dp, end = 20.dp, bottom = 10.dp),
+                    )
+                }
+                if (programmes.isEmpty()) {
+                    item("guide-empty") {
+                        Column(Modifier.padding(horizontal = 20.dp)) {
+                            Text(
+                                text = strings.noProgrammeInfo,
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                text = strings.epgMissingHint,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                } else {
+                    items(programmes, key = { "${it.startEpochMs}_${it.title}" }) { programme ->
+                        GuideRow(
+                            programme = programme,
+                            nowMs = now,
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                        )
+                    }
+                }
+            }
+
+            if (entry.kind == MediaKind.SERIES) {
                 item("episodes-header") {
                     Column(Modifier.padding(horizontal = 20.dp)) {
                         Spacer(Modifier.height(20.dp))
-                        Text("Episodi", style = MaterialTheme.typography.titleLarge)
+                        Text(strings.episodes, style = MaterialTheme.typography.titleLarge)
                         Spacer(Modifier.height(8.dp))
                     }
                 }
@@ -192,13 +260,13 @@ fun DetailScreen(
                                 strokeWidth = 2.dp,
                             )
                             Spacer(Modifier.width(12.dp))
-                            Text("Carico gli episodi dal provider…")
+                            Text(strings.loadingEpisodes)
                         }
                     }
                 } else if (episodes.isEmpty()) {
                     item("episodes-empty") {
                         Text(
-                            text = "Il provider non ha fornito un elenco episodi per questa serie.",
+                            text = strings.noEpisodes,
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
@@ -218,7 +286,7 @@ fun DetailScreen(
             if (related.isNotEmpty()) {
                 item("related-header") {
                     Text(
-                        text = "Nella stessa categoria",
+                        text = strings.sameCategory,
                         style = MaterialTheme.typography.titleLarge,
                         modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 12.dp),
                     )
@@ -233,6 +301,8 @@ fun DetailScreen(
                                 entry = item,
                                 onClick = { onOpenRelated(item.id) },
                                 modifier = Modifier.width(124.dp),
+                                isFavorite = favorites.contains(item.id),
+                                onToggleFavorite = { viewModel.toggleFavorite(item.id) },
                             )
                         }
                     }
@@ -280,7 +350,58 @@ private fun CoverImage(entry: MediaEntry) {
 }
 
 @Composable
+private fun GuideRow(programme: Programme, nowMs: Long, modifier: Modifier = Modifier) {
+    val strings = LocalStrings.current
+    val accents = LocalNovaAccents.current
+    val onAir = programme.isOnAir(nowMs)
+
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        color = if (onAir) accents.liveContainer else MaterialTheme.colorScheme.surface,
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Text(
+                text = clockLabel(programme.startEpochMs),
+                style = MaterialTheme.typography.titleSmall,
+                color = if (onAir) accents.live else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = programme.title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (onAir) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = strings.onAirNow,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = accents.live,
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    LinearProgressIndicator(
+                        progress = { programme.progressAt(nowMs) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(3.dp),
+                        color = accents.live,
+                        drawStopIndicator = {},
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun EpisodeRow(episode: Episode, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val strings = LocalStrings.current
     FocusableSurface(
         onClick = onClick,
         modifier = modifier.fillMaxWidth(),
@@ -311,15 +432,9 @@ private fun EpisodeRow(episode: Episode, onClick: () -> Unit, modifier: Modifier
             )
             Icon(
                 imageVector = Icons.Rounded.PlayArrow,
-                contentDescription = "Riproduci episodio",
+                contentDescription = strings.playEpisode,
                 tint = MaterialTheme.colorScheme.primary,
             )
         }
     }
-}
-
-private fun titleFor(kind: MediaKind?): String = when (kind) {
-    MediaKind.LIVE -> "Dettaglio canale"
-    MediaKind.SERIES -> "Dettaglio serie"
-    else -> "Dettaglio film"
 }

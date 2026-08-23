@@ -1,32 +1,31 @@
 package com.rork.novastream.data.local
 
 import android.content.Context
+import com.rork.novastream.ui.i18n.Language
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.security.MessageDigest
+import java.util.Locale
 
-enum class ThemeMode(val label: String) {
-    SYSTEM("Automatico"),
-    LIGHT("Chiaro"),
-    DARK("Scuro"),
-}
+enum class ThemeMode { SYSTEM, LIGHT, DARK }
 
 enum class DnsPreset(
-    val label: String,
-    val description: String,
     val primary: String,
     val secondary: String,
     val dohUrl: String,
 ) {
-    SYSTEM("Predefinito di sistema", "Usa il DNS della tua rete", "", "", ""),
-    GOOGLE("Google", "8.8.8.8 · 8.8.4.4", "8.8.8.8", "8.8.4.4", "https://dns.google/resolve"),
-    CLOUDFLARE("Cloudflare", "1.1.1.1 · 1.0.0.1", "1.1.1.1", "1.0.0.1", "https://cloudflare-dns.com/dns-query"),
-    QUAD9("Quad9", "9.9.9.9 · 149.112.112.112", "9.9.9.9", "149.112.112.112", "https://dns.quad9.net:5053/dns-query"),
-    CUSTOM("Personalizzato", "Il tuo resolver", "", "", ""),
+    SYSTEM("", "", ""),
+    GOOGLE("8.8.8.8", "8.8.4.4", "https://dns.google/resolve"),
+    CLOUDFLARE("1.1.1.1", "1.0.0.1", "https://cloudflare-dns.com/dns-query"),
+    QUAD9("9.9.9.9", "149.112.112.112", "https://dns.quad9.net:5053/dns-query"),
+    CUSTOM("", "", "");
+
+    val addressLabel: String get() = if (primary.isEmpty()) "" else "$primary · $secondary"
 }
 
 data class AppSettings(
+    val language: Language = Language.ENGLISH,
     val themeMode: ThemeMode = ThemeMode.SYSTEM,
     val dnsPreset: DnsPreset = DnsPreset.SYSTEM,
     val customDnsPrimary: String = "",
@@ -48,6 +47,9 @@ class SettingsStore(context: Context) {
     val settings: StateFlow<AppSettings> = _settings.asStateFlow()
 
     private fun load(): AppSettings = AppSettings(
+        language = Language.fromCode(
+            prefs.getString(KEY_LANGUAGE, null) ?: Locale.getDefault().language
+        ),
         themeMode = runCatching { ThemeMode.valueOf(prefs.getString(KEY_THEME, null) ?: "SYSTEM") }
             .getOrDefault(ThemeMode.SYSTEM),
         dnsPreset = runCatching { DnsPreset.valueOf(prefs.getString(KEY_DNS, null) ?: "SYSTEM") }
@@ -64,6 +66,7 @@ class SettingsStore(context: Context) {
 
     private fun persist(settings: AppSettings) {
         prefs.edit()
+            .putString(KEY_LANGUAGE, settings.language.code)
             .putString(KEY_THEME, settings.themeMode.name)
             .putString(KEY_DNS, settings.dnsPreset.name)
             .putString(KEY_DNS_CUSTOM_IP, settings.customDnsPrimary)
@@ -102,6 +105,7 @@ class SettingsStore(context: Context) {
     }
 
     private companion object {
+        const val KEY_LANGUAGE = "language"
         const val KEY_THEME = "theme_mode"
         const val KEY_DNS = "dns_preset"
         const val KEY_DNS_CUSTOM_IP = "dns_custom_ip"

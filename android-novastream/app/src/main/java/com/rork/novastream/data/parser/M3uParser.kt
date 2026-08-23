@@ -59,6 +59,7 @@ object M3uParser {
             providerOrder = order,
             addedEpochMs = nowMs,
             quality = quality,
+            tvgId = attributes["tvg-id"]?.takeIf { it.isNotBlank() },
         )
     }
 

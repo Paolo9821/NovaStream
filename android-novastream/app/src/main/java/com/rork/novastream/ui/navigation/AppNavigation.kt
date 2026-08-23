@@ -30,6 +30,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.rork.novastream.data.model.MediaKind
+import com.rork.novastream.ui.i18n.LocalStrings
 import com.rork.novastream.ui.screens.AccountsScreen
 import com.rork.novastream.ui.screens.CatalogScreen
 import com.rork.novastream.ui.screens.DetailScreen
@@ -54,19 +55,20 @@ private data class TopLevelDestination(
     val icon: ImageVector,
 )
 
-private val topLevelDestinations = listOf(
-    TopLevelDestination(ROUTE_HOME, "Home", Icons.Rounded.Home),
-    TopLevelDestination(ROUTE_LIVE, "Live", Icons.Rounded.LiveTv),
-    TopLevelDestination(ROUTE_MOVIES, "Film", Icons.Rounded.Movie),
-    TopLevelDestination(ROUTE_SERIES, "Serie", Icons.Rounded.Tv),
-)
-
 @Composable
 fun AppNavigation(viewModel: AppViewModel) {
+    val strings = LocalStrings.current
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route
-    val isTopLevel = topLevelDestinations.any { it.route == currentRoute }
+
+    val destinations = listOf(
+        TopLevelDestination(ROUTE_HOME, strings.tabHome, Icons.Rounded.Home),
+        TopLevelDestination(ROUTE_LIVE, strings.tabLive, Icons.Rounded.LiveTv),
+        TopLevelDestination(ROUTE_MOVIES, strings.tabMovies, Icons.Rounded.Movie),
+        TopLevelDestination(ROUTE_SERIES, strings.tabSeries, Icons.Rounded.Tv),
+    )
+    val isTopLevel = destinations.any { it.route == currentRoute }
 
     val configuration = LocalConfiguration.current
     val useRail = configuration.screenWidthDp >= 720
@@ -76,7 +78,7 @@ fun AppNavigation(viewModel: AppViewModel) {
         bottomBar = {
             if (isTopLevel && !useRail) {
                 NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
-                    topLevelDestinations.forEach { destination ->
+                    destinations.forEach { destination ->
                         NavigationBarItem(
                             selected = currentRoute == destination.route,
                             onClick = { navController.navigateToTab(destination.route) },
@@ -94,7 +96,7 @@ fun AppNavigation(viewModel: AppViewModel) {
                     containerColor = MaterialTheme.colorScheme.surface,
                     modifier = Modifier.padding(top = padding.calculateTopPadding()),
                 ) {
-                    topLevelDestinations.forEach { destination ->
+                    destinations.forEach { destination ->
                         NavigationRailItem(
                             selected = currentRoute == destination.route,
                             onClick = { navController.navigateToTab(destination.route) },
@@ -125,6 +127,7 @@ fun AppNavigation(viewModel: AppViewModel) {
                         },
                         onOpenAccounts = { navController.navigate(ROUTE_ACCOUNTS) },
                         onOpenSettings = { navController.navigate(ROUTE_SETTINGS) },
+                        onOpenDetail = { navController.navigate("detail/$it") },
                         onResume = { entryId, url -> navController.navigateToPlayer(entryId, url) },
                     )
                 }
@@ -173,9 +176,7 @@ fun AppNavigation(viewModel: AppViewModel) {
                         entryId = entryId,
                         onBack = { navController.popBackStack() },
                         onPlay = { id, url -> navController.navigateToPlayer(id, url) },
-                        onOpenRelated = { relatedId ->
-                            navController.navigate("detail/$relatedId")
-                        },
+                        onOpenRelated = { relatedId -> navController.navigate("detail/$relatedId") },
                     )
                 }
 

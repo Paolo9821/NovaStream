@@ -15,6 +15,7 @@ data class PlaylistAccount(
     val server: String = "",
     val username: String = "",
     val password: String = "",
+    val epgUrl: String = "",
     val lastSyncEpochMs: Long = 0L,
 ) {
     val typeLabel: String get() = if (type == AccountType.XTREAM) "Xtream" else "m3u"
@@ -39,6 +40,7 @@ data class MediaEntry(
     val genres: List<String> = emptyList(),
     val quality: String? = null,
     val seriesId: String? = null,
+    val tvgId: String? = null,
 )
 
 @Serializable
@@ -61,6 +63,41 @@ data class Episode(
     val thumbUrl: String? = null,
 )
 
+/** One XMLTV `<programme>` entry mapped to a channel. */
+@Serializable
+data class Programme(
+    val title: String,
+    val startEpochMs: Long,
+    val stopEpochMs: Long,
+    val description: String? = null,
+    val category: String? = null,
+) {
+    fun isOnAir(nowMs: Long): Boolean = nowMs in startEpochMs until stopEpochMs
+
+    fun progressAt(nowMs: Long): Float {
+        val span = stopEpochMs - startEpochMs
+        if (span <= 0L) return 0f
+        return ((nowMs - startEpochMs).toFloat() / span).coerceIn(0f, 1f)
+    }
+}
+
+/**
+ * Parsed XMLTV guide. [byChannel] is keyed by the lowercase XMLTV channel id and
+ * [nameIndex] maps normalized display names to those ids, so channels without a
+ * `tvg-id` can still be matched by name.
+ */
+@Serializable
+data class EpgGuide(
+    val sourceUrl: String = "",
+    val updatedAtEpochMs: Long = 0L,
+    val byChannel: Map<String, List<Programme>> = emptyMap(),
+    val nameIndex: Map<String, String> = emptyMap(),
+) {
+    val programmeCount: Int get() = byChannel.values.sumOf { it.size }
+    val channelCount: Int get() = byChannel.size
+    val isEmpty: Boolean get() = byChannel.isEmpty()
+}
+
 @Serializable
 data class WatchProgress(
     val entryId: String,
@@ -75,19 +112,16 @@ data class WatchProgress(
     val fraction: Float
         get() = if (durationMs <= 0L) 0f else (positionMs.toFloat() / durationMs).coerceIn(0f, 1f)
 
-    val remainingLabel: String
-        get() {
-            val remaining = (durationMs - positionMs).coerceAtLeast(0L) / 60000L
-            return if (remaining <= 0L) "Quasi finito" else "$remaining min rimanenti"
-        }
+    val remainingMinutes: Long
+        get() = (durationMs - positionMs).coerceAtLeast(0L) / 60000L
 }
 
 /** Sort modes offered above every catalog. */
-enum class SortOption(val label: String) {
-    RECENTLY_ADDED("Recentemente aggiunti"),
-    NAME_ASC("Nome A-Z"),
-    NAME_DESC("Nome Z-A"),
-    PROVIDER_DEFAULT("Default provider"),
+enum class SortOption {
+    RECENTLY_ADDED,
+    NAME_ASC,
+    NAME_DESC,
+    PROVIDER_DEFAULT,
 }
 
 sealed interface SyncState {

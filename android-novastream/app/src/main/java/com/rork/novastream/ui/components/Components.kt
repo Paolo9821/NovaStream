@@ -4,7 +4,6 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
@@ -23,7 +22,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.rounded.LiveTv
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.Tv
@@ -42,12 +43,14 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.rork.novastream.data.model.MediaEntry
 import com.rork.novastream.data.model.MediaKind
+import com.rork.novastream.ui.i18n.LocalStrings
 import com.rork.novastream.ui.theme.LocalNovaAccents
 
 @Composable
@@ -111,21 +114,77 @@ fun FocusableSurface(
     )
 }
 
+/** Circular heart toggle used on cards, rows and detail headers. */
+@Composable
+fun FavoriteHeart(
+    isFavorite: Boolean,
+    onToggle: () -> Unit,
+    modifier: Modifier = Modifier,
+    size: Int = 36,
+    onSurface: Boolean = false,
+) {
+    val strings = LocalStrings.current
+    val scale by animateFloatAsState(
+        targetValue = if (isFavorite) 1.1f else 1f,
+        animationSpec = spring(dampingRatio = 0.45f, stiffness = 600f),
+        label = "heartScale"
+    )
+    Surface(
+        onClick = onToggle,
+        modifier = modifier.size(size.dp),
+        shape = RoundedCornerShape((size / 2).dp),
+        color = when {
+            isFavorite -> MaterialTheme.colorScheme.error.copy(alpha = 0.16f)
+            onSurface -> MaterialTheme.colorScheme.surfaceVariant
+            else -> Color.Black.copy(alpha = 0.42f)
+        },
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+                contentDescription = if (isFavorite) strings.removeFavorite else strings.addFavorite,
+                tint = when {
+                    isFavorite -> MaterialTheme.colorScheme.error
+                    onSurface -> MaterialTheme.colorScheme.onSurfaceVariant
+                    else -> Color.White
+                },
+                modifier = Modifier
+                    .size((size * 0.52).dp)
+                    .scale(scale),
+            )
+        }
+    }
+}
+
 @Composable
 fun PosterCard(
     entry: MediaEntry,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    isFavorite: Boolean = false,
+    onToggleFavorite: (() -> Unit)? = null,
 ) {
     Column(modifier = modifier) {
-        FocusableSurface(
-            onClick = onClick,
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(2f / 3f),
-            color = MaterialTheme.colorScheme.surfaceVariant,
-        ) {
-            PosterImage(entry = entry)
+        Box {
+            FocusableSurface(
+                onClick = onClick,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .aspectRatio(2f / 3f),
+                color = MaterialTheme.colorScheme.surfaceVariant,
+            ) {
+                PosterImage(entry = entry)
+            }
+            if (onToggleFavorite != null) {
+                FavoriteHeart(
+                    isFavorite = isFavorite,
+                    onToggle = onToggleFavorite,
+                    size = 32,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp),
+                )
+            }
         }
         Spacer(Modifier.height(8.dp))
         Text(
@@ -167,7 +226,7 @@ fun PosterImage(entry: MediaEntry, modifier: Modifier = Modifier) {
                 model = entry.logoUrl,
                 contentDescription = entry.title,
                 modifier = Modifier.fillMaxSize(),
-                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                contentScale = ContentScale.Crop,
             )
         }
     }
@@ -209,7 +268,7 @@ fun ContinueCard(
                         model = imageUrl,
                         contentDescription = title,
                         modifier = Modifier.fillMaxSize(),
-                        contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                        contentScale = ContentScale.Crop,
                     )
                 }
                 LinearProgressIndicator(
@@ -378,19 +437,6 @@ fun CategoryBadge(
             contentDescription = null,
             tint = Color.White,
             modifier = Modifier.size((size * 0.52).dp),
-        )
-    }
-}
-
-@Composable
-fun DotSeparatedMeta(parts: List<String>, modifier: Modifier = Modifier) {
-    val text = parts.filter { it.isNotBlank() }.joinToString("  •  ")
-    if (text.isNotBlank()) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = modifier,
         )
     }
 }

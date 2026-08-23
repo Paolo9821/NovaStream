@@ -117,6 +117,7 @@ class XtreamClient(private val http: HttpClient) {
                 streamUrl = "${base(account)}/live/${account.username.enc()}/${account.password.enc()}/$streamId.m3u8",
                 providerOrder = index,
                 addedEpochMs = obj.epochMs("added"),
+                tvgId = obj.str("epg_channel_id"),
             )
         }
     }

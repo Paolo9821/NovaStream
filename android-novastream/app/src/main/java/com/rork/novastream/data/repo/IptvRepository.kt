@@ -6,6 +6,7 @@ import com.rork.novastream.data.local.SecureStore
 import com.rork.novastream.data.local.SettingsStore
 import com.rork.novastream.data.model.AccountType
 import com.rork.novastream.data.model.Catalog
+import com.rork.novastream.data.model.EpgGuide
 import com.rork.novastream.data.model.Episode
 import com.rork.novastream.data.model.MediaEntry
 import com.rork.novastream.data.model.MediaKind
@@ -16,12 +17,15 @@ import com.rork.novastream.data.net.DnsCheck
 import com.rork.novastream.data.net.DohResolver
 import com.rork.novastream.data.net.SpeedTester
 import com.rork.novastream.data.parser.M3uParser
+import com.rork.novastream.data.parser.XmltvParser
 import com.rork.novastream.data.remote.XtreamClient
 import io.ktor.client.HttpClient
+import io.ktor.client.call.body
 import io.ktor.client.engine.android.Android
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.encodeURLParameter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -31,9 +35,9 @@ import kotlinx.serialization.json.Json
 import java.util.UUID
 
 /**
- * Single source of truth for accounts, catalog and playback progress.
- * Everything written to disk goes through [SecureStore], so credentials and the
- * imported catalog stay encrypted on the device.
+ * Single source of truth for accounts, catalog, EPG, favorites and playback progress.
+ * Everything written to disk goes through [SecureStore], so credentials, guide and
+ * catalog stay encrypted on the device.
  */
 class IptvRepository(context: Context) {
 
@@ -43,9 +47,9 @@ class IptvRepository(context: Context) {
     private val http = HttpClient(Android) {
         expectSuccess = false
         install(HttpTimeout) {
-            requestTimeoutMillis = 120_000
+            requestTimeoutMillis = 180_000
             connectTimeoutMillis = 20_000
-            socketTimeoutMillis = 60_000
+            socketTimeoutMillis = 120_000
         }
     }
 
@@ -70,6 +74,15 @@ class IptvRepository(context: Context) {
     private val _progress = MutableStateFlow<List<WatchProgress>>(emptyList())
     val progress: StateFlow<List<WatchProgress>> = _progress.asStateFlow()
 
+    private val _favorites = MutableStateFlow<Set<String>>(emptySet())
+    val favorites: StateFlow<Set<String>> = _favorites.asStateFlow()
+
+    private val _epg = MutableStateFlow(EpgGuide())
+    val epg: StateFlow<EpgGuide> = _epg.asStateFlow()
+
+    private val _epgState = MutableStateFlow<SyncState>(SyncState.Idle)
+    val epgState: StateFlow<SyncState> = _epgState.asStateFlow()
+
     init {
         restore()
     }
@@ -85,10 +98,16 @@ class IptvRepository(context: Context) {
         _progress.value = secureStore.getString(KEY_PROGRESS)
             ?.let { runCatching { json.decodeFromString<List<WatchProgress>>(it) }.getOrNull() }
             .orEmpty()
+        _favorites.value = secureStore.getString(KEY_FAVORITES)
+            ?.let { runCatching { json.decodeFromString<Set<String>>(it) }.getOrNull() }
+            .orEmpty()
         _activeAccountId.value?.let { id ->
             secureStore.readVault(catalogFile(id))
                 ?.let { runCatching { json.decodeFromString<Catalog>(it) }.getOrNull() }
                 ?.let { _catalog.value = it }
+            secureStore.readVault(epgFile(id))
+                ?.let { runCatching { json.decodeFromString<EpgGuide>(it) }.getOrNull() }
+                ?.let { _epg.value = it }
         }
     }
 
@@ -110,34 +129,48 @@ class IptvRepository(context: Context) {
         if (makeActive || _activeAccountId.value == null) {
             _activeAccountId.value = account.id
             _catalog.value = Catalog()
+            _epg.value = EpgGuide()
         }
         persistAccounts()
-        if (_activeAccountId.value == account.id) sync(account)
+        if (_activeAccountId.value == account.id) {
+            sync(account)
+            refreshEpg()
+        }
         return Result.success(account)
     }
 
     /**
-     * Switches the active provider: the previous catalog is wiped from the device and
-     * the new one is downloaded from scratch.
+     * Switches the active provider: the previous catalog and guide are wiped from the
+     * device and the new ones are downloaded from scratch.
      */
     suspend fun switchAccount(accountId: String) {
         val target = _accounts.value.firstOrNull { it.id == accountId } ?: return
-        _activeAccountId.value?.let { secureStore.deleteVault(catalogFile(it)) }
+        _activeAccountId.value?.let {
+            secureStore.deleteVault(catalogFile(it))
+            secureStore.deleteVault(epgFile(it))
+        }
         _catalog.value = Catalog()
+        _epg.value = EpgGuide()
         _activeAccountId.value = accountId
         persistAccounts()
         sync(target)
+        refreshEpg()
     }
 
     suspend fun removeAccount(accountId: String) {
         secureStore.deleteVault(catalogFile(accountId))
+        secureStore.deleteVault(epgFile(accountId))
         _accounts.value = _accounts.value.filterNot { it.id == accountId }
         if (_activeAccountId.value == accountId) {
             val next = _accounts.value.firstOrNull()
             _activeAccountId.value = next?.id
             _catalog.value = Catalog()
+            _epg.value = EpgGuide()
             persistAccounts()
-            next?.let { sync(it) }
+            next?.let {
+                sync(it)
+                refreshEpg()
+            }
         } else {
             persistAccounts()
         }
@@ -211,6 +244,78 @@ class IptvRepository(context: Context) {
         _syncState.value = SyncState.Idle
     }
 
+    fun clearEpgState() {
+        _epgState.value = SyncState.Idle
+    }
+
+    /** Address of the XMLTV guide: the account override, or the Xtream default endpoint. */
+    fun effectiveEpgUrl(account: PlaylistAccount): String {
+        account.epgUrl.trim().takeIf { it.isNotBlank() }?.let { return it }
+        if (account.type != AccountType.XTREAM) return ""
+        val base = account.server.trim().trimEnd('/').let {
+            if (it.startsWith("http://") || it.startsWith("https://")) it else "http://$it"
+        }
+        return "$base/xmltv.php?username=${account.username.encodeURLParameter()}" +
+            "&password=${account.password.encodeURLParameter()}"
+    }
+
+    fun updateEpgUrl(accountId: String, url: String) {
+        _accounts.value = _accounts.value.map {
+            if (it.id == accountId) it.copy(epgUrl = url.trim()) else it
+        }
+        persistAccounts()
+    }
+
+    /** Downloads and parses the XMLTV guide of the active account. */
+    suspend fun refreshEpg() {
+        val account = activeAccount ?: run {
+            _epgState.value = SyncState.Idle
+            return
+        }
+        val url = effectiveEpgUrl(account)
+        if (url.isBlank()) {
+            _epgState.value = SyncState.Idle
+            return
+        }
+
+        _epgState.value = SyncState.Running(url)
+        val now = System.currentTimeMillis()
+        val result = runCatching {
+            withContext(Dispatchers.IO) {
+                val bytes: ByteArray = http.get(url).body()
+                if (bytes.isEmpty()) throw IllegalStateException("Guida vuota o non raggiungibile")
+                XmltvParser.parse(
+                    bytes = bytes,
+                    sourceUrl = url,
+                    windowStartMs = now - EPG_PAST_WINDOW_MS,
+                    windowEndMs = now + EPG_FUTURE_WINDOW_MS,
+                )
+            }
+        }
+
+        result.onSuccess { guide ->
+            if (guide.isEmpty) {
+                _epgState.value = SyncState.Failed("Nessun programma trovato nel file XMLTV")
+                return@onSuccess
+            }
+            _epg.value = guide
+            secureStore.writeVault(epgFile(account.id), json.encodeToString(guide))
+            _epgState.value = SyncState.Success(guide.channelCount, guide.programmeCount, 0)
+        }.onFailure { error ->
+            Log.w(TAG, "Download della guida EPG non riuscito")
+            _epgState.value = SyncState.Failed(
+                error.message?.takeIf { it.isNotBlank() } ?: "Impossibile scaricare la guida"
+            )
+        }
+    }
+
+    fun toggleFavorite(entryId: String) {
+        val updated = _favorites.value.toMutableSet()
+        if (!updated.add(entryId)) updated.remove(entryId)
+        _favorites.value = updated
+        secureStore.putString(KEY_FAVORITES, json.encodeToString(updated))
+    }
+
     suspend fun episodesOf(entry: MediaEntry): List<Episode> {
         val account = activeAccount ?: return emptyList()
         val seriesId = entry.seriesId ?: return emptyList()
@@ -246,6 +351,7 @@ class IptvRepository(context: Context) {
 
     fun clearCatalogCache() {
         _catalog.value = Catalog()
+        _epg.value = EpgGuide()
         secureStore.clearVault()
     }
 
@@ -253,10 +359,13 @@ class IptvRepository(context: Context) {
         _accounts.value = emptyList()
         _activeAccountId.value = null
         _catalog.value = Catalog()
+        _epg.value = EpgGuide()
         _progress.value = emptyList()
+        _favorites.value = emptySet()
         secureStore.remove(KEY_ACCOUNTS)
         secureStore.remove(KEY_ACTIVE)
         secureStore.remove(KEY_PROGRESS)
+        secureStore.remove(KEY_FAVORITES)
         secureStore.clearVault()
         settingsStore.clearParental()
     }
@@ -270,11 +379,16 @@ class IptvRepository(context: Context) {
 
     private fun catalogFile(accountId: String) = "catalog_$accountId.bin"
 
+    private fun epgFile(accountId: String) = "epg_$accountId.bin"
+
     companion object {
         private const val KEY_ACCOUNTS = "accounts"
         private const val KEY_ACTIVE = "active_account"
         private const val KEY_PROGRESS = "watch_progress"
+        private const val KEY_FAVORITES = "favorites"
         private const val TAG = "IptvRepository"
+        private const val EPG_PAST_WINDOW_MS = 6L * 60 * 60 * 1000
+        private const val EPG_FUTURE_WINDOW_MS = 48L * 60 * 60 * 1000
 
         fun newAccountId(): String = UUID.randomUUID().toString()
     }

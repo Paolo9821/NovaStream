@@ -20,8 +20,8 @@ import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.AddCircleOutline
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.LockOpen
-import androidx.compose.material.icons.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Button
@@ -48,8 +48,11 @@ import com.rork.novastream.ui.components.CategoryBadge
 import com.rork.novastream.ui.components.ContinueCard
 import com.rork.novastream.ui.components.EmptyState
 import com.rork.novastream.ui.components.FocusableSurface
+import com.rork.novastream.ui.components.PosterCard
 import com.rork.novastream.ui.components.SectionHeader
 import com.rork.novastream.ui.components.accentFor
+import com.rork.novastream.ui.i18n.LocalStrings
+import com.rork.novastream.ui.i18n.Strings
 import com.rork.novastream.ui.theme.LocalNovaAccents
 import com.rork.novastream.ui.vm.AppViewModel
 import java.util.Calendar
@@ -61,8 +64,10 @@ fun HomeScreen(
     onOpenCategory: (MediaKind) -> Unit,
     onOpenAccounts: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenDetail: (String) -> Unit,
     onResume: (String, String) -> Unit,
 ) {
+    val strings = LocalStrings.current
     val accounts by viewModel.accounts.collectAsStateWithLifecycle()
     val activeId by viewModel.activeAccountId.collectAsStateWithLifecycle()
     val catalog by viewModel.catalog.collectAsStateWithLifecycle()
@@ -70,10 +75,14 @@ fun HomeScreen(
     val progress by viewModel.progress.collectAsStateWithLifecycle()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val unlocked by viewModel.parentalUnlocked.collectAsStateWithLifecycle()
+    val favorites by viewModel.favorites.collectAsStateWithLifecycle()
 
     val active = remember(accounts, activeId) { accounts.firstOrNull { it.id == activeId } }
     val counts = remember(catalog, settings, unlocked) {
         MediaKind.entries.associateWith { viewModel.countOf(it) }
+    }
+    val favoriteEntries = remember(catalog, favorites, settings, unlocked) {
+        viewModel.favoriteEntries()
     }
 
     LazyColumn(
@@ -88,14 +97,12 @@ fun HomeScreen(
     ) {
         item("greeting") {
             Column {
-                Text(
-                    text = greeting(),
-                    style = MaterialTheme.typography.headlineMedium,
-                )
+                Text(text = greeting(strings), style = MaterialTheme.typography.headlineMedium)
                 Spacer(Modifier.height(10.dp))
                 PlaylistStatusChip(
-                    playlistName = active?.name,
-                    encryption = viewModel.encryptionLabel,
+                    playlistLabel = active?.let { strings.playlistPrefix.format(it.name) }
+                        ?: strings.noActivePlaylist,
+                    encryption = "${strings.encryptedLocally} · ${viewModel.encryptionLabel}",
                 )
             }
         }
@@ -114,13 +121,13 @@ fun HomeScreen(
             item("empty") {
                 EmptyState(
                     icon = Icons.Rounded.PlaylistAdd,
-                    title = "Nessuna playlist collegata",
-                    body = "Aggiungi un account m3u o Xtream: canali, film e serie verranno importati e crittografati sul dispositivo.",
+                    title = strings.noPlaylistTitle,
+                    body = strings.noPlaylistBody,
                     action = {
                         Button(onClick = onOpenAccounts) {
                             Icon(Icons.Rounded.AddCircleOutline, contentDescription = null)
                             Spacer(Modifier.width(8.dp))
-                            Text("Aggiungi playlist")
+                            Text(strings.addPlaylistAction)
                         }
                     },
                 )
@@ -130,16 +137,39 @@ fun HomeScreen(
                 CategoryCard(
                     kind = kind,
                     count = counts[kind] ?: 0,
+                    strings = strings,
                     onClick = { onOpenCategory(kind) },
                 )
+            }
+        }
+
+        if (favoriteEntries.isNotEmpty()) {
+            item("favorites-header") {
+                SectionHeader(
+                    title = strings.favorites,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+            }
+            item("favorites-row") {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    items(favoriteEntries, key = { it.id }) { entry ->
+                        PosterCard(
+                            entry = entry,
+                            onClick = { onOpenDetail(entry.id) },
+                            modifier = Modifier.width(118.dp),
+                            isFavorite = true,
+                            onToggleFavorite = { viewModel.toggleFavorite(entry.id) },
+                        )
+                    }
+                }
             }
         }
 
         if (progress.isNotEmpty()) {
             item("continue-header") {
                 SectionHeader(
-                    title = "Continua a guardare",
-                    action = "Svuota",
+                    title = strings.continueWatching,
+                    action = strings.clear,
                     onAction = { viewModel.clearProgress() },
                     modifier = Modifier.padding(top = 8.dp),
                 )
@@ -149,7 +179,8 @@ fun HomeScreen(
                     items(progress, key = { it.entryId }) { item ->
                         ContinueCard(
                             title = item.title,
-                            subtitle = item.remainingLabel,
+                            subtitle = if (item.remainingMinutes <= 0L) strings.almostDone
+                            else strings.minutesRemaining.format(item.remainingMinutes),
                             imageUrl = item.imageUrl,
                             fraction = item.fraction,
                             onClick = { onResume(item.entryId, item.streamUrl) },
@@ -164,6 +195,7 @@ fun HomeScreen(
                 ParentalRow(
                     unlocked = unlocked,
                     blockedCount = settings.blockedGroups.size,
+                    strings = strings,
                     onLock = { viewModel.lockParental() },
                     onOpenSettings = onOpenSettings,
                 )
@@ -184,7 +216,7 @@ fun HomeScreen(
                 ) {
                     Icon(Icons.Rounded.Person, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
-                    Text("Account")
+                    Text(strings.accountButton)
                 }
                 OutlinedButton(
                     onClick = onOpenSettings,
@@ -193,7 +225,7 @@ fun HomeScreen(
                 ) {
                     Icon(Icons.Rounded.Settings, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
-                    Text("Impostazioni")
+                    Text(strings.settingsButton)
                 }
             }
         }
@@ -209,7 +241,7 @@ fun HomeScreen(
                 ) {
                     Icon(Icons.Rounded.Refresh, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
-                    Text("Aggiorna la lista dal provider")
+                    Text(strings.refreshFromProvider)
                 }
             }
         }
@@ -217,7 +249,7 @@ fun HomeScreen(
 }
 
 @Composable
-private fun PlaylistStatusChip(playlistName: String?, encryption: String) {
+private fun PlaylistStatusChip(playlistLabel: String, encryption: String) {
     val accents = LocalNovaAccents.current
     Surface(
         shape = RoundedCornerShape(14.dp),
@@ -236,12 +268,12 @@ private fun PlaylistStatusChip(playlistName: String?, encryption: String) {
             Spacer(Modifier.width(8.dp))
             Column {
                 Text(
-                    text = playlistName?.let { "Playlist: $it" } ?: "Nessuna playlist attiva",
+                    text = playlistLabel,
                     style = MaterialTheme.typography.titleSmall,
                     color = accents.privacy,
                 )
                 Text(
-                    text = "Dati crittografati localmente · $encryption",
+                    text = encryption,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -251,7 +283,12 @@ private fun PlaylistStatusChip(playlistName: String?, encryption: String) {
 }
 
 @Composable
-private fun CategoryCard(kind: MediaKind, count: Int, onClick: () -> Unit) {
+private fun CategoryCard(
+    kind: MediaKind,
+    count: Int,
+    strings: Strings,
+    onClick: () -> Unit,
+) {
     FocusableSurface(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
@@ -265,12 +302,16 @@ private fun CategoryCard(kind: MediaKind, count: Int, onClick: () -> Unit) {
             CategoryBadge(kind = kind)
             Spacer(Modifier.width(16.dp))
             Text(
-                text = titleOf(kind),
+                text = when (kind) {
+                    MediaKind.LIVE -> strings.liveTvTitle
+                    MediaKind.MOVIE -> strings.moviesTitle
+                    MediaKind.SERIES -> strings.seriesTitle
+                },
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.weight(1f),
             )
             Text(
-                text = countLabel(kind, count),
+                text = "${formatCount(count)} ${unitOf(kind, strings)}",
                 style = MaterialTheme.typography.titleSmall,
                 color = accentFor(kind),
             )
@@ -286,6 +327,7 @@ private fun CategoryCard(kind: MediaKind, count: Int, onClick: () -> Unit) {
 
 @Composable
 private fun SyncBanner(syncState: SyncState, onRetry: () -> Unit, onDismiss: () -> Unit) {
+    val strings = LocalStrings.current
     val failed = syncState as? SyncState.Failed
     Surface(
         shape = RoundedCornerShape(16.dp),
@@ -326,8 +368,8 @@ private fun SyncBanner(syncState: SyncState, onRetry: () -> Unit, onDismiss: () 
             } else {
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Button(onClick = onRetry) { Text("Riprova") }
-                    OutlinedButton(onClick = onDismiss) { Text("Chiudi") }
+                    Button(onClick = onRetry) { Text(strings.retry) }
+                    OutlinedButton(onClick = onDismiss) { Text(strings.close) }
                 }
             }
         }
@@ -338,6 +380,7 @@ private fun SyncBanner(syncState: SyncState, onRetry: () -> Unit, onDismiss: () 
 private fun ParentalRow(
     unlocked: Boolean,
     blockedCount: Int,
+    strings: Strings,
     onLock: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
@@ -358,44 +401,37 @@ private fun ParentalRow(
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(
-                    text = if (unlocked) "Blocco genitori sbloccato" else "Blocco genitori attivo",
+                    text = if (unlocked) strings.parentalUnlockedTitle else strings.parentalActiveTitle,
                     style = MaterialTheme.typography.titleSmall,
                 )
                 Text(
-                    text = "$blockedCount gruppi protetti da PIN",
+                    text = strings.parentalGroupsProtected.format(blockedCount),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             if (unlocked) {
-                OutlinedButton(onClick = onLock) { Text("Blocca") }
+                OutlinedButton(onClick = onLock) { Text(strings.lock) }
             } else {
-                OutlinedButton(onClick = onOpenSettings) { Text("Gestisci") }
+                OutlinedButton(onClick = onOpenSettings) { Text(strings.manage) }
             }
         }
     }
 }
 
-private fun titleOf(kind: MediaKind): String = when (kind) {
-    MediaKind.LIVE -> "Live TV"
-    MediaKind.MOVIE -> "Film"
-    MediaKind.SERIES -> "Serie TV"
+internal fun formatCount(count: Int): String = "%,d".format(count).replace(',', '.')
+
+internal fun unitOf(kind: MediaKind, strings: Strings): String = when (kind) {
+    MediaKind.LIVE -> strings.unitChannels
+    MediaKind.MOVIE -> strings.unitTitles
+    MediaKind.SERIES -> strings.unitSeries
 }
 
-private fun countLabel(kind: MediaKind, count: Int): String {
-    val formatted = "%,d".format(count).replace(',', '.')
-    return when (kind) {
-        MediaKind.LIVE -> "$formatted canali"
-        MediaKind.MOVIE -> "$formatted titoli"
-        MediaKind.SERIES -> "$formatted serie"
-    }
-}
-
-private fun greeting(): String {
+private fun greeting(strings: Strings): String {
     val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
     return when (hour) {
-        in 5..12 -> "Buongiorno"
-        in 13..17 -> "Buon pomeriggio"
-        else -> "Buonasera"
+        in 5..12 -> strings.greetingMorning
+        in 13..17 -> strings.greetingAfternoon
+        else -> strings.greetingEvening
     }
 }

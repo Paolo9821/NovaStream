@@ -20,6 +20,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.FilterList
@@ -50,6 +51,8 @@ import com.rork.novastream.data.model.MediaKind
 import com.rork.novastream.data.model.SortOption
 import com.rork.novastream.ui.components.EmptyState
 import com.rork.novastream.ui.components.PosterCard
+import com.rork.novastream.ui.i18n.LocalStrings
+import com.rork.novastream.ui.i18n.Strings
 import com.rork.novastream.ui.vm.AppViewModel
 import com.rork.novastream.ui.vm.CatalogQuery
 
@@ -61,17 +64,21 @@ fun CatalogScreen(
     contentPadding: PaddingValues,
     onOpenDetail: (String) -> Unit,
 ) {
+    val strings = LocalStrings.current
     val catalog by viewModel.catalog.collectAsStateWithLifecycle()
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val unlocked by viewModel.parentalUnlocked.collectAsStateWithLifecycle()
     val query by viewModel.queryOf(kind).collectAsStateWithLifecycle()
+    val favorites by viewModel.favorites.collectAsStateWithLifecycle()
 
     var groupSheetOpen by remember { mutableStateOf(false) }
 
     val total = remember(catalog, settings, unlocked) { viewModel.countOf(kind) }
     val years = remember(catalog, settings, unlocked) { viewModel.availableYears(kind) }
-    val entries = remember(catalog, query, settings, unlocked) { viewModel.filteredEntries(kind, query) }
-    val groups = remember(catalog, kind) {
+    val entries = remember(catalog, query, settings, unlocked, favorites) {
+        viewModel.filteredEntries(kind, query)
+    }
+    val groups = remember(catalog, kind, settings, unlocked) {
         viewModel.visibleEntries(kind).map { it.group }.distinct().sorted()
     }
 
@@ -82,8 +89,9 @@ fun CatalogScreen(
     ) {
         SearchRow(
             value = query.search,
-            placeholder = "Cerca tra ${"%,d".format(total).replace(',', '.')} ${nounOf(kind)}…",
+            placeholder = strings.searchIn.format(formatCount(total), unitOf(kind, strings)),
             filterActive = query.group != null,
+            filterDescription = strings.filterByCategory,
             onValueChange = { viewModel.applyQuery(kind, query.copy(search = it)) },
             onFilterClick = { groupSheetOpen = true },
         )
@@ -91,24 +99,30 @@ fun CatalogScreen(
         SortChipsRow(
             query = query,
             years = years,
+            strings = strings,
             onQueryChange = { viewModel.applyQuery(kind, it) },
         )
 
         if (query.group != null) {
             ActiveGroupRow(
-                group = query.group.orEmpty(),
+                group = strings.categoryFilter.format(query.group.orEmpty()),
+                description = strings.removeCategoryFilter,
                 onClear = { viewModel.applyQuery(kind, query.copy(group = null)) },
             )
         }
 
         if (entries.isEmpty()) {
             EmptyState(
-                icon = Icons.Rounded.VideoLibrary,
-                title = if (total == 0) "Catalogo vuoto" else "Nessun risultato",
-                body = if (total == 0) {
-                    "Collega una playlist dalla schermata Account per importare i contenuti."
-                } else {
-                    "Prova a cambiare ricerca, anno o categoria."
+                icon = if (query.favoritesOnly) Icons.Filled.Favorite else Icons.Rounded.VideoLibrary,
+                title = when {
+                    query.favoritesOnly -> strings.noFavoritesTitle
+                    total == 0 -> strings.emptyCatalogTitle
+                    else -> strings.noResultsTitle
+                },
+                body = when {
+                    query.favoritesOnly -> strings.noFavoritesBody
+                    total == 0 -> strings.emptyCatalogBody
+                    else -> strings.noResultsBody
                 },
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -125,7 +139,12 @@ fun CatalogScreen(
                 verticalArrangement = Arrangement.spacedBy(18.dp),
             ) {
                 items(entries, key = { it.id }) { entry ->
-                    PosterCard(entry = entry, onClick = { onOpenDetail(entry.id) })
+                    PosterCard(
+                        entry = entry,
+                        onClick = { onOpenDetail(entry.id) },
+                        isFavorite = favorites.contains(entry.id),
+                        onToggleFavorite = { viewModel.toggleFavorite(entry.id) },
+                    )
                 }
             }
         }
@@ -140,10 +159,10 @@ fun CatalogScreen(
                     .padding(bottom = 28.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                Text("Categorie del provider", style = MaterialTheme.typography.titleLarge)
+                Text(strings.providerCategories, style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.height(4.dp))
                 GroupRow(
-                    label = "Tutte le categorie",
+                    label = strings.allCategories,
                     selected = query.group == null,
                     onClick = {
                         viewModel.applyQuery(kind, query.copy(group = null))
@@ -163,7 +182,6 @@ fun CatalogScreen(
             }
         }
     }
-
 }
 
 @Composable
@@ -171,9 +189,11 @@ fun SearchRow(
     value: String,
     placeholder: String,
     filterActive: Boolean,
+    filterDescription: String,
     onValueChange: (String) -> Unit,
     onFilterClick: () -> Unit,
 ) {
+    val strings = LocalStrings.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -205,7 +225,7 @@ fun SearchRow(
             trailingIcon = if (value.isNotEmpty()) {
                 {
                     IconButton(onClick = { onValueChange("") }) {
-                        Icon(Icons.Rounded.Close, contentDescription = "Cancella ricerca")
+                        Icon(Icons.Rounded.Close, contentDescription = strings.clearSearch)
                     }
                 }
             } else null,
@@ -232,7 +252,7 @@ fun SearchRow(
             Box(contentAlignment = Alignment.Center) {
                 Icon(
                     imageVector = Icons.Rounded.FilterList,
-                    contentDescription = "Filtra per categoria",
+                    contentDescription = filterDescription,
                     modifier = Modifier.size(28.dp),
                     tint = if (filterActive) MaterialTheme.colorScheme.onPrimary
                     else MaterialTheme.colorScheme.onPrimaryContainer,
@@ -246,22 +266,30 @@ fun SearchRow(
 private fun SortChipsRow(
     query: CatalogQuery,
     years: List<Int>,
+    strings: Strings,
     onQueryChange: (CatalogQuery) -> Unit,
 ) {
     LazyRow(
         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        item("favorites") {
+            SortChip(
+                label = strings.onlyFavorites,
+                selected = query.favoritesOnly,
+                onClick = { onQueryChange(query.copy(favoritesOnly = !query.favoritesOnly)) },
+            )
+        }
         item("recent") {
             SortChip(
-                label = SortOption.RECENTLY_ADDED.label,
+                label = strings.sortRecent,
                 selected = query.sort == SortOption.RECENTLY_ADDED && query.year == null,
                 onClick = { onQueryChange(query.copy(sort = SortOption.RECENTLY_ADDED, year = null)) },
             )
         }
         items(years, key = { "year_$it" }) { year ->
             SortChip(
-                label = "Anno: $year",
+                label = strings.sortYear.format(year),
                 selected = query.year == year,
                 onClick = {
                     onQueryChange(
@@ -273,21 +301,21 @@ private fun SortChipsRow(
         }
         item("az") {
             SortChip(
-                label = SortOption.NAME_ASC.label,
+                label = strings.sortNameAsc,
                 selected = query.sort == SortOption.NAME_ASC && query.year == null,
                 onClick = { onQueryChange(query.copy(sort = SortOption.NAME_ASC, year = null)) },
             )
         }
         item("za") {
             SortChip(
-                label = SortOption.NAME_DESC.label,
+                label = strings.sortNameDesc,
                 selected = query.sort == SortOption.NAME_DESC && query.year == null,
                 onClick = { onQueryChange(query.copy(sort = SortOption.NAME_DESC, year = null)) },
             )
         }
         item("provider") {
             SortChip(
-                label = SortOption.PROVIDER_DEFAULT.label,
+                label = strings.sortProvider,
                 selected = query.sort == SortOption.PROVIDER_DEFAULT && query.year == null,
                 onClick = { onQueryChange(query.copy(sort = SortOption.PROVIDER_DEFAULT, year = null)) },
             )
@@ -315,7 +343,7 @@ private fun SortChip(label: String, selected: Boolean, onClick: () -> Unit) {
 }
 
 @Composable
-private fun ActiveGroupRow(group: String, onClear: () -> Unit) {
+private fun ActiveGroupRow(group: String, description: String, onClear: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -323,13 +351,13 @@ private fun ActiveGroupRow(group: String, onClear: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = "Categoria: $group",
+            text = group,
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.primary,
             modifier = Modifier.weight(1f),
         )
         IconButton(onClick = onClear) {
-            Icon(Icons.Rounded.Close, contentDescription = "Rimuovi filtro categoria")
+            Icon(Icons.Rounded.Close, contentDescription = description)
         }
     }
 }
@@ -353,10 +381,4 @@ private fun GroupRow(label: String, selected: Boolean, onClick: () -> Unit) {
             }
         }
     }
-}
-
-private fun nounOf(kind: MediaKind): String = when (kind) {
-    MediaKind.LIVE -> "canali"
-    MediaKind.MOVIE -> "film"
-    MediaKind.SERIES -> "serie"
 }

@@ -12,10 +12,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.NetworkCheck
@@ -56,8 +60,15 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rork.novastream.data.local.DnsPreset
 import com.rork.novastream.data.local.ThemeMode
+import com.rork.novastream.data.model.SyncState
 import com.rork.novastream.ui.components.PrivacyNote
+import com.rork.novastream.ui.i18n.Language
+import com.rork.novastream.ui.i18n.LocalStrings
+import com.rork.novastream.ui.i18n.Strings
 import com.rork.novastream.ui.vm.AppViewModel
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -66,12 +77,17 @@ fun SettingsScreen(
     viewModel: AppViewModel,
     onBack: () -> Unit,
 ) {
+    val strings = LocalStrings.current
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val dnsCheck by viewModel.dnsCheck.collectAsStateWithLifecycle()
     val dnsChecking by viewModel.dnsChecking.collectAsStateWithLifecycle()
     val speedResult by viewModel.speedResult.collectAsStateWithLifecycle()
     val speedRunning by viewModel.speedRunning.collectAsStateWithLifecycle()
     val catalog by viewModel.catalog.collectAsStateWithLifecycle()
+    val epg by viewModel.epg.collectAsStateWithLifecycle()
+    val epgState by viewModel.epgState.collectAsStateWithLifecycle()
+    val activeId by viewModel.activeAccountId.collectAsStateWithLifecycle()
+    val accounts by viewModel.accounts.collectAsStateWithLifecycle()
 
     var pinDialogOpen by remember { mutableStateOf(false) }
     var groupsDialogOpen by remember { mutableStateOf(false) }
@@ -79,13 +95,18 @@ fun SettingsScreen(
     var customDnsIp by remember(settings.customDnsPrimary) { mutableStateOf(settings.customDnsPrimary) }
     var customDnsDoh by remember(settings.customDnsDohUrl) { mutableStateOf(settings.customDnsDohUrl) }
 
+    val activeAccount = remember(accounts, activeId) { accounts.firstOrNull { it.id == activeId } }
+    var epgUrlField by remember(activeId, activeAccount?.epgUrl) {
+        mutableStateOf(activeAccount?.epgUrl.orEmpty())
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Impostazioni") },
+                title = { Text(strings.settingsTitle) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Indietro")
+                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = strings.back)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -105,10 +126,55 @@ fun SettingsScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            item("aspetto") {
-                SettingsCard(title = "Aspetto") {
+            item("language") {
+                SettingsCard(title = strings.languageSection) {
                     Text(
-                        text = "Tema dell'interfaccia",
+                        text = strings.languageSubtitle,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    LazyVerticalGrid(
+                        columns = GridCells.Fixed(2),
+                        modifier = Modifier.height(184.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                        userScrollEnabled = false,
+                    ) {
+                        items(Language.entries.toList(), key = { it.code }) { language ->
+                            FilterChip(
+                                selected = settings.language == language,
+                                onClick = {
+                                    viewModel.settingsStore.update { it.copy(language = language) }
+                                },
+                                label = {
+                                    Text(
+                                        text = language.nativeLabel,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                },
+                                leadingIcon = if (settings.language == language) {
+                                    {
+                                        Icon(
+                                            Icons.Rounded.Check,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp),
+                                        )
+                                    }
+                                } else null,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
+                    }
+                }
+            }
+
+            item("appearance") {
+                SettingsCard(title = strings.appearance) {
+                    Text(
+                        text = strings.themeLabel,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -119,23 +185,101 @@ fun SettingsScreen(
                                 selected = settings.themeMode == mode,
                                 onClick = { viewModel.settingsStore.update { it.copy(themeMode = mode) } },
                                 shape = SegmentedButtonDefaults.itemShape(index, ThemeMode.entries.size),
-                            ) { Text(mode.label) }
+                            ) { Text(themeLabel(mode, strings)) }
                         }
                     }
                 }
             }
 
-            item("dns") {
-                SettingsCard(title = "DNS") {
+            item("epg") {
+                SettingsCard(title = strings.epgSection) {
                     Text(
-                        text = "Resolver usato dall'app per verificare e raggiungere i server della playlist.",
+                        text = strings.epgSubtitle,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(12.dp))
+
+                    if (activeAccount == null) {
+                        Text(
+                            text = strings.epgNoAccount,
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                    } else {
+                        OutlinedTextField(
+                            value = epgUrlField,
+                            onValueChange = {
+                                epgUrlField = it
+                                viewModel.updateEpgUrl(it)
+                            },
+                            label = { Text(strings.fieldEpgUrl) },
+                            placeholder = { Text("http://srv.example.com/xmltv.php") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                            supportingText = {
+                                Text(strings.fieldEpgUrlHint, style = MaterialTheme.typography.bodySmall)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Spacer(Modifier.height(12.dp))
+
+                        val running = epgState is SyncState.Running
+                        Button(
+                            onClick = { viewModel.refreshEpg() },
+                            enabled = !running,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            if (running) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.onPrimary,
+                                )
+                                Spacer(Modifier.width(10.dp))
+                                Text(strings.epgUpdating)
+                            } else {
+                                Icon(Icons.Rounded.CalendarMonth, contentDescription = null)
+                                Spacer(Modifier.width(8.dp))
+                                Text(strings.epgUpdateAction)
+                            }
+                        }
+
+                        (epgState as? SyncState.Failed)?.let { failure ->
+                            Spacer(Modifier.height(10.dp))
+                            Text(
+                                text = failure.message,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+
+                        Spacer(Modifier.height(10.dp))
+                        ResultRow(
+                            title = strings.guide,
+                            value = if (epg.isEmpty) strings.epgNever
+                            else strings.epgLoaded.format(epg.programmeCount, epg.channelCount),
+                            hint = if (epg.updatedAtEpochMs > 0L) {
+                                strings.updatedPrefix.format(dateLabel(epg.updatedAtEpochMs))
+                            } else {
+                                viewModel.effectiveEpgUrl().take(64)
+                            },
+                        )
+                    }
+                }
+            }
+
+            item("dns") {
+                SettingsCard(title = strings.dnsSection) {
+                    Text(
+                        text = strings.dnsSubtitle,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(Modifier.height(12.dp))
                     DnsPreset.entries.forEach { preset ->
                         DnsRow(
-                            preset = preset,
+                            label = dnsLabel(preset, strings),
+                            description = dnsDescription(preset, strings),
                             selected = settings.dnsPreset == preset,
                             onClick = { viewModel.settingsStore.update { it.copy(dnsPreset = preset) } },
                         )
@@ -150,8 +294,8 @@ fun SettingsScreen(
                                 customDnsIp = it
                                 viewModel.settingsStore.update { current -> current.copy(customDnsPrimary = it.trim()) }
                             },
-                            label = { Text("DNS primario (IP)") },
-                            placeholder = { Text("es. 94.140.14.14") },
+                            label = { Text(strings.dnsPrimaryLabel) },
+                            placeholder = { Text(strings.dnsPrimaryHint) },
                             singleLine = true,
                             modifier = Modifier.fillMaxWidth(),
                         )
@@ -162,8 +306,8 @@ fun SettingsScreen(
                                 customDnsDoh = it
                                 viewModel.settingsStore.update { current -> current.copy(customDnsDohUrl = it.trim()) }
                             },
-                            label = { Text("Endpoint DNS-over-HTTPS (facoltativo)") },
-                            placeholder = { Text("https://dns.example.com/dns-query") },
+                            label = { Text(strings.dnsDohLabel) },
+                            placeholder = { Text(strings.dnsDohHint) },
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                             modifier = Modifier.fillMaxWidth(),
@@ -179,11 +323,11 @@ fun SettingsScreen(
                         if (dnsChecking) {
                             CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                             Spacer(Modifier.width(10.dp))
-                            Text("Verifica in corso…")
+                            Text(strings.dnsChecking)
                         } else {
                             Icon(Icons.Rounded.NetworkCheck, contentDescription = null)
                             Spacer(Modifier.width(8.dp))
-                            Text("Verifica risoluzione DNS")
+                            Text(strings.dnsCheckAction)
                         }
                     }
 
@@ -191,7 +335,7 @@ fun SettingsScreen(
                         Spacer(Modifier.height(10.dp))
                         ResultRow(
                             title = check.host,
-                            value = if (check.addresses.isEmpty()) "Nessuna risposta"
+                            value = if (check.addresses.isEmpty()) strings.dnsNoAnswer
                             else check.addresses.take(2).joinToString(", "),
                             hint = "${check.resolver} · ${check.latencyMs} ms",
                         )
@@ -200,9 +344,9 @@ fun SettingsScreen(
             }
 
             item("speedtest") {
-                SettingsCard(title = "Speedtest") {
+                SettingsCard(title = strings.speedSection) {
                     Text(
-                        text = "Misura la banda disponibile per capire quale qualità di stream puoi reggere.",
+                        text = strings.speedSubtitle,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -219,28 +363,28 @@ fun SettingsScreen(
                                 color = MaterialTheme.colorScheme.onPrimary,
                             )
                             Spacer(Modifier.width(10.dp))
-                            Text("Test in corso…")
+                            Text(strings.speedRunning)
                         } else {
                             Icon(Icons.Rounded.Speed, contentDescription = null)
                             Spacer(Modifier.width(8.dp))
-                            Text("Avvia speedtest")
+                            Text(strings.speedStart)
                         }
                     }
                     speedResult?.let { result ->
                         Spacer(Modifier.height(10.dp))
                         ResultRow(
-                            title = "Download",
+                            title = strings.speedDownload,
                             value = "%.1f Mbps".format(result.downloadMbps),
-                            hint = "Latenza ${result.latencyMs} ms · ${result.bytes / 1_000_000} MB scaricati",
+                            hint = strings.speedHint.format(result.latencyMs, result.bytes / 1_000_000),
                         )
                     }
                 }
             }
 
             item("player") {
-                SettingsCard(title = "Player") {
+                SettingsCard(title = strings.playerSection) {
                     Text(
-                        text = "Buffer: ${settings.bufferSeconds} secondi",
+                        text = strings.bufferLabel.format(settings.bufferSeconds),
                         style = MaterialTheme.typography.bodyMedium,
                     )
                     Slider(
@@ -252,16 +396,16 @@ fun SettingsScreen(
                         steps = 16,
                     )
                     ToggleRow(
-                        title = "Decodifica hardware",
-                        subtitle = "Più fluida e leggera; disattivala se vedi artefatti video.",
+                        title = strings.hwDecoding,
+                        subtitle = strings.hwDecodingSub,
                         checked = settings.hardwareDecoding,
                         onCheckedChange = { value ->
                             viewModel.settingsStore.update { it.copy(hardwareDecoding = value) }
                         },
                     )
                     ToggleRow(
-                        title = "Episodio successivo automatico",
-                        subtitle = "Nelle serie passa al prossimo episodio a fine riproduzione.",
+                        title = strings.autoplayNext,
+                        subtitle = strings.autoplayNextSub,
                         checked = settings.autoplayNextEpisode,
                         onCheckedChange = { value ->
                             viewModel.settingsStore.update { it.copy(autoplayNextEpisode = value) }
@@ -271,10 +415,10 @@ fun SettingsScreen(
             }
 
             item("parental") {
-                SettingsCard(title = "Blocco genitori") {
+                SettingsCard(title = strings.parentalSection) {
                     ToggleRow(
-                        title = "Proteggi con PIN",
-                        subtitle = "Nascondi i gruppi scelti finché non viene inserito il PIN.",
+                        title = strings.parentalToggle,
+                        subtitle = strings.parentalToggleSub,
                         checked = settings.parentalEnabled,
                         onCheckedChange = { value ->
                             if (value) pinDialogOpen = true else viewModel.settingsStore.clearParental()
@@ -283,7 +427,7 @@ fun SettingsScreen(
                     if (settings.parentalEnabled) {
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            text = "${settings.blockedGroups.size} gruppi bloccati",
+                            text = strings.parentalBlockedCount.format(settings.blockedGroups.size),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -292,29 +436,29 @@ fun SettingsScreen(
                             onClick = { groupsDialogOpen = true },
                             modifier = Modifier.fillMaxWidth(),
                             enabled = catalog.entries.isNotEmpty(),
-                        ) { Text("Scegli i gruppi da bloccare") }
+                        ) { Text(strings.parentalChooseGroups) }
                         Spacer(Modifier.height(8.dp))
                         OutlinedButton(
                             onClick = { pinDialogOpen = true },
                             modifier = Modifier.fillMaxWidth(),
-                        ) { Text("Cambia PIN") }
+                        ) { Text(strings.parentalChangePin) }
                     }
                 }
             }
 
             item("privacy") {
                 PrivacyNote(
-                    title = "Privacy totale",
-                    body = "Account e cataloghi sono cifrati con ${viewModel.encryptionLabel}. Nessun dato viene inviato a servizi esterni: gli anni dei film arrivano dai metadati del tuo provider.",
+                    title = strings.privacyTotal,
+                    body = strings.privacySettingsBody.format(viewModel.encryptionLabel),
                 )
             }
 
-            item("dati") {
-                SettingsCard(title = "Dati e cache") {
+            item("data") {
+                SettingsCard(title = strings.dataSection) {
                     ResultRow(
-                        title = "Archivio cifrato",
+                        title = strings.vaultLabel,
                         value = "${viewModel.vaultSizeBytes() / 1024} KB",
-                        hint = "Catalogo scaricato dal provider attivo",
+                        hint = strings.vaultHint,
                     )
                     Spacer(Modifier.height(12.dp))
                     OutlinedButton(
@@ -323,13 +467,13 @@ fun SettingsScreen(
                     ) {
                         Icon(Icons.Rounded.DeleteSweep, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
-                        Text("Svuota la cache del catalogo")
+                        Text(strings.clearCacheAction)
                     }
                     Spacer(Modifier.height(8.dp))
                     OutlinedButton(
                         onClick = { wipeDialogOpen = true },
                         modifier = Modifier.fillMaxWidth(),
-                    ) { Text("Cancella tutti i dati dell'app") }
+                    ) { Text(strings.wipeAction) }
                 }
             }
         }
@@ -337,7 +481,10 @@ fun SettingsScreen(
 
     if (pinDialogOpen) {
         PinDialog(
-            title = "Imposta il PIN",
+            title = strings.parentalSetPin,
+            label = strings.parentalPinLabel,
+            confirmLabel = strings.confirm,
+            cancelLabel = strings.cancel,
             onDismiss = { pinDialogOpen = false },
             onConfirm = { pin ->
                 viewModel.settingsStore.setPin(pin)
@@ -351,6 +498,7 @@ fun SettingsScreen(
         GroupsDialog(
             groups = viewModel.allGroups(),
             blocked = settings.blockedGroups,
+            strings = strings,
             onToggle = { group ->
                 viewModel.settingsStore.update { current ->
                     val updated = current.blockedGroups.toMutableSet()
@@ -365,16 +513,16 @@ fun SettingsScreen(
     if (wipeDialogOpen) {
         AlertDialog(
             onDismissRequest = { wipeDialogOpen = false },
-            title = { Text("Cancellare tutto?") },
-            text = { Text("Account, catalogo, cronologia e blocco genitori verranno rimossi definitivamente dal dispositivo.") },
+            title = { Text(strings.wipeDialogTitle) },
+            text = { Text(strings.wipeDialogBody) },
             confirmButton = {
                 TextButton(onClick = {
                     viewModel.wipeEverything()
                     wipeDialogOpen = false
-                }) { Text("Cancella tutto") }
+                }) { Text(strings.wipeConfirm) }
             },
             dismissButton = {
-                TextButton(onClick = { wipeDialogOpen = false }) { Text("Annulla") }
+                TextButton(onClick = { wipeDialogOpen = false }) { Text(strings.cancel) }
             },
         )
     }
@@ -396,7 +544,12 @@ private fun SettingsCard(title: String, content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun DnsRow(preset: DnsPreset, selected: Boolean, onClick: () -> Unit) {
+private fun DnsRow(
+    label: String,
+    description: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
     Surface(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
@@ -409,9 +562,9 @@ private fun DnsRow(preset: DnsPreset, selected: Boolean, onClick: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(Modifier.weight(1f)) {
-                Text(text = preset.label, style = MaterialTheme.typography.titleSmall)
+                Text(text = label, style = MaterialTheme.typography.titleSmall)
                 Text(
-                    text = preset.description,
+                    text = description,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -462,7 +615,14 @@ private fun ResultRow(title: String, value: String, hint: String) {
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text(text = title, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            Spacer(Modifier.width(10.dp))
             Text(
                 text = value,
                 style = MaterialTheme.typography.titleSmall,
@@ -473,16 +633,20 @@ private fun ResultRow(title: String, value: String, hint: String) {
             text = hint,
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
 
 @Composable
-fun PinDialog(
+private fun PinDialog(
     title: String,
+    label: String,
+    confirmLabel: String,
+    cancelLabel: String,
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
-    error: String? = null,
 ) {
     var pin by remember { mutableStateOf("") }
 
@@ -490,28 +654,19 @@ fun PinDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
-            Column {
-                OutlinedTextField(
-                    value = pin,
-                    onValueChange = { if (it.length <= 6 && it.all { char -> char.isDigit() }) pin = it },
-                    label = { Text("PIN (4-6 cifre)") },
-                    singleLine = true,
-                    visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                )
-                if (error != null) {
-                    Spacer(Modifier.height(8.dp))
-                    Text(error, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                }
-            }
+            OutlinedTextField(
+                value = pin,
+                onValueChange = { if (it.length <= 6 && it.all { char -> char.isDigit() }) pin = it },
+                label = { Text(label) },
+                singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+            )
         },
         confirmButton = {
-            TextButton(
-                onClick = { onConfirm(pin) },
-                enabled = pin.length >= 4,
-            ) { Text("Conferma") }
+            TextButton(onClick = { onConfirm(pin) }, enabled = pin.length >= 4) { Text(confirmLabel) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Annulla") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(cancelLabel) } },
     )
 }
 
@@ -519,15 +674,16 @@ fun PinDialog(
 private fun GroupsDialog(
     groups: List<String>,
     blocked: Set<String>,
+    strings: Strings,
     onToggle: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Gruppi da bloccare") },
+        title = { Text(strings.parentalGroupsTitle) },
         text = {
             if (groups.isEmpty()) {
-                Text("Importa prima una playlist per vedere i gruppi del provider.")
+                Text(strings.parentalImportFirst)
             } else {
                 LazyColumn(
                     modifier = Modifier.height(360.dp),
@@ -540,7 +696,13 @@ private fun GroupsDialog(
                             onClick = { onToggle(group) },
                             label = { Text(group, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                             leadingIcon = if (blocked.contains(group)) {
-                                { Icon(Icons.Rounded.Check, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                                {
+                                    Icon(
+                                        Icons.Rounded.Check,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                    )
+                                }
                             } else null,
                             modifier = Modifier.fillMaxWidth(),
                             colors = FilterChipDefaults.filterChipColors(
@@ -553,6 +715,31 @@ private fun GroupsDialog(
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Fatto") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(strings.done) } },
     )
+}
+
+private fun themeLabel(mode: ThemeMode, strings: Strings): String = when (mode) {
+    ThemeMode.SYSTEM -> strings.themeSystem
+    ThemeMode.LIGHT -> strings.themeLight
+    ThemeMode.DARK -> strings.themeDark
+}
+
+private fun dnsLabel(preset: DnsPreset, strings: Strings): String = when (preset) {
+    DnsPreset.SYSTEM -> strings.dnsSystem
+    DnsPreset.GOOGLE -> "Google"
+    DnsPreset.CLOUDFLARE -> "Cloudflare"
+    DnsPreset.QUAD9 -> "Quad9"
+    DnsPreset.CUSTOM -> strings.dnsCustom
+}
+
+private fun dnsDescription(preset: DnsPreset, strings: Strings): String = when (preset) {
+    DnsPreset.SYSTEM -> strings.dnsSystemDesc
+    DnsPreset.CUSTOM -> strings.dnsCustomDesc
+    else -> preset.addressLabel
+}
+
+private fun dateLabel(epochMs: Long): String {
+    val formatter = SimpleDateFormat("d MMM, HH:mm", Locale.getDefault())
+    return formatter.format(Date(epochMs))
 }
