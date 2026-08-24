@@ -43,6 +43,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -82,6 +83,16 @@ import java.util.Locale
 private const val CONTROLS_TIMEOUT_MS = 4_000L
 private const val SEEK_STEP_MS = 10_000L
 
+/** How many times a dropped stream is picked up again before giving up. */
+private const val MAX_RECONNECT_ATTEMPTS = 6
+
+/** A stream stuck buffering this long is treated as dead and reopened. */
+private const val STALL_TIMEOUT_MS = 18_000L
+
+/** Backoff between attempts: 2s, 4s, 8s, then a steady 12s. */
+private fun reconnectDelayMs(attempt: Int): Long =
+    (2_000L shl (attempt - 1).coerceIn(0, 3)).coerceAtMost(12_000L)
+
 @OptIn(UnstableApi::class)
 @Composable
 fun PlayerScreen(
@@ -104,6 +115,11 @@ fun PlayerScreen(
     var durationMs by remember { mutableLongStateOf(0L) }
     var scrubbing by remember { mutableStateOf(false) }
     var scrubValue by remember { mutableFloatStateOf(0f) }
+    /** Auto-recovery state: a weak line should not end the evening. */
+    var reconnecting by remember(streamUrl) { mutableStateOf(false) }
+    var reconnectAttempt by remember(streamUrl) { mutableIntStateOf(0) }
+    var reconnectTick by remember(streamUrl) { mutableIntStateOf(0) }
+    var resumePositionMs by remember(streamUrl) { mutableLongStateOf(0L) }
     /** Bumped on every interaction so the auto-hide countdown restarts. */
     var interactionTick by remember { mutableLongStateOf(0L) }
 
@@ -138,6 +154,21 @@ fun PlayerScreen(
         interactionTick += 1
     }
 
+    val isLiveStream = entry?.kind == MediaKind.LIVE
+
+    /**
+     * Queues another attempt at the same stream. Anything already playing keeps
+     * its position, so a movie resumes exactly where the connection dropped.
+     */
+    fun scheduleReconnect(fromPositionMs: Long) {
+        if (reconnecting || reconnectAttempt >= MAX_RECONNECT_ATTEMPTS) return
+        resumePositionMs = fromPositionMs.coerceAtLeast(0L)
+        reconnectAttempt += 1
+        reconnecting = true
+        reconnectTick += 1
+        controlsVisible = false
+    }
+
     DisposableEffect(player) {
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
@@ -146,10 +177,20 @@ fun PlayerScreen(
 
             override fun onIsPlayingChanged(playing: Boolean) {
                 isPlaying = playing
+                // Frames are flowing again: the recovery budget is refilled.
+                if (playing) {
+                    reconnecting = false
+                    reconnectAttempt = 0
+                }
             }
 
             override fun onPlayerError(playerError: PlaybackException) {
-                error = strings.playbackError
+                if (reconnectAttempt < MAX_RECONNECT_ATTEMPTS) {
+                    scheduleReconnect(player.currentPosition)
+                } else {
+                    reconnecting = false
+                    error = strings.playerReconnectFailed.format(MAX_RECONNECT_ATTEMPTS)
+                }
             }
         }
         player.addListener(listener)
@@ -177,6 +218,45 @@ fun PlayerScreen(
         }
     }
 
+    // Reopens the stream after the backoff delay and restores the position.
+    LaunchedEffect(reconnectTick) {
+        if (reconnectTick == 0 || !reconnecting) return@LaunchedEffect
+        error = null
+        delay(reconnectDelayMs(reconnectAttempt))
+        player.stop()
+        player.setMediaItem(MediaItem.fromUri(streamUrl))
+        player.prepare()
+        // Live channels always rejoin at the edge; on-demand resumes where it froze.
+        if (!isLiveStream && resumePositionMs > 0L) player.seekTo(resumePositionMs)
+        player.playWhenReady = true
+    }
+
+    // Watchdog for a stream that never errors out but stops delivering data.
+    LaunchedEffect(player, streamUrl) {
+        var lastPosition = -1L
+        var lastProgressAtMs = System.currentTimeMillis()
+        while (true) {
+            delay(1_000)
+            val now = System.currentTimeMillis()
+            val position = player.currentPosition
+            val paused = !player.playWhenReady
+            val stalled = player.playbackState == Player.STATE_BUFFERING
+            if (paused || position != lastPosition) {
+                lastPosition = position
+                lastProgressAtMs = now
+                continue
+            }
+            if (stalled && !reconnecting && now - lastProgressAtMs >= STALL_TIMEOUT_MS) {
+                lastProgressAtMs = now
+                if (reconnectAttempt < MAX_RECONNECT_ATTEMPTS) {
+                    scheduleReconnect(position)
+                } else {
+                    error = strings.playerReconnectFailed.format(MAX_RECONNECT_ATTEMPTS)
+                }
+            }
+        }
+    }
+
     LaunchedEffect(controlsVisible, isPlaying, scrubbing, error, interactionTick) {
         if (controlsVisible && isPlaying && !scrubbing && error == null) {
             delay(CONTROLS_TIMEOUT_MS)
@@ -184,7 +264,7 @@ fun PlayerScreen(
         }
     }
 
-    val isLive = entry?.kind == MediaKind.LIVE || durationMs <= 0L
+    val isLive = isLiveStream || durationMs <= 0L
     val seekable = !isLive && durationMs > 0L
 
     Box(
@@ -232,12 +312,29 @@ fun PlayerScreen(
                 }
         )
 
-        if (buffering && error == null) {
+        if (buffering && error == null && !reconnecting) {
             CircularProgressIndicator(
                 modifier = Modifier
                     .align(Alignment.Center)
                     .size(42.dp),
                 color = Color.White,
+            )
+        }
+
+        if (reconnecting && error == null) {
+            ReconnectOverlay(
+                title = strings.playerReconnecting,
+                attemptLabel = strings.playerReconnectAttempt.format(
+                    reconnectAttempt,
+                    MAX_RECONNECT_ATTEMPTS,
+                ),
+                retryNowLabel = strings.playerReconnectNow,
+                closeLabel = strings.close,
+                onRetryNow = {
+                    reconnectTick += 1
+                },
+                onClose = onBack,
+                modifier = Modifier.align(Alignment.Center),
             )
         }
 
@@ -337,14 +434,61 @@ fun PlayerScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     OutlinedButton(onClick = {
                         error = null
+                        reconnectAttempt = 0
                         player.setMediaItem(MediaItem.fromUri(streamUrl))
                         player.prepare()
+                        if (!isLiveStream && resumePositionMs > 0L) player.seekTo(resumePositionMs)
                         player.play()
                         showControls()
                     }) { Text(strings.retry) }
                     OutlinedButton(onClick = onBack) { Text(strings.close) }
                 }
             }
+        }
+    }
+}
+
+/** Calm, non-blocking notice while the stream is being picked up again. */
+@Composable
+private fun ReconnectOverlay(
+    title: String,
+    attemptLabel: String,
+    retryNowLabel: String,
+    closeLabel: String,
+    onRetryNow: () -> Unit,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .padding(24.dp)
+            .background(Color.Black.copy(alpha = 0.72f), RoundedCornerShape(20.dp))
+            .padding(horizontal = 26.dp, vertical = 22.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        CircularProgressIndicator(
+            modifier = Modifier.size(34.dp),
+            color = Color.White,
+            strokeWidth = 3.dp,
+        )
+        Spacer(Modifier.height(16.dp))
+        Text(
+            text = title,
+            color = Color.White,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(4.dp))
+        Text(
+            text = attemptLabel,
+            color = Color.White.copy(alpha = 0.72f),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Spacer(Modifier.height(16.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            OutlinedButton(onClick = onRetryNow) { Text(retryNowLabel) }
+            OutlinedButton(onClick = onClose) { Text(closeLabel) }
         }
     }
 }

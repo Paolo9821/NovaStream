@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -66,6 +67,7 @@ import com.rork.novastream.data.local.DeviceIdentity
 import com.rork.novastream.data.local.LicenseStatus
 import com.rork.novastream.data.local.ONLINE_GRACE_DAYS
 import com.rork.novastream.ui.components.BrandMark
+import com.rork.novastream.ui.components.QrCodePanel
 import com.rork.novastream.ui.i18n.Language
 import com.rork.novastream.ui.i18n.LocalStrings
 import com.rork.novastream.ui.theme.LocalNovaAccents
@@ -90,6 +92,7 @@ fun LicenseLockedScreen(
     verifying: Boolean,
     language: Language,
     storeUrl: String,
+    isTv: Boolean,
     onRetry: () -> Unit,
 ) {
     val strings = LocalStrings.current
@@ -113,6 +116,8 @@ fun LicenseLockedScreen(
         },
         identity = identity,
         footnote = strings.storeSteps,
+        // A TV has no browser worth typing in: the phone finishes the purchase.
+        qrLink = if (isTv) storeLink(storeUrl, identity.deviceId) else null,
     ) {
         Button(
             onClick = { openStore(context, storeUrl, identity.deviceId) },
@@ -146,6 +151,7 @@ fun LicenseBlockedScreen(
     lastVerifiedAtMs: Long,
     language: Language,
     storeUrl: String,
+    isTv: Boolean,
     onRetry: () -> Unit,
 ) {
     val strings = LocalStrings.current
@@ -190,6 +196,12 @@ fun LicenseBlockedScreen(
         } else {
             strings.licenseNeverChecked
         },
+        // Only a revoked licence can be solved by buying again from the phone.
+        qrLink = if (isTv && reason == BlockReason.REVOKED) {
+            storeLink(storeUrl, identity.deviceId)
+        } else {
+            null
+        },
     ) {
         RecheckButton(verifying = verifying, onRetry = onRetry, primary = true)
         if (reason == BlockReason.REVOKED) {
@@ -223,8 +235,10 @@ private fun GateScaffold(
     identity: DeviceIdentity,
     footnote: String,
     note: String = "",
+    qrLink: String? = null,
     actions: @Composable () -> Unit,
 ) {
+    val strings = LocalStrings.current
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background,
@@ -277,6 +291,16 @@ private fun GateScaffold(
             Spacer(Modifier.height(26.dp))
             DeviceIdentityCard(identity = identity)
 
+            if (qrLink != null) {
+                Spacer(Modifier.height(18.dp))
+                QrCodePanel(
+                    content = qrLink,
+                    title = strings.qrScanTitle,
+                    caption = strings.qrScanCaption,
+                    modifier = Modifier.widthIn(max = 320.dp),
+                )
+            }
+
             Spacer(Modifier.height(24.dp))
             actions()
 
@@ -289,6 +313,54 @@ private fun GateScaffold(
                 modifier = Modifier.padding(horizontal = 8.dp),
             )
             Spacer(Modifier.height(12.dp))
+        }
+    }
+}
+
+/**
+ * Shown at launch while the licence server is being asked about this device, and
+ * the cached answer is not good enough to let the app open right away.
+ */
+@Composable
+fun LicenseCheckScreen(identity: DeviceIdentity) {
+    val strings = LocalStrings.current
+
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .padding(horizontal = 28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            BrandMark(size = 44.dp)
+            Spacer(Modifier.height(28.dp))
+            CircularProgressIndicator(strokeWidth = 3.dp, modifier = Modifier.size(30.dp))
+            Spacer(Modifier.height(22.dp))
+            Text(
+                text = strings.licenseStartupTitle,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = strings.licenseStartupBody,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(20.dp))
+            Text(
+                text = "${strings.deviceIdLabel} · ${identity.deviceId}",
+                style = MaterialTheme.typography.labelSmall,
+                fontFamily = FontFamily.Monospace,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

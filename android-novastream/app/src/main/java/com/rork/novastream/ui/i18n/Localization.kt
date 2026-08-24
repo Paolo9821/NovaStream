@@ -212,6 +212,10 @@ data class Strings(
     val forwardTen: String = "Forward 10 seconds",
     val seekBarLabel: String = "Playback position",
     val liveBadge: String = "LIVE",
+    val playerReconnecting: String = "Weak connection · reconnecting",
+    val playerReconnectAttempt: String = "Attempt %s of %s",
+    val playerReconnectNow: String = "Reconnect now",
+    val playerReconnectFailed: String = "The connection dropped. NovaStream tried %s times without success.",
 
     val welcomeTitle: String = "Welcome to NovaStream",
     val welcomeSubtitle: String = "Tell us where you will watch: the interface adapts to your device.",
@@ -273,6 +277,10 @@ data class Strings(
     val licenseRenewAction: String = "Renew online",
     val licensePaidExpiredTitle: String = "Subscription ended",
     val licensePaidExpiredBody: String = "Your subscription ended on %s. Renew online to keep watching.",
+    val licenseStartupTitle: String = "Checking your license",
+    val licenseStartupBody: String = "NovaStream verifies this device with the license server at every launch.",
+    val qrScanTitle: String = "Scan with your phone",
+    val qrScanCaption: String = "Point your phone camera here: the store opens with this device already filled in.",
 )
 
 private val English = Strings()
@@ -458,6 +466,10 @@ private val Italian = Strings(
     forwardTen = "Avanti di 10 secondi",
     seekBarLabel = "Punto di riproduzione",
     liveBadge = "DIRETTA",
+    playerReconnecting = "Connessione debole · riconnessione",
+    playerReconnectAttempt = "Tentativo %s di %s",
+    playerReconnectNow = "Riconnetti ora",
+    playerReconnectFailed = "La connessione è caduta. NovaStream ha riprovato %s volte senza riuscirci.",
     welcomeTitle = "Benvenuto in NovaStream",
     welcomeSubtitle = "Dicci dove guarderai: l'interfaccia si adatta al tuo dispositivo.",
     deviceTvTitle = "Televisione",
@@ -514,6 +526,10 @@ private val Italian = Strings(
     licenseRenewAction = "Rinnova online",
     licensePaidExpiredTitle = "Abbonamento terminato",
     licensePaidExpiredBody = "Il tuo abbonamento \u00e8 terminato il %s. Rinnova online per continuare a guardare.",
+    licenseStartupTitle = "Verifica della licenza",
+    licenseStartupBody = "A ogni avvio NovaStream controlla questo dispositivo sul server delle licenze.",
+    qrScanTitle = "Inquadra con il telefono",
+    qrScanCaption = "Punta la fotocamera del telefono qui: il sito si apre con questo dispositivo gi\u00e0 inserito.",
 )
 
 private val Spanish = Strings(
@@ -697,6 +713,10 @@ private val Spanish = Strings(
     forwardTen = "Avanzar 10 segundos",
     seekBarLabel = "Punto de reproducción",
     liveBadge = "EN VIVO",
+    playerReconnecting = "Conexión débil · reconectando",
+    playerReconnectAttempt = "Intento %s de %s",
+    playerReconnectNow = "Reconectar ahora",
+    playerReconnectFailed = "Se perdió la conexión. NovaStream lo intentó %s veces sin éxito.",
     welcomeTitle = "Bienvenido a NovaStream",
     welcomeSubtitle = "Dinos dónde vas a ver: la interfaz se adapta a tu dispositivo.",
     deviceTvTitle = "Televisión",
@@ -745,6 +765,10 @@ private val Spanish = Strings(
     licenseChecking = "Comprobando…",
     licenseLastCheck = "Última comprobación: %s",
     licenseNeverChecked = "Nunca verificada",
+    licenseStartupTitle = "Comprobando la licencia",
+    licenseStartupBody = "En cada inicio NovaStream comprueba este dispositivo en el servidor de licencias.",
+    qrScanTitle = "Escanea con el móvil",
+    qrScanCaption = "Apunta la cámara del móvil aquí: la web se abre con este dispositivo ya rellenado.",
 )
 
 private val French = Strings(
@@ -928,6 +952,10 @@ private val French = Strings(
     forwardTen = "Avancer de 10 secondes",
     seekBarLabel = "Position de lecture",
     liveBadge = "DIRECT",
+    playerReconnecting = "Connexion faible · reconnexion",
+    playerReconnectAttempt = "Tentative %s sur %s",
+    playerReconnectNow = "Reconnecter maintenant",
+    playerReconnectFailed = "La connexion a été perdue. NovaStream a essayé %s fois sans succès.",
     welcomeTitle = "Bienvenue sur NovaStream",
     welcomeSubtitle = "Dites-nous où vous regarderez : l'interface s'adapte à votre appareil.",
     deviceTvTitle = "Télévision",
@@ -976,6 +1004,10 @@ private val French = Strings(
     licenseChecking = "Vérification…",
     licenseLastCheck = "Dernière vérification : %s",
     licenseNeverChecked = "Jamais vérifiée",
+    licenseStartupTitle = "Vérification de la licence",
+    licenseStartupBody = "À chaque démarrage, NovaStream vérifie cet appareil auprès du serveur de licences.",
+    qrScanTitle = "Scannez avec votre téléphone",
+    qrScanCaption = "Pointez l'appareil photo du téléphone ici : le site s'ouvre avec cet appareil déjà renseigné.",
 )
 
 private val German = Strings(
@@ -1159,6 +1191,10 @@ private val German = Strings(
     forwardTen = "10 Sekunden vor",
     seekBarLabel = "Wiedergabeposition",
     liveBadge = "LIVE",
+    playerReconnecting = "Schwache Verbindung · Neuverbindung",
+    playerReconnectAttempt = "Versuch %s von %s",
+    playerReconnectNow = "Jetzt neu verbinden",
+    playerReconnectFailed = "Die Verbindung ist abgebrochen. NovaStream hat es %s Mal ohne Erfolg versucht.",
     welcomeTitle = "Willkommen bei NovaStream",
     welcomeSubtitle = "Sag uns, wo du schaust: Die Oberfläche passt sich deinem Gerät an.",
     deviceTvTitle = "Fernseher",
@@ -1207,6 +1243,10 @@ private val German = Strings(
     licenseChecking = "Wird geprüft…",
     licenseLastCheck = "Letzte Prüfung: %s",
     licenseNeverChecked = "Nie geprüft",
+    licenseStartupTitle = "Lizenz wird geprüft",
+    licenseStartupBody = "Bei jedem Start prüft NovaStream dieses Gerät beim Lizenzserver.",
+    qrScanTitle = "Mit dem Handy scannen",
+    qrScanCaption = "Richte die Handykamera hierher: Der Shop öffnet sich mit diesem Gerät bereits eingetragen.",
 )
 
 private val Portuguese = Strings(
@@ -1390,6 +1430,10 @@ private val Portuguese = Strings(
     forwardTen = "Avançar 10 segundos",
     seekBarLabel = "Posição de reprodução",
     liveBadge = "DIRETO",
+    playerReconnecting = "Ligação fraca · a reconectar",
+    playerReconnectAttempt = "Tentativa %s de %s",
+    playerReconnectNow = "Reconectar agora",
+    playerReconnectFailed = "A ligação caiu. O NovaStream tentou %s vezes sem sucesso.",
     welcomeTitle = "Bem-vindo ao NovaStream",
     welcomeSubtitle = "Diz-nos onde vais ver: a interface adapta-se ao teu dispositivo.",
     deviceTvTitle = "Televisão",
@@ -1438,6 +1482,10 @@ private val Portuguese = Strings(
     licenseChecking = "A verificar…",
     licenseLastCheck = "Última verificação: %s",
     licenseNeverChecked = "Nunca verificada",
+    licenseStartupTitle = "A verificar a licença",
+    licenseStartupBody = "Em cada arranque o NovaStream verifica este dispositivo no servidor de licenças.",
+    qrScanTitle = "Digitalize com o telemóvel",
+    qrScanCaption = "Aponte a câmara do telemóvel aqui: o site abre com este dispositivo já preenchido.",
 )
 
 private val Romanian = Strings(
@@ -1621,6 +1669,10 @@ private val Romanian = Strings(
     forwardTen = "Înainte 10 secunde",
     seekBarLabel = "Poziția redării",
     liveBadge = "DIRECT",
+    playerReconnecting = "Conexiune slabă · se reconectează",
+    playerReconnectAttempt = "Încercarea %s din %s",
+    playerReconnectNow = "Reconectează acum",
+    playerReconnectFailed = "Conexiunea a căzut. NovaStream a încercat de %s ori fără succes.",
     welcomeTitle = "Bine ai venit în NovaStream",
     welcomeSubtitle = "Spune-ne unde vei privi: interfața se adaptează dispozitivului tău.",
     deviceTvTitle = "Televizor",
@@ -1669,6 +1721,10 @@ private val Romanian = Strings(
     licenseChecking = "Se verifică…",
     licenseLastCheck = "Ultima verificare: %s",
     licenseNeverChecked = "Niciodată verificată",
+    licenseStartupTitle = "Se verifică licența",
+    licenseStartupBody = "La fiecare pornire NovaStream verifică acest dispozitiv pe serverul de licențe.",
+    qrScanTitle = "Scanează cu telefonul",
+    qrScanCaption = "Îndreaptă camera telefonului aici: site-ul se deschide cu acest dispozitiv deja completat.",
 )
 
 private val Turkish = Strings(
@@ -1852,6 +1908,10 @@ private val Turkish = Strings(
     forwardTen = "10 saniye ileri",
     seekBarLabel = "Oynatma konumu",
     liveBadge = "CANLI",
+    playerReconnecting = "Zayıf bağlantı · yeniden bağlanılıyor",
+    playerReconnectAttempt = "%s / %s deneme",
+    playerReconnectNow = "Şimdi yeniden bağlan",
+    playerReconnectFailed = "Bağlantı koptu. NovaStream %s kez denedi ama başaramadı.",
     welcomeTitle = "NovaStream'e hoş geldiniz",
     welcomeSubtitle = "Nerede izleyeceğinizi seçin: arayüz cihazınıza uyum sağlar.",
     deviceTvTitle = "Televizyon",
@@ -1900,6 +1960,10 @@ private val Turkish = Strings(
     licenseChecking = "Doğrulanıyor…",
     licenseLastCheck = "Son doğrulama: %s",
     licenseNeverChecked = "Hiç doğrulanmadı",
+    licenseStartupTitle = "Lisans doğrulanıyor",
+    licenseStartupBody = "NovaStream her açılışta bu cihazı lisans sunucusunda doğrular.",
+    qrScanTitle = "Telefonunuzla tarayın",
+    qrScanCaption = "Telefon kameranızı buraya tutun: site bu cihaz bilgisi hazır şekilde açılır.",
 )
 
 fun stringsFor(language: Language): Strings = when (language) {

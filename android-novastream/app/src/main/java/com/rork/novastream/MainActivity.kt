@@ -25,6 +25,7 @@ import com.rork.novastream.ui.i18n.LocalStrings
 import com.rork.novastream.ui.i18n.stringsFor
 import com.rork.novastream.ui.navigation.AppNavigation
 import com.rork.novastream.ui.screens.LicenseBlockedScreen
+import com.rork.novastream.ui.screens.LicenseCheckScreen
 import com.rork.novastream.ui.screens.LicenseLockedScreen
 import com.rork.novastream.ui.screens.OnboardingScreen
 import com.rork.novastream.ui.screens.TermsScreen
@@ -40,6 +41,7 @@ class MainActivity : ComponentActivity() {
             val settings by viewModel.settings.collectAsStateWithLifecycle()
             val license by viewModel.license.collectAsStateWithLifecycle()
             val storeUrl by viewModel.storeUrl.collectAsStateWithLifecycle()
+            val startupChecking by viewModel.startupChecking.collectAsStateWithLifecycle()
             val darkTheme = when (settings.themeMode) {
                 ThemeMode.SYSTEM -> isSystemInDarkTheme()
                 ThemeMode.LIGHT -> false
@@ -47,6 +49,9 @@ class MainActivity : ComponentActivity() {
             }
             val strings = remember(settings.language) { stringsFor(settings.language) }
             val suggestedProfile = remember { detectDeviceProfile() }
+            // A remote-controlled screen: the QR fallback replaces typing a URL.
+            val isTv = settings.deviceProfile == DeviceProfile.TV ||
+                suggestedProfile == DeviceProfile.TV
 
             // The trial can lapse while the app sits in the background.
             val lifecycleOwner = LocalLifecycleOwner.current
@@ -61,6 +66,12 @@ class MainActivity : ComponentActivity() {
             CompositionLocalProvider(LocalStrings provides strings) {
                 AppTheme(darkTheme = darkTheme) {
                     val status = license.status
+                    // Cached trial/licence answers open the app instantly; anything
+                    // else waits for the launch check so a fresh payment lands first.
+                    val awaitingVerdict = startupChecking &&
+                        status !is LicenseStatus.Trial &&
+                        status !is LicenseStatus.Licensed
+
                     when {
                         !license.termsAccepted -> TermsScreen(
                             onAccept = { viewModel.acceptTerms() },
@@ -74,6 +85,8 @@ class MainActivity : ComponentActivity() {
                             },
                         )
 
+                        awaitingVerdict -> LicenseCheckScreen(identity = license.identity)
+
                         status is LicenseStatus.Expired -> LicenseLockedScreen(
                             identity = license.identity,
                             expiredAtMs = status.expiredAtMs,
@@ -81,6 +94,7 @@ class MainActivity : ComponentActivity() {
                             verifying = license.verifying,
                             language = settings.language,
                             storeUrl = storeUrl,
+                            isTv = isTv,
                             onRetry = { viewModel.syncLicense(force = true) },
                         )
 
@@ -92,6 +106,7 @@ class MainActivity : ComponentActivity() {
                             lastVerifiedAtMs = license.lastVerifiedAtMs,
                             language = settings.language,
                             storeUrl = storeUrl,
+                            isTv = isTv,
                             onRetry = { viewModel.syncLicense(force = true) },
                         )
 

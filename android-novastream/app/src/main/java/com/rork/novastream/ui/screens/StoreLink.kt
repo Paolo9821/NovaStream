@@ -14,12 +14,7 @@ import android.widget.Toast
  */
 internal fun openStore(context: Context, storeUrl: String, deviceId: String) {
     copyToClipboard(context, deviceId)
-    val target = buildString {
-        append(if (storeUrl.startsWith("http")) storeUrl else "https://$storeUrl")
-        append(if (contains('?')) "&" else "?")
-        append("device=")
-        append(Uri.encode(deviceId))
-    }
+    val target = storeLink(storeUrl, deviceId)
     val opened = runCatching {
         context.startActivity(
             Intent(Intent.ACTION_VIEW, Uri.parse(target))
@@ -40,6 +35,17 @@ internal fun openStore(context: Context, storeUrl: String, deviceId: String) {
             )
         }
     }
+}
+
+/**
+ * Storefront address with the device identifier attached, so a customer landing
+ * there from a QR code never has to type it. Also used as the QR payload.
+ */
+internal fun storeLink(storeUrl: String, deviceId: String): String = buildString {
+    append(if (storeUrl.startsWith("http")) storeUrl else "https://$storeUrl")
+    append(if (contains('?')) "&" else "?")
+    append("device=")
+    append(Uri.encode(deviceId))
 }
 
 internal fun copyToClipboard(context: Context, text: String, toast: String? = null) {

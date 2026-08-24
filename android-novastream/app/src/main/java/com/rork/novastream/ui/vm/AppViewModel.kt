@@ -29,6 +29,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+import java.util.concurrent.TimeUnit
 
 data class CatalogQuery(
     val search: String = "",
@@ -67,9 +69,23 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     /** Address of the storefront customers are sent to, resolved from the server. */
     val storeUrl: StateFlow<String> = _storeUrl.asStateFlow()
 
+    private val _startupChecking = MutableStateFlow(true)
+
+    /**
+     * True while the launch-time licence verification is still in flight. The UI
+     * waits on it only when the cached answer would not already grant access, so a
+     * purchase made minutes earlier unlocks the app without any user action.
+     */
+    val startupChecking: StateFlow<Boolean> = _startupChecking.asStateFlow()
+
     init {
         licenseStore.refresh()
-        syncLicense(force = true)
+        // Every launch asks the registry again: revoked and expired devices lock
+        // themselves even if the local cache still looked healthy.
+        viewModelScope.launch {
+            withTimeoutOrNull(STARTUP_CHECK_TIMEOUT_MS) { verifyWithServer() }
+            _startupChecking.value = false
+        }
         viewModelScope.launch { _storeUrl.value = licenseApi.storeUrl() }
     }
 
@@ -90,16 +106,22 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun syncLicense(force: Boolean = false) {
         if (syncing) return
         if (!force && !licenseStore.needsRemoteCheck()) return
+        viewModelScope.launch { verifyWithServer() }
+    }
 
+    /** Single place where the registry is asked, guarded against overlapping calls. */
+    private suspend fun verifyWithServer() {
+        if (syncing) return
         syncing = true
         licenseStore.markAttempt()
         licenseStore.setVerifying(true)
-        viewModelScope.launch {
+        try {
             when (val check = licenseApi.check(licenseStore.identity.deviceId)) {
                 is LicenseCheck.Answered -> licenseStore.applyRemote(check.record)
                 // Offline or server down: keep the last answer, grace window ticks.
                 is LicenseCheck.Unavailable -> Unit
             }
+        } finally {
             licenseStore.setVerifying(false)
             syncing = false
         }
@@ -315,5 +337,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             _speedResult.value = repository.runSpeedTest().getOrNull()
             _speedRunning.value = false
         }
+    }
+
+    private companion object {
+        /** A slow network must never keep a paying customer staring at a spinner. */
+        val STARTUP_CHECK_TIMEOUT_MS: Long = TimeUnit.SECONDS.toMillis(7)
     }
 }
