@@ -1,0 +1,667 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8" />
+<title>NovaStream · Play listing assets</title>
+<style>
+  @font-face {
+    font-family: 'RobotoLocal';
+    src: url('__FONTS__/roboto.ttf');
+    font-weight: 100 900;
+    font-display: block;
+  }
+  @font-face {
+    font-family: 'MaterialSymbolsRoundedLocal';
+    src: url('__FONTS__/material-symbols.ttf');
+    font-display: block;
+  }
+
+  :root {
+    --canvas: #F7F8FA;
+    --surface: #FFFFFF;
+    --ink: #111827;
+    --ink2: #6B7280;
+    --blue: #2563EB;
+    --blueSoft: #DCE7FF;
+    --onBlueSoft: #10275C;
+    --green: #10B981;
+    --greenSoft: #D5F5E8;
+    --onGreenSoft: #073B2C;
+    --purple: #7C6CE0;
+    --purpleSoft: #E6E2FB;
+    --onPurpleSoft: #251F55;
+    --amber: #8A6D00;
+    --amberSoft: #FDF3D3;
+    --hair: #E5E7EB;
+    --surfVar: #EEF1F5;
+    --surfHigh: #F1F3F7;
+    --outline: #D1D5DB;
+    --err: #DC2626;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: #1b1f27; font-family: 'RobotoLocal', sans-serif; }
+  #root { display: flex; flex-direction: column; align-items: flex-start; gap: 40px; padding: 40px; }
+
+  .ms {
+    font-family: 'MaterialSymbolsRoundedLocal';
+    font-weight: normal;
+    font-style: normal;
+    line-height: 1;
+    letter-spacing: normal;
+    text-transform: none;
+    display: inline-block;
+    white-space: nowrap;
+    word-wrap: normal;
+    direction: ltr;
+    font-feature-settings: 'liga' 1;
+    -webkit-font-feature-settings: 'liga';
+    -webkit-font-smoothing: antialiased;
+    flex: none;
+  }
+
+  /* ---------- Compose typography (dp == px inside .ui) ---------- */
+  .headlineMedium { font-weight: 700; font-size: 26px; line-height: 32px; letter-spacing: -0.4px; }
+  .headlineSmall  { font-weight: 700; font-size: 22px; line-height: 28px; letter-spacing: -0.3px; }
+  .titleLarge     { font-weight: 700; font-size: 20px; line-height: 26px; letter-spacing: -0.2px; }
+  .titleMedium    { font-weight: 600; font-size: 16px; line-height: 22px; }
+  .titleSmall     { font-weight: 600; font-size: 14px; line-height: 20px; }
+  .bodyLarge      { font-weight: 400; font-size: 16px; line-height: 24px; }
+  .bodyMedium     { font-weight: 400; font-size: 14px; line-height: 20px; }
+  .bodySmall      { font-weight: 400; font-size: 12px; line-height: 16px; }
+  .labelLarge     { font-weight: 600; font-size: 14px; line-height: 20px; }
+  .labelMedium    { font-weight: 500; font-size: 12px; line-height: 16px; }
+  .ink2 { color: var(--ink2); }
+  .ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* ---------- app surface ---------- */
+  .ui {
+    background: var(--canvas);
+    color: var(--ink);
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .ui.phone { width: 412px; height: 892px; }
+  .ui.tv { width: 960px; height: 540px; flex-direction: row; }
+  .ui.black { background: #000; color: #fff; }
+
+  .statusbar {
+    height: 28px; flex: none; display: flex; align-items: center; justify-content: space-between;
+    padding: 0 20px; font-size: 12px; font-weight: 500; color: var(--ink);
+  }
+  .statusbar .sbicons { display: flex; align-items: center; gap: 5px; }
+
+  .scroll { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+  .pad20 { padding: 0 20px; }
+
+  .navbar {
+    height: 80px; flex: none; background: var(--surface); display: flex; align-items: center;
+    padding-top: 12px; border-top: 1px solid rgba(0,0,0,0.03);
+  }
+  .navitem { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .navitem .pill {
+    width: 64px; height: 32px; border-radius: 16px; display: flex; align-items: center; justify-content: center;
+  }
+  .navitem .pill.on { background: var(--greenSoft); }
+  .navlabel { font-size: 12px; font-weight: 500; color: var(--ink2); }
+  .navlabel.on { color: var(--ink); font-weight: 600; }
+
+  .rail {
+    width: 80px; flex: none; background: var(--surface); display: flex; flex-direction: column;
+    align-items: center; padding-top: 22px; gap: 18px;
+  }
+  .railitem { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+  .railitem .pill { width: 56px; height: 32px; border-radius: 16px; display: flex; align-items: center; justify-content: center; }
+  .railitem .pill.on { background: var(--greenSoft); }
+
+  .card { background: var(--surface); border-radius: 16px; }
+  .stack { display: flex; flex-direction: column; }
+  .row { display: flex; align-items: center; }
+  .grow { flex: 1; min-width: 0; }
+
+  /* home */
+  .chip-privacy {
+    background: var(--amberSoft); border-radius: 14px; padding: 10px 12px;
+    display: flex; align-items: center; gap: 8px; align-self: flex-start;
+  }
+  .catcard { display: flex; align-items: center; padding: 16px; }
+  .badge { border-radius: 15px; display: flex; align-items: center; justify-content: center; flex: none; }
+  .trackbar { border-radius: 3px; overflow: hidden; }
+  .trackbar > div { height: 100%; border-radius: 3px; }
+
+  .btn-tonal {
+    flex: 1; height: 56px; border-radius: 28px; background: var(--blueSoft); color: var(--onBlueSoft);
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .btn-outline {
+    flex: 1; height: 56px; border-radius: 28px; border: 1px solid var(--outline); color: var(--blue);
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .btn-filled {
+    height: 56px; border-radius: 28px; background: var(--blue); color: #fff;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+  }
+
+  /* search + chips */
+  .searchrow { display: flex; align-items: center; gap: 12px; padding: 8px 20px; }
+  .textfield {
+    flex: 1; height: 64px; background: var(--surface); border-radius: 18px 18px 0 0;
+    border-bottom: 1px solid var(--hair); display: flex; align-items: center; gap: 14px; padding: 0 16px;
+  }
+  .filterbtn { width: 64px; height: 64px; border-radius: 18px; background: var(--blueSoft); display: flex; align-items: center; justify-content: center; }
+  .chiprow { display: flex; gap: 8px; padding: 4px 20px; }
+  .chip {
+    height: 32px; border-radius: 12px; border: 1px solid var(--outline); background: var(--surface);
+    display: flex; align-items: center; gap: 6px; padding: 0 12px; font-size: 14px; font-weight: 500; color: var(--ink);
+    flex: none;
+  }
+  .chip.sel { background: var(--greenSoft); color: var(--onGreenSoft); border-color: transparent; }
+  .chip.selblue { background: var(--blueSoft); color: var(--onBlueSoft); border-color: transparent; }
+
+  /* channel rows */
+  .chrow { padding: 12px 8px 12px 12px; }
+  .logobox { width: 52px; height: 52px; border-radius: 12px; background: var(--greenSoft); display: flex; align-items: center; justify-content: center; flex: none; }
+  .playbox { width: 36px; height: 36px; border-radius: 12px; background: var(--greenSoft); display: flex; align-items: center; justify-content: center; flex: none; }
+  .heart { width: 36px; height: 36px; border-radius: 18px; background: var(--surfVar); display: flex; align-items: center; justify-content: center; flex: none; }
+  .heart.on { background: rgba(220,38,38,0.16); }
+  .guidebtn { border-radius: 10px; background: var(--surfVar); display: flex; align-items: center; gap: 6px; padding: 6px 10px; flex: none; }
+
+  /* posters */
+  .grid { display: grid; gap: 18px 14px; }
+  .poster { border-radius: 16px; background: var(--blueSoft); position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  .poster.focus { outline: 2px solid var(--blue); outline-offset: 0; box-shadow: 0 10px 24px rgba(37,99,235,0.28); transform: scale(1.04); }
+  .postheart { position: absolute; top: 6px; right: 6px; width: 32px; height: 32px; border-radius: 16px; background: rgba(0,0,0,0.42); display: flex; align-items: center; justify-content: center; }
+
+  /* top app bar */
+  .appbar { height: 64px; flex: none; display: flex; align-items: center; gap: 12px; padding: 0 12px; }
+
+  /* player */
+  .playerTop { position: absolute; top: 0; left: 0; right: 0; height: 72px; display: flex; align-items: center; gap: 14px; padding: 0 14px; }
+  .playerCenter { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 34px; }
+  .playerBottom { position: absolute; left: 0; right: 0; bottom: 0; padding: 0 18px 26px; }
+  .circleBtn { width: 76px; height: 76px; border-radius: 38px; background: rgba(255,255,255,0.16); display: flex; align-items: center; justify-content: center; }
+
+  /* ---------- marketing slides ---------- */
+  .slide { position: relative; overflow: hidden; }
+  .slide.phone {
+    width: 540px; height: 960px; display: flex; flex-direction: column; align-items: center;
+    padding-top: 46px;
+    background:
+      radial-gradient(760px 520px at 50% -8%, var(--tint, #DCE7FF) 0%, rgba(255,255,255,0) 62%),
+      linear-gradient(178deg, #FFFFFF 0%, #F4F6FB 52%, #E9EEF8 100%);
+  }
+  .slide.phone::after {
+    content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 260px;
+    background: linear-gradient(180deg, rgba(15,23,42,0) 0%, rgba(15,23,42,0.05) 100%);
+  }
+  .caption { width: 470px; text-align: center; z-index: 2; }
+  .caption h2 { font-size: 41px; line-height: 1.08; font-weight: 800; letter-spacing: -1.5px; color: #0B1220; }
+  .caption p { margin-top: 11px; font-size: 17px; line-height: 1.35; font-weight: 400; color: #55617A; }
+  .device {
+    margin-top: 24px; width: 352px; height: 748px; border-radius: 44px; background: #0F172A; padding: 6px;
+    box-shadow: 0 34px 60px rgba(15, 23, 42, 0.26), 0 4px 12px rgba(15,23,42,0.12); z-index: 2;
+  }
+  .screen { width: 340px; height: 736px; border-radius: 38px; overflow: hidden; background: var(--canvas); }
+  .screen .ui { transform: scale(0.8252427); transform-origin: top left; }
+
+  /* graphics */
+  .feature {
+    width: 1024px; height: 500px; display: flex; align-items: center; gap: 54px; padding: 0 68px;
+    background:
+      radial-gradient(620px 420px at 82% 18%, rgba(37,99,235,0.42) 0%, rgba(13,17,23,0) 68%),
+      radial-gradient(520px 420px at 12% 92%, rgba(124,108,224,0.34) 0%, rgba(13,17,23,0) 66%),
+      linear-gradient(135deg, #0D1117 0%, #131B2B 55%, #0D1117 100%);
+    color: #F3F4F6;
+  }
+  .banner {
+    width: 1280px; height: 720px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 34px;
+    background:
+      radial-gradient(720px 520px at 50% 20%, rgba(37,99,235,0.40) 0%, rgba(13,17,23,0) 70%),
+      linear-gradient(150deg, #0D1117 0%, #16203A 60%, #0D1117 100%);
+    color: #F3F4F6;
+  }
+  .appicon { border-radius: 26%; background: #F7F8FA; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+  .appicon img { width: 100%; height: 100%; object-fit: contain; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+const ICON_URL = '__ICON__';
+
+function ms(name, size, color, fill, extra) {
+  const f = fill ? 1 : 0;
+  return '<span class="ms" style="font-size:' + size + 'px;color:' + color + ";font-variation-settings:'FILL' " + f + ",'wght' 400,'GRAD' 0,'opsz' 24;" + (extra || '') + '">' + name + '</span>';
+}
+
+function statusBar(dark) {
+  const c = dark ? '#F3F4F6' : 'var(--ink)';
+  return '<div class="statusbar" style="color:' + c + '"><span>20:41</span><span class="sbicons">' +
+    ms('signal_cellular_alt', 13, c, 1) + ms('wifi', 13, c, 1) + ms('battery_full', 13, c, 1) + '</span></div>';
+}
+
+const TABS = [['home', 'Home'], ['live_tv', 'Live'], ['movie', 'Film'], ['tv', 'Serie']];
+
+function bottomNav(active) {
+  return '<div class="navbar">' + TABS.map(function (t, i) {
+    const on = i === active;
+    return '<div class="navitem"><div class="pill' + (on ? ' on' : '') + '">' +
+      ms(t[0], 24, on ? 'var(--onGreenSoft)' : 'var(--ink2)', on) +
+      '</div><span class="navlabel' + (on ? ' on' : '') + '">' + t[1] + '</span></div>';
+  }).join('') + '</div>';
+}
+
+function rail(active) {
+  return '<div class="rail">' + TABS.map(function (t, i) {
+    const on = i === active;
+    return '<div class="railitem"><div class="pill' + (on ? ' on' : '') + '">' +
+      ms(t[0], 24, on ? 'var(--onGreenSoft)' : 'var(--ink2)', on) +
+      '</div><span class="navlabel' + (on ? ' on' : '') + '">' + t[1] + '</span></div>';
+  }).join('') + '</div>';
+}
+
+function privacyChip() {
+  return '<div class="chip-privacy">' + ms('lock', 18, 'var(--amber)', 1) +
+    '<div><div class="titleSmall" style="color:var(--amber)">Playlist: Casa</div>' +
+    '<div class="bodySmall ink2">Dati crittografati localmente · AES-256-GCM</div></div></div>';
+}
+
+function trialBanner() {
+  return '<div class="card" style="display:flex;overflow:hidden">' +
+    '<div style="width:4px;background:var(--amber);flex:none"></div>' +
+    '<div class="row" style="padding:14px;gap:12px;flex:1">' +
+    ms('timer', 24, 'var(--amber)') +
+    '<div class="grow stack">' +
+      '<div class="titleSmall">Periodo di prova: 5 giorni rimanenti</div>' +
+      '<div class="bodySmall ink2">Prova gratuita attiva fino al 29 agosto 2026</div>' +
+      '<div class="trackbar" style="height:6px;background:var(--hair);margin-top:10px"><div style="width:28%;background:var(--amber)"></div></div>' +
+    '</div>' +
+    '<div class="labelLarge" style="color:var(--blue);padding-left:8px">Attiva</div>' +
+    '</div></div>';
+}
+
+function categoryCard(icon, title, count, accent, container) {
+  return '<div class="card catcard">' +
+    '<div class="badge" style="width:52px;height:52px;background:' + accent + '">' + ms(icon, 27, '#fff', 1) + '</div>' +
+    '<div class="titleLarge grow" style="margin-left:16px;white-space:nowrap">' + title + '</div>' +
+    '<div class="titleSmall" style="color:' + accent + ';white-space:nowrap;margin-left:12px;flex:none">' + count + '</div>' +
+    ms('chevron_right', 24, 'var(--ink2)', 0, 'margin-left:6px;flex:none') +
+    '</div>';
+}
+
+function continueCard(title, sub, fraction, width) {
+  const w = width || 212;
+  return '<div class="stack" style="width:' + w + 'px;flex:none">' +
+    '<div style="height:120px;border-radius:16px;overflow:hidden;position:relative;background:linear-gradient(135deg, rgba(37,99,235,0.22), rgba(124,108,224,0.22))">' +
+      '<div style="position:absolute;left:0;right:0;bottom:0;height:4px;background:rgba(255,255,255,0.35)">' +
+        '<div style="height:4px;width:' + Math.round(fraction * 100) + '%;background:var(--blue)"></div>' +
+      '</div>' +
+    '</div>' +
+    '<div class="titleSmall ellipsis" style="margin-top:8px">' + title + '</div>' +
+    '<div class="bodySmall ink2 ellipsis">' + sub + '</div>' +
+    '</div>';
+}
+
+function searchRow(placeholder, filterActive) {
+  return '<div class="searchrow">' +
+    '<div class="textfield">' + ms('search', 26, 'var(--ink2)') +
+      '<div class="bodyLarge ink2 ellipsis grow">' + placeholder + '</div></div>' +
+    '<div class="filterbtn" style="' + (filterActive ? 'background:var(--blue)' : '') + '">' +
+      ms('filter_list', 28, filterActive ? '#fff' : 'var(--onBlueSoft)') + '</div>' +
+    '</div>';
+}
+
+function chipRow(items, selectedClass) {
+  return '<div class="chiprow">' + items.map(function (c) {
+    const sel = c[1];
+    return '<div class="chip' + (sel ? ' ' + selectedClass : '') + '">' +
+      (sel ? ms('check', 18, 'currentColor') : '') + '<span>' + c[0] + '</span></div>';
+  }).join('') + '</div>';
+}
+
+const CHANNELS = [
+  ['Demo Live 1 HD', 'Generalisti', '20:35 Telegiornale della sera', 0.62, true],
+  ['Demo Live 2 HD', 'Generalisti', '20:10 Il pianeta blu', 0.44, false],
+  ['Sport Uno FHD', 'Sport', '20:45 Match della settimana', 0.18, true],
+  ['Notizie 24', 'News', '20:30 Rassegna della sera', 0.71, false],
+  ['Documentari Natura', 'Documentari', '19:55 Vita nelle profondità', 0.83, false],
+  ['Cinema Classic HD', 'Cinema', '20:15 Serata d’autore', 0.30, false]
+];
+
+function channelRow(ch, wide) {
+  return '<div class="card">' +
+    '<div class="row chrow">' +
+      '<div class="row grow" style="gap:14px;padding:4px">' +
+        '<div class="logobox">' + ms('live_tv', 24, 'var(--green)', 1) + '</div>' +
+        '<div class="grow stack">' +
+          '<div class="titleSmall ellipsis">' + ch[0] + '</div>' +
+          '<div class="bodySmall ink2 ellipsis" style="margin-top:2px">' + ch[1] + '</div>' +
+        '</div>' +
+        '<div class="playbox">' + ms('play_arrow', 22, 'var(--green)', 1) + '</div>' +
+      '</div>' +
+      '<div class="heart' + (ch[4] ? ' on' : '') + '" style="margin-left:6px">' +
+        ms('favorite', 19, ch[4] ? 'var(--err)' : 'var(--ink2)', ch[4]) + '</div>' +
+    '</div>' +
+    '<div class="row" style="padding:0 12px 12px 16px;gap:10px">' +
+      '<div class="grow stack">' +
+        '<div class="row" style="gap:7px">' +
+          '<div style="width:7px;height:7px;border-radius:4px;background:var(--green)"></div>' +
+          '<div class="bodySmall ellipsis">' + ch[2] + '</div>' +
+        '</div>' +
+        '<div class="trackbar" style="height:3px;background:var(--greenSoft);margin-top:6px"><div style="width:' + Math.round(ch[3] * 100) + '%;background:var(--green)"></div></div>' +
+      '</div>' +
+      '<div class="guidebtn">' + ms('calendar_month', 15, 'var(--ink2)') +
+        '<span class="labelMedium ink2">Guida TV</span></div>' +
+    '</div></div>';
+}
+
+const MOVIES = [
+  ['Sintel', '2010', true], ['Big Buck Bunny', '2008', false],
+  ['Tears of Steel', '2012', false], ['Elephants Dream', '2006', true],
+  ['Cosmos Laundromat', '2015', false], ['Caminandes', '2013', false],
+  ['Spring', '2019', false], ['Agent 327', '2017', false],
+  ['Coffee Run', '2020', false], ['Hero', '2018', false]
+];
+
+function posterCard(item, w, focused) {
+  const h = Math.round(w * 1.5);
+  return '<div class="stack">' +
+    '<div class="poster' + (focused ? ' focus' : '') + '" style="width:' + w + 'px;height:' + h + 'px">' +
+      ms('movie', 34, 'var(--blue)', 1) +
+      '<div class="postheart">' + ms('favorite', 17, item[2] ? 'var(--err)' : '#fff', item[2]) + '</div>' +
+    '</div>' +
+    '<div class="titleSmall ellipsis" style="margin-top:8px;width:' + w + 'px">' + item[0] + '</div>' +
+    '<div class="bodySmall ink2 ellipsis" style="width:' + w + 'px">' + item[1] + '</div>' +
+    '</div>';
+}
+
+/* ---------------- phone screens ---------------- */
+
+function homeScreen() {
+  return statusBar() +
+    '<div class="scroll" style="padding:12px 20px 0;gap:16px">' +
+      '<div class="stack">' +
+        '<div class="headlineMedium">Buonasera</div>' +
+        '<div style="height:10px"></div>' + privacyChip() +
+      '</div>' +
+      trialBanner() +
+      categoryCard('live_tv', 'Live TV', '1.284 canali', 'var(--green)') +
+      categoryCard('movie', 'Film', '612 titoli', 'var(--blue)') +
+      categoryCard('tv', 'Serie TV', '148 serie', 'var(--purple)') +
+      '<div class="row" style="justify-content:space-between;padding-top:8px">' +
+        '<span class="titleLarge">Continua a guardare</span>' +
+        '<span class="labelLarge" style="color:var(--blue)">Svuota</span>' +
+      '</div>' +
+      '<div class="row" style="gap:14px;align-items:flex-start">' +
+        continueCard('Sintel', '42 min rimanenti', 0.58) +
+        continueCard('Cosmos Laundromat', '11 min rimanenti', 0.82) +
+      '</div>' +
+      '<div class="row" style="gap:12px;padding-top:8px">' +
+        '<div class="btn-tonal">' + ms('person', 20, 'currentColor', 1) + '<span class="labelLarge">Account</span></div>' +
+        '<div class="btn-outline">' + ms('settings', 20, 'currentColor') + '<span class="labelLarge">Impostazioni</span></div>' +
+      '</div>' +
+    '</div>' + bottomNav(0);
+}
+
+function liveScreen() {
+  return statusBar() +
+    searchRow('Cerca tra 1.284 canali…', false) +
+    chipRow([['Solo preferiti', false], ['Tutti i canali', true], ['Generalisti', false], ['Sport', false], ['News', false]], 'sel') +
+    '<div class="scroll" style="padding:8px 20px 0;gap:10px">' +
+      CHANNELS.map(function (c) { return channelRow(c); }).join('') +
+    '</div>' + bottomNav(1);
+}
+
+function moviesScreen() {
+  return statusBar() +
+    searchRow('Cerca tra 612 titoli…', false) +
+    chipRow([['Solo preferiti', false], ['Recentemente aggiunti', true], ['Anno: 2024', false], ['Nome A-Z', false]], 'selblue') +
+    '<div class="scroll" style="padding:12px 20px 0">' +
+      '<div class="grid" style="grid-template-columns:repeat(2,179px)">' +
+        MOVIES.slice(0, 6).map(function (m) { return posterCard(m, 179, false); }).join('') +
+      '</div>' +
+    '</div>' + bottomNav(2);
+}
+
+function detailScreen() {
+  return statusBar() +
+    '<div class="appbar">' + ms('arrow_back', 24, 'var(--ink)') +
+      '<span class="titleLarge grow">Dettaglio film</span>' +
+      '<div class="heart on">' + ms('favorite', 19, 'var(--err)', 1) + '</div></div>' +
+    '<div class="scroll">' +
+      '<div style="height:260px;background:var(--blueSoft);display:flex;align-items:center;justify-content:center;position:relative;flex:none">' +
+        ms('movie', 56, 'var(--blue)', 1) +
+        '<div style="position:absolute;inset:0;background:linear-gradient(180deg, rgba(247,248,250,0) 55%, var(--canvas) 100%)"></div>' +
+      '</div>' +
+      '<div class="stack pad20" style="padding-top:18px">' +
+        '<div class="headlineMedium">Sintel</div>' +
+        '<div class="bodyMedium ink2" style="margin-top:6px">2010  •  FHD  •  Animazione</div>' +
+        '<div class="row" style="gap:8px;margin-top:12px">' +
+          '<div class="chip selblue" style="border:none">Avventura</div>' +
+          '<div class="chip selblue" style="border:none">Fantasy</div>' +
+        '</div>' +
+        '<div class="bodyLarge ink2" style="margin-top:14px">Trama, anno e locandina arrivano dai metadati del tuo provider.</div>' +
+        '<div class="btn-filled" style="margin:20px 0">' + ms('play_arrow', 24, '#fff', 1) +
+          '<span class="titleMedium">Riproduci ora</span></div>' +
+        '<div class="titleLarge">Nella stessa categoria</div>' +
+        '<div class="row" style="gap:14px;margin-top:12px;align-items:flex-start">' +
+          MOVIES.slice(1, 4).map(function (m) { return posterCard(m, 118, false); }).join('') +
+        '</div>' +
+      '</div>' +
+    '</div>';
+}
+
+function playerScreen() {
+  return '<div style="position:absolute;inset:0;background:radial-gradient(120% 90% at 50% 45%, #10151F 0%, #000 78%)"></div>' +
+    '<div style="position:absolute;inset:0;background:linear-gradient(180deg, rgba(0,0,0,0.62) 0%, rgba(0,0,0,0.12) 32%, rgba(0,0,0,0.18) 68%, rgba(0,0,0,0.78) 100%)"></div>' +
+    statusBar(true) +
+    '<div class="playerTop" style="top:28px">' + ms('arrow_back', 26, '#fff') +
+      '<span class="titleMedium grow ellipsis">Sintel</span>' +
+      ms('closed_caption', 24, 'rgba(255,255,255,0.85)') +
+      ms('settings', 24, 'rgba(255,255,255,0.85)') +
+    '</div>' +
+    '<div class="playerCenter">' +
+      '<div class="circleBtn" style="width:60px;height:60px">' + ms('replay_10', 30, '#fff') + '</div>' +
+      '<div class="circleBtn" style="background:rgba(255,255,255,0.92)">' + ms('pause', 40, '#0F172A', 1) + '</div>' +
+      '<div class="circleBtn" style="width:60px;height:60px">' + ms('forward_10', 30, '#fff') + '</div>' +
+    '</div>' +
+    '<div class="playerBottom">' +
+      '<div class="row" style="justify-content:space-between;margin-bottom:10px">' +
+        '<span class="labelMedium" style="color:#E5E7EB">00:42:18</span>' +
+        '<span class="labelMedium" style="color:#E5E7EB">01:12:04</span>' +
+      '</div>' +
+      '<div class="trackbar" style="height:4px;background:rgba(255,255,255,0.28)"><div style="width:58%;background:var(--blue);position:relative"><div style="position:absolute;right:-6px;top:-4px;width:12px;height:12px;border-radius:6px;background:#fff"></div></div></div>' +
+      '<div class="row" style="gap:14px;margin-top:18px">' +
+        '<div class="chip" style="background:rgba(255,255,255,0.12);border-color:rgba(255,255,255,0.22);color:#fff">' +
+          ms('hd', 18, '#fff', 1) + '<span>1080p</span></div>' +
+        '<div class="chip" style="background:rgba(255,255,255,0.12);border-color:rgba(255,255,255,0.22);color:#fff">' +
+          ms('memory', 18, '#fff') + '<span>Decodifica hardware</span></div>' +
+        '<div class="grow"></div>' +
+        ms('fullscreen', 26, '#fff') +
+      '</div>' +
+    '</div>';
+}
+
+function accountsScreen() {
+  return statusBar() +
+    '<div class="appbar">' + ms('arrow_back', 24, 'var(--ink)') +
+      '<span class="titleLarge grow">Gestione account</span></div>' +
+    '<div class="scroll" style="padding:4px 20px 0;gap:14px">' +
+      '<div class="bodyMedium ink2">Cambia playlist quando vuoi: la lista precedente viene cancellata dal dispositivo e riscaricata dal nuovo server.</div>' +
+      '<div class="card" style="padding:16px">' +
+        '<div class="row" style="gap:12px">' +
+          '<div class="badge" style="width:44px;height:44px;border-radius:14px;background:var(--blueSoft)">' + ms('playlist_play', 24, 'var(--blue)', 1) + '</div>' +
+          '<div class="grow stack">' +
+            '<div class="titleMedium">Casa</div>' +
+            '<div class="bodySmall ink2">Xtream · Aggiornato 2 ore fa</div>' +
+          '</div>' +
+          '<div class="chip sel" style="border:none;height:28px">Attivo</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="card" style="padding:16px">' +
+        '<div class="row" style="gap:12px">' +
+          '<div class="badge" style="width:44px;height:44px;border-radius:14px;background:var(--surfVar)">' + ms('playlist_play', 24, 'var(--ink2)', 1) + '</div>' +
+          '<div class="grow stack">' +
+            '<div class="titleMedium">Ufficio</div>' +
+            '<div class="bodySmall ink2">m3u · Aggiornato ieri</div>' +
+          '</div>' +
+          '<div class="chip" style="height:28px">Cambia</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="card" style="padding:16px;gap:12px;display:flex;flex-direction:column">' +
+        '<div class="row" style="gap:8px">' +
+          '<div class="chip selblue" style="border:none;flex:1;justify-content:center">URL m3u</div>' +
+          '<div class="chip" style="flex:1;justify-content:center">Codici Xtream</div>' +
+        '</div>' +
+        '<div class="textfield" style="border-radius:14px;border:1px solid var(--hair);background:var(--surfHigh);height:56px">' +
+          '<div class="stack grow"><div class="bodySmall ink2">Nome playlist</div><div class="bodyMedium">Casa</div></div></div>' +
+        '<div class="textfield" style="border-radius:14px;border:1px solid var(--hair);background:var(--surfHigh);height:56px">' +
+          '<div class="stack grow"><div class="bodySmall ink2">URL della playlist m3u</div><div class="bodyMedium ellipsis">https://provider.tv/get.php?…</div></div></div>' +
+        '<div class="btn-filled">' + ms('lock', 22, '#fff', 1) + '<span class="titleMedium">Importa e crittografa</span></div>' +
+      '</div>' +
+      '<div style="background:var(--amberSoft);border-radius:16px;padding:14px;display:flex;gap:12px">' +
+        '<div class="badge" style="width:38px;height:38px;border-radius:12px;background:rgba(138,109,0,0.22)">' + ms('lock', 20, 'var(--amber)', 1) + '</div>' +
+        '<div class="stack grow">' +
+          '<div class="titleSmall" style="color:var(--amber)">Privacy totale</div>' +
+          '<div class="bodySmall ink2" style="margin-top:2px">Credenziali di tutti gli account cifrate sul dispositivo con AES-256-GCM · Android Keystore, mai condivise.</div>' +
+        '</div>' +
+      '</div>' +
+      '<div class="btn-outline" style="flex:none">' + ms('close', 20, 'currentColor') + '<span class="labelLarge">Chiudi il modulo</span></div>' +
+      '<div class="bodySmall ink2" style="text-align:center;padding-bottom:20px">La licenza è valida solo su questo dispositivo e non è trasferibile.</div>' +
+    '</div>';
+}
+
+/* ---------------- tv screens ---------------- */
+
+function tvHome() {
+  return rail(0) +
+    '<div class="scroll" style="padding:20px 24px 0;gap:16px">' +
+      '<div class="stack">' +
+        '<div class="headlineMedium">Buonasera</div>' +
+        '<div style="height:10px"></div>' + privacyChip() +
+      '</div>' +
+      categoryCard('live_tv', 'Live TV', '1.284 canali', 'var(--green)') +
+      categoryCard('movie', 'Film', '612 titoli', 'var(--blue)') +
+      categoryCard('tv', 'Serie TV', '148 serie', 'var(--purple)') +
+      '<div class="row" style="justify-content:space-between;padding-top:4px">' +
+        '<span class="titleLarge">Continua a guardare</span>' +
+        '<span class="labelLarge" style="color:var(--blue)">Svuota</span>' +
+      '</div>' +
+      '<div class="row" style="gap:16px;align-items:flex-start">' +
+        continueCard('Sintel', '42 min rimanenti', 0.58, 212) +
+        continueCard('Cosmos Laundromat', '11 min rimanenti', 0.82, 212) +
+        continueCard('Tears of Steel', '26 min rimanenti', 0.35, 212) +
+        continueCard('Caminandes', 'Quasi finito', 0.94, 212) +
+      '</div>' +
+    '</div>';
+}
+
+function tvLive() {
+  return rail(1) +
+    '<div class="scroll">' +
+      searchRow('Cerca tra 1.284 canali…', false) +
+      chipRow([['Solo preferiti', false], ['Tutti i canali', true], ['Generalisti', false], ['Sport', false], ['News', false], ['Documentari', false]], 'sel') +
+      '<div class="scroll" style="padding:8px 20px 0;gap:10px">' +
+        CHANNELS.slice(0, 4).map(function (c) { return channelRow(c, true); }).join('') +
+      '</div>' +
+    '</div>';
+}
+
+function tvMovies() {
+  return rail(2) +
+    '<div class="scroll">' +
+      searchRow('Cerca tra 612 titoli…', true) +
+      chipRow([['Solo preferiti', false], ['Recentemente aggiunti', true], ['Anno: 2024', false], ['Nome A-Z', false], ['Default provider', false]], 'selblue') +
+      '<div class="scroll" style="padding:14px 20px 0">' +
+        '<div class="grid" style="grid-template-columns:repeat(5,152px)">' +
+          MOVIES.slice(0, 10).map(function (m, i) { return posterCard(m, 152, i === 1); }).join('') +
+        '</div>' +
+      '</div>' +
+    '</div>';
+}
+
+function tvDetail() {
+  return '<div class="scroll" style="flex-direction:row">' +
+      '<div style="width:420px;flex:none;background:var(--blueSoft);display:flex;align-items:center;justify-content:center;position:relative">' +
+        ms('movie', 76, 'var(--blue)', 1) +
+        '<div style="position:absolute;inset:0;background:linear-gradient(90deg, rgba(247,248,250,0) 55%, var(--canvas) 100%)"></div>' +
+      '</div>' +
+      '<div class="stack" style="flex:1;padding:44px 44px 0 24px">' +
+        '<div class="row" style="gap:12px">' + ms('arrow_back', 24, 'var(--ink2)') +
+          '<span class="titleMedium ink2">Dettaglio film</span></div>' +
+        '<div class="headlineMedium" style="font-size:34px;line-height:40px;margin-top:16px">Sintel</div>' +
+        '<div class="bodyMedium ink2" style="margin-top:8px">2010  •  FHD  •  Animazione</div>' +
+        '<div class="row" style="gap:8px;margin-top:14px">' +
+          '<div class="chip selblue" style="border:none">Avventura</div>' +
+          '<div class="chip selblue" style="border:none">Fantasy</div>' +
+        '</div>' +
+        '<div class="bodyLarge ink2" style="margin-top:16px;max-width:420px">Una giovane donna attraversa terre desolate per ritrovare il piccolo drago che ha cresciuto.</div>' +
+        '<div class="row" style="gap:14px;margin-top:24px">' +
+          '<div class="btn-filled" style="width:230px;box-shadow:0 0 0 2px rgba(37,99,235,0.35)">' + ms('play_arrow', 24, '#fff', 1) +
+            '<span class="titleMedium">Riproduci ora</span></div>' +
+          '<div class="btn-outline" style="width:150px;flex:none">' + ms('favorite', 20, 'var(--err)', 1) + '<span class="labelLarge" style="color:var(--ink)">Preferiti</span></div>' +
+        '</div>' +
+        '<div class="titleLarge" style="margin-top:30px">Nella stessa categoria</div>' +
+        '<div class="row" style="gap:14px;margin-top:12px;align-items:flex-start">' +
+          MOVIES.slice(1, 6).map(function (m) { return posterCard(m, 96, false); }).join('') +
+        '</div>' +
+      '</div>' +
+    '</div>';
+}
+
+/* ---------------- slide assembly ---------------- */
+
+function phoneSlide(id, tint, headline, sub, ui) {
+  return '<section class="slide phone" id="' + id + '" style="--tint:' + tint + '">' +
+      '<div class="caption"><h2>' + headline + '</h2><p>' + sub + '</p></div>' +
+      '<div class="device"><div class="screen"><div class="ui phone">' + ui + '</div></div></div>' +
+    '</section>';
+}
+
+function tvSlide(id, ui, black) {
+  return '<section class="slide" id="' + id + '"><div class="ui tv' + (black ? ' black' : '') + '">' + ui + '</div></section>';
+}
+
+function featureGraphic() {
+  return '<section class="slide feature" id="feature-graphic">' +
+      '<div class="appicon" style="width:168px;height:168px;flex:none"><img src="' + ICON_URL + '" alt="" /></div>' +
+      '<div style="display:flex;flex-direction:column;gap:16px">' +
+        '<div style="font-size:64px;font-weight:800;letter-spacing:-2px;line-height:1">NovaStream</div>' +
+        '<div style="font-size:27px;font-weight:400;color:#C7D2E4;line-height:1.3;max-width:560px">Il player per le tue playlist m3u e Xtream.<br/>Telefono, tablet e Android TV.</div>' +
+        '<div style="display:flex;gap:12px;margin-top:8px">' +
+          '<div style="display:flex;align-items:center;gap:8px;padding:10px 18px;border-radius:999px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.14);font-size:19px">' +
+            ms('lock', 20, '#F5C518', 1) + 'Dati cifrati sul dispositivo</div>' +
+          '<div style="display:flex;align-items:center;gap:8px;padding:10px 18px;border-radius:999px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.14);font-size:19px">' +
+            ms('calendar_month', 20, '#3DDCA4') + 'Guida TV XMLTV</div>' +
+        '</div>' +
+      '</div>' +
+    '</section>';
+}
+
+function tvBanner() {
+  return '<section class="slide banner" id="tv-banner">' +
+      '<div class="appicon" style="width:200px;height:200px"><img src="' + ICON_URL + '" alt="" /></div>' +
+      '<div style="font-size:86px;font-weight:800;letter-spacing:-2.6px;line-height:1">NovaStream</div>' +
+      '<div style="font-size:30px;color:#C7D2E4">Playlist m3u e Xtream sulla tua TV</div>' +
+    '</section>';
+}
+
+document.getElementById('root').innerHTML = [
+  phoneSlide('phone-1', '#DCE7FF', 'Tutta la tua playlist<br/>in una schermata', 'Live, film e serie contati e pronti, con ripresa da dove avevi lasciato.', homeScreen()),
+  phoneSlide('phone-2', '#D5F5E8', 'Canali live<br/>con guida TV', 'Vedi cosa è in onda ora e la programmazione della giornata, canale per canale.', liveScreen()),
+  phoneSlide('phone-3', '#DCE7FF', 'Trova un titolo<br/>in due secondi', 'Ricerca istantanea, categorie del provider, ordinamento per anno o nome.', moviesScreen()),
+  phoneSlide('phone-4', '#E6E2FB', 'Schede complete<br/>di ogni contenuto', 'Trama, qualità, categoria, episodi delle serie e titoli correlati.', detailScreen()),
+  phoneSlide('phone-5', '#DCE7FF', 'Player stabile,<br/>anche in mobilità', 'Decodifica hardware, salto di 10 secondi e riconnessione automatica se la rete cala.', playerScreen()),
+  phoneSlide('phone-6', '#FDF3D3', 'Le tue credenziali<br/>restano sul telefono', 'Account m3u e Xtream cifrati con AES-256-GCM nell’Android Keystore.', accountsScreen()),
+  tvSlide('tv-1', tvHome()),
+  tvSlide('tv-2', tvLive()),
+  tvSlide('tv-3', tvMovies()),
+  tvSlide('tv-4', tvDetail()),
+  featureGraphic(),
+  tvBanner()
+].join('');
+</script>
+</body>
+</html>
