@@ -1,4 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#F7F8FA</color>
+    <!-- Matches the edge colour of the icon artwork so the launcher mask cuts a
+         clean circle or squircle instead of showing the artwork as a square
+         floating on a lighter plate. -->
+    <color name="ic_launcher_background">#000615</color>
 </resources>
