@@ -58,6 +58,27 @@ export type SecurityInfo = {
   twofaEnabled: boolean;
 };
 
+export type TicketStatus = "new" | "open" | "closed";
+
+export type SupportTicket = {
+  id: string;
+  createdAt: number;
+  updatedAt: number;
+  email: string;
+  deviceId: string;
+  topic: string;
+  message: string;
+  status: TicketStatus;
+  lang: string;
+  note: string;
+  license: {
+    status: "active" | "suspended" | "revoked";
+    plan: string;
+    expiresAt: number | null;
+    expired: boolean;
+  } | null;
+};
+
 export type RegistryStats = {
   total: number;
   active: number;
@@ -132,6 +153,16 @@ export const startCheckout = (
 
 export const confirmCheckout = (sessionId: string): Promise<CheckoutResult> =>
   post<CheckoutResult>("/api/checkout/confirm", { sessionId });
+
+/** Sends a contact-form request; it lands in the owner dashboard, not an inbox. */
+export const submitTicket = (input: {
+  email: string;
+  deviceId: string;
+  topic: string;
+  message: string;
+  lang: string;
+}): Promise<{ ok: boolean; id: string }> =>
+  post<{ ok: boolean; id: string }>("/api/support/ticket", input);
 
 /** Folds a typed MAC into the canonical form the registry stores. */
 export function normalizeDeviceId(raw: string): string {

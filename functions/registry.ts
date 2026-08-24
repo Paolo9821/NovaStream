@@ -20,6 +20,42 @@ type LicenseRow = {
   source: string;
 };
 
+/** Lifecycle of a support request as seen in the dashboard. */
+export type TicketStatus = "new" | "open" | "closed";
+
+type TicketRow = {
+  id: string;
+  created_at: number;
+  updated_at: number;
+  email: string;
+  device_id: string;
+  topic: string;
+  message: string;
+  status: string;
+  lang: string;
+  reply_note: string;
+};
+
+export type TicketView = {
+  id: string;
+  createdAt: number;
+  updatedAt: number;
+  email: string;
+  deviceId: string;
+  topic: string;
+  message: string;
+  status: TicketStatus;
+  lang: string;
+  note: string;
+  /** Filled in when the device id matches a licence we already know about. */
+  license: {
+    status: StoredStatus;
+    plan: string;
+    expiresAt: number | null;
+    expired: boolean;
+  } | null;
+};
+
 export type LicenseView = {
   deviceId: string;
   status: StoredStatus;
@@ -44,6 +80,12 @@ const LOCKOUT_MS = 10 * 60 * 1000;
 
 /** Wrong attempts older than this stop counting: a typo last week is not an attack. */
 const FAILURE_WINDOW_MS = 15 * 60 * 1000;
+
+/** Support requests accepted per minute across the whole site, to blunt spam floods. */
+const MAX_TICKETS_PER_MINUTE = 12;
+
+/** Oldest requests are dropped past this, so storage cannot grow without bound. */
+const MAX_TICKETS_KEPT = 500;
 
 function toView(row: LicenseRow): LicenseView {
   const expired = row.expires_at !== null && row.expires_at < Date.now();
@@ -97,6 +139,20 @@ export class Registry extends DurableObject {
       )
     `);
     this.ctx.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS tickets (
+        id TEXT PRIMARY KEY,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        email TEXT NOT NULL DEFAULT '',
+        device_id TEXT NOT NULL DEFAULT '',
+        topic TEXT NOT NULL DEFAULT 'other',
+        message TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'new',
+        lang TEXT NOT NULL DEFAULT '',
+        reply_note TEXT NOT NULL DEFAULT ''
+      )
+    `);
+    this.ctx.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS orders (
         order_id TEXT PRIMARY KEY,
         device_id TEXT NOT NULL,
@@ -142,6 +198,17 @@ export class Registry extends DurableObject {
         return Response.json({ ok: true });
       case "/login-guard":
         return Response.json(this.loginGuard(String(body.action ?? "check")));
+      case "/ticket-create":
+        return Response.json(this.createTicket(body));
+      case "/ticket-list":
+        return Response.json({ tickets: this.tickets(), openCount: this.openTicketCount() });
+      case "/ticket-status":
+        return Response.json(
+          this.setTicketStatus(String(body.id ?? ""), String(body.status ?? "") as TicketStatus, String(body.note ?? "")),
+        );
+      case "/ticket-remove":
+        this.ctx.storage.sql.exec("DELETE FROM tickets WHERE id = ?", String(body.id ?? ""));
+        return Response.json({ ok: true });
       default:
         return new Response("not found", { status: 404 });
     }
@@ -198,6 +265,93 @@ export class Registry extends DurableObject {
       return { blocked: true, retryInSeconds: Math.ceil((lockedUntil - now) / 1000), failures };
     }
     return { blocked: false, retryInSeconds: 0, failures };
+  }
+
+  /**
+   * Stores one support request. Everything arrives already trimmed and length
+   * limited by the Worker; here we only guard against flooding.
+   */
+  private createTicket(body: Record<string, unknown>): { ok: boolean; id?: string; error?: string } {
+    const now = Date.now();
+    const recent = this.ctx.storage.sql
+      .exec<{ n: number }>("SELECT COUNT(*) AS n FROM tickets WHERE created_at > ?", now - 60_000)
+      .toArray()[0]?.n ?? 0;
+    if (recent >= MAX_TICKETS_PER_MINUTE) {
+      return { ok: false, error: "too many requests" };
+    }
+
+    const id = `t_${now.toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+    this.ctx.storage.sql.exec(
+      `INSERT INTO tickets (id, created_at, updated_at, email, device_id, topic, message, status, lang, reply_note)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'new', ?, '')`,
+      id,
+      now,
+      now,
+      String(body.email ?? ""),
+      String(body.deviceId ?? ""),
+      String(body.topic ?? "other"),
+      String(body.message ?? ""),
+      String(body.lang ?? ""),
+    );
+
+    // Keep the table bounded: closed and oldest requests fall off the end.
+    this.ctx.storage.sql.exec(
+      `DELETE FROM tickets WHERE id IN (
+         SELECT id FROM tickets ORDER BY created_at DESC LIMIT -1 OFFSET ?
+       )`,
+      MAX_TICKETS_KEPT,
+    );
+    return { ok: true, id };
+  }
+
+  private openTicketCount(): number {
+    return (
+      this.ctx.storage.sql
+        .exec<{ n: number }>("SELECT COUNT(*) AS n FROM tickets WHERE status <> 'closed'")
+        .toArray()[0]?.n ?? 0
+    );
+  }
+
+  /** Newest first, each one already matched against the licence registry. */
+  private tickets(): TicketView[] {
+    return this.ctx.storage.sql
+      .exec<TicketRow>("SELECT * FROM tickets ORDER BY created_at DESC LIMIT 500")
+      .toArray()
+      .map((row) => {
+        const license = row.device_id ? this.find(row.device_id) : null;
+        return {
+          id: row.id,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+          email: row.email,
+          deviceId: row.device_id,
+          topic: row.topic,
+          message: row.message,
+          status: row.status as TicketStatus,
+          lang: row.lang,
+          note: row.reply_note,
+          license: license
+            ? {
+                status: license.status as StoredStatus,
+                plan: license.plan,
+                expiresAt: license.expires_at,
+                expired: license.expires_at !== null && license.expires_at < Date.now(),
+              }
+            : null,
+        };
+      });
+  }
+
+  private setTicketStatus(id: string, status: TicketStatus, note: string): { ok: boolean } {
+    if (status !== "new" && status !== "open" && status !== "closed") return { ok: false };
+    this.ctx.storage.sql.exec(
+      "UPDATE tickets SET status = ?, reply_note = ?, updated_at = ? WHERE id = ?",
+      status,
+      note,
+      Date.now(),
+      id,
+    );
+    return { ok: true };
   }
 
   private find(deviceId: string): LicenseRow | null {

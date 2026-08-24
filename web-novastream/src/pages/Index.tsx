@@ -7,6 +7,7 @@ import {
   Check,
   CreditCard,
   Infinity as InfinityIcon,
+  LifeBuoy,
   Loader2,
   LockKeyhole,
   RefreshCw,
@@ -145,6 +146,13 @@ export default function Index() {
         </div>
         <div className="flex items-center gap-2">
           <LanguagePicker />
+          <Link
+            to="/assistenza"
+            className="flex items-center gap-1.5 rounded-full border border-border/70 px-3.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-primary/50 hover:text-foreground"
+          >
+            <LifeBuoy className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">{t("nav.support")}</span>
+          </Link>
           <Link
             to="/dashboard"
             className="flex items-center gap-1.5 rounded-full border border-border/70 px-3.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-primary/50 hover:text-foreground"
@@ -299,13 +307,68 @@ export default function Index() {
 
         <HowItWorks />
         <StatusChecker />
+        <HelpBanner />
         <LanguageSection />
       </main>
 
-      <footer className="relative border-t border-border/60 py-8 text-center text-xs text-muted-foreground">
-        {t("footer")}
-      </footer>
+      <SiteFooter />
     </div>
+  );
+}
+
+/** Sends anyone with a problem to the contact form instead of a dead end. */
+function HelpBanner() {
+  const { t } = useI18n();
+  return (
+    <section className="mt-20">
+      <div className="panel relative overflow-hidden p-6 sm:p-8">
+        <div
+          className="pointer-events-none absolute -right-16 -top-16 h-52 w-52 rounded-full bg-primary/15 blur-3xl"
+          aria-hidden
+        />
+        <div className="relative flex flex-col items-start gap-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3.5">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-accent/15 text-accent">
+              <LifeBuoy className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold">{t("help.title")}</h2>
+              <p className="mt-1.5 max-w-lg text-sm leading-relaxed text-muted-foreground">
+                {t("help.body")}
+              </p>
+            </div>
+          </div>
+          <Button asChild className="h-12 shrink-0 gap-2 px-6 text-sm font-semibold">
+            <Link to="/assistenza">
+              <LifeBuoy className="h-4 w-4" />
+              {t("help.button")}
+            </Link>
+          </Button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function SiteFooter() {
+  const { t } = useI18n();
+  return (
+    <footer className="relative border-t border-border/60 py-8">
+      <div className="mx-auto flex max-w-5xl flex-col items-center gap-4 px-5 text-xs text-muted-foreground sm:flex-row sm:justify-between">
+        <span>{t("footer")}</span>
+        <nav className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
+          <Link to="/termini" className="transition hover:text-foreground">
+            {t("legal.terms.title")}
+          </Link>
+          <Link to="/privacy" className="transition hover:text-foreground">
+            {t("legal.privacy.title")}
+          </Link>
+          <Link to="/assistenza" className="transition hover:text-foreground">
+            {t("footer.support")}
+          </Link>
+        </nav>
+      </div>
+    </footer>
   );
 }
 

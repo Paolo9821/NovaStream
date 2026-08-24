@@ -39,6 +39,9 @@ const TWOFA_SECRET = "twofa_secret";
 const TWOFA_PENDING = "twofa_pending";
 const TWOFA_LAST_STEP = "twofa_last_step";
 
+/** Deliberately loose: enough to catch typos, not to police exotic addresses. */
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
 /** Where the app sends customers to buy. Overridable without an app update. */
 const DEFAULT_STORE_URL = "https://novastream.rork.app";
 
@@ -140,6 +143,27 @@ export default {
         if (!deviceId) return fail("deviceId required");
         const result = await registryJson<Record<string, unknown>>(env, "/status", { deviceId });
         return json(result);
+      }
+
+      // ---- Support requests ------------------------------------------------
+      // Public: the contact form on the store writes straight into the
+      // dashboard, so nothing depends on an inbox being watched.
+      if (path === "/api/support/ticket" && request.method === "POST") {
+        const body = await readBody(request);
+        const email = String(body.email ?? "").trim().slice(0, 160);
+        const message = String(body.message ?? "").trim().slice(0, 4000);
+        const topic = String(body.topic ?? "other").trim().slice(0, 40);
+        const lang = String(body.lang ?? "").trim().slice(0, 5);
+        const deviceId = normalizeDeviceId(String(body.deviceId ?? "")).slice(0, 32);
+        if (!EMAIL_RE.test(email)) return fail("invalid email");
+        if (message.length < 10) return fail("message too short");
+        const created = await registryJson<{ ok: boolean; id?: string; error?: string }>(
+          env,
+          "/ticket-create",
+          { email, message, topic, lang, deviceId },
+        );
+        if (!created.ok) return fail(created.error ?? "could not save request", 429);
+        return json({ ok: true, id: created.id });
       }
 
       // ---- Checkout ------------------------------------------------------
@@ -284,6 +308,25 @@ export default {
           await putSetting(env, TWOFA_SECRET, "");
           await putSetting(env, TWOFA_PENDING, "");
           return json({ ok: true, twofaEnabled: false });
+        }
+
+        // ---- Support inbox ------------------------------------------------
+        if (path === "/api/admin/tickets") {
+          return json(await registryJson(env, "/ticket-list", {}));
+        }
+
+        if (path === "/api/admin/ticket-status") {
+          return json(
+            await registryJson(env, "/ticket-status", {
+              id: String(body.id ?? ""),
+              status: String(body.status ?? ""),
+              note: String(body.note ?? ""),
+            }),
+          );
+        }
+
+        if (path === "/api/admin/ticket-remove") {
+          return json(await registryJson(env, "/ticket-remove", { id: String(body.id ?? "") }));
         }
 
         if (path === "/api/admin/licenses") {
