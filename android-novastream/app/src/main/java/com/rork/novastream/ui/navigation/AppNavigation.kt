@@ -1,6 +1,10 @@
 package com.rork.novastream.ui.navigation
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -9,6 +13,7 @@ import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.LiveTv
 import androidx.compose.material.icons.rounded.Movie
 import androidx.compose.material.icons.rounded.Tv
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -17,11 +22,17 @@ import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -32,6 +43,8 @@ import androidx.navigation.navArgument
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rork.novastream.data.local.DeviceProfile
 import com.rork.novastream.data.model.MediaKind
+import com.rork.novastream.ui.components.RequestInitialFocus
+import com.rork.novastream.ui.components.rememberFocusRequester
 import com.rork.novastream.ui.i18n.LocalStrings
 import com.rork.novastream.ui.screens.AccountsScreen
 import com.rork.novastream.ui.screens.CatalogScreen
@@ -75,6 +88,24 @@ fun AppNavigation(viewModel: AppViewModel) {
     val configuration = LocalConfiguration.current
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val useRail = settings.deviceProfile == DeviceProfile.TV || configuration.screenWidthDp >= 720
+
+    // Back on a remote sits right next to the D-pad and is easy to hit by
+    // mistake. On the main menu there is nothing left to go back to, so the
+    // press would close the app outright — ask first.
+    var confirmExit by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val atRootOfApp = isTopLevel && navController.previousBackStackEntry == null
+    BackHandler(enabled = atRootOfApp && !confirmExit) { confirmExit = true }
+
+    if (confirmExit) {
+        ExitConfirmDialog(
+            onDismiss = { confirmExit = false },
+            onConfirm = {
+                confirmExit = false
+                context.findActivity()?.finish()
+            },
+        )
+    }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -205,6 +236,42 @@ fun AppNavigation(viewModel: AppViewModel) {
             }
         }
     }
+}
+
+/**
+ * Asks before leaving the app. The "stay" choice takes focus on its own, so an
+ * accidental second press of OK on a remote keeps the user inside NovaStream
+ * instead of confirming the exit.
+ */
+@Composable
+private fun ExitConfirmDialog(
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    val strings = LocalStrings.current
+    val stayFocus = rememberFocusRequester()
+    RequestInitialFocus(stayFocus)
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(strings.exitTitle) },
+        text = { Text(strings.exitBody) },
+        confirmButton = {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.focusRequester(stayFocus),
+            ) { Text(strings.exitStay) }
+        },
+        dismissButton = {
+            TextButton(onClick = onConfirm) { Text(strings.exitConfirm) }
+        },
+    )
+}
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }
 
 private fun NavHostController.navigateToTab(route: String) {

@@ -24,10 +24,13 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.android.Android
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.http.encodeURLParameter
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
@@ -86,6 +89,9 @@ class IptvRepository(context: Context) {
     private val _epgState = MutableStateFlow<SyncState>(SyncState.Idle)
     val epgState: StateFlow<SyncState> = _epgState.asStateFlow()
 
+    /** Background worker for disk work that must never run on the UI thread. */
+    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     init {
         restore()
     }
@@ -94,6 +100,8 @@ class IptvRepository(context: Context) {
         get() = _accounts.value.firstOrNull { it.id == _activeAccountId.value }
 
     private fun restore() {
+        // Accounts, favorites and progress are a few kilobytes: reading them
+        // inline keeps the first frame correct.
         _accounts.value = secureStore.getString(KEY_ACCOUNTS)
             ?.let { runCatching { json.decodeFromString<List<PlaylistAccount>>(it) }.getOrNull() }
             .orEmpty()
@@ -102,11 +110,16 @@ class IptvRepository(context: Context) {
             ?.let { runCatching { json.decodeFromString<List<WatchProgress>>(it) }.getOrNull() }
             .orEmpty()
         _favorites.value = secureStore.getString(KEY_FAVORITES)
-            ?.let { runCatching { json.decodeFromString<Set<String>>(it) }.getOrNull() }
+            .let { stored -> stored?.let { runCatching { json.decodeFromString<Set<String>>(it) }.getOrNull() } }
             .orEmpty()
-        _activeAccountId.value?.let { id ->
-            readVault<Catalog>(catalogFile(id))?.let { _catalog.value = it }
-            readVault<EpgGuide>(epgFile(id))?.let { _epg.value = it }
+
+        // The catalog and the guide are the two big files. Decrypting and
+        // parsing them takes seconds on a TV box, so they load in the
+        // background and appear as soon as they are ready.
+        val activeId = _activeAccountId.value ?: return
+        ioScope.launch {
+            readVault<Catalog>(catalogFile(activeId))?.let { _catalog.value = it }
+            readVault<EpgGuide>(epgFile(activeId))?.let { _epg.value = it }
         }
     }
 
@@ -232,22 +245,35 @@ class IptvRepository(context: Context) {
         }
 
         result.onSuccess { entries ->
-            val catalog = Catalog(
-                accountId = account.id,
-                entries = entries,
-                syncedAtEpochMs = System.currentTimeMillis(),
-            )
-            _catalog.value = catalog
-            writeVault(catalogFile(account.id), catalog)
-            _accounts.value = _accounts.value.map {
-                if (it.id == account.id) it.copy(lastSyncEpochMs = catalog.syncedAtEpochMs) else it
+            // Encrypting a large catalog takes seconds. It has to stay off the
+            // UI thread, otherwise the screen freezes exactly when the download
+            // ends and the progress bar stops moving.
+            withContext(Dispatchers.IO) {
+                val catalog = Catalog(
+                    accountId = account.id,
+                    entries = entries,
+                    syncedAtEpochMs = System.currentTimeMillis(),
+                )
+                var live = 0
+                var movies = 0
+                var series = 0
+                entries.forEach { entry ->
+                    when (entry.kind) {
+                        MediaKind.LIVE -> live++
+                        MediaKind.MOVIE -> movies++
+                        MediaKind.SERIES -> series++
+                    }
+                }
+
+                _catalog.value = catalog
+                _syncState.value = SyncState.Running("Salvo il catalogo…")
+                writeVault(catalogFile(account.id), catalog)
+                _accounts.value = _accounts.value.map {
+                    if (it.id == account.id) it.copy(lastSyncEpochMs = catalog.syncedAtEpochMs) else it
+                }
+                persistAccounts()
+                _syncState.value = SyncState.Success(live = live, movies = movies, series = series)
             }
-            persistAccounts()
-            _syncState.value = SyncState.Success(
-                live = entries.count { it.kind == MediaKind.LIVE },
-                movies = entries.count { it.kind == MediaKind.MOVIE },
-                series = entries.count { it.kind == MediaKind.SERIES },
-            )
         }.onFailure { error ->
             Log.w(TAG, "Import della playlist non riuscito")
             _syncState.value = SyncState.Failed(
@@ -324,7 +350,7 @@ class IptvRepository(context: Context) {
                 return@onSuccess
             }
             _epg.value = guide
-            writeVault(epgFile(account.id), guide)
+            withContext(Dispatchers.IO) { writeVault(epgFile(account.id), guide) }
             _epgState.value = SyncState.Success(guide.channelCount, guide.programmeCount, 0)
         }.onFailure { error ->
             Log.w(TAG, "Download della guida EPG non riuscito")

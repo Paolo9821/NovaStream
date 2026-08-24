@@ -291,6 +291,11 @@ data class ExtraStrings(
     val crashCopied: String = "Report copied.",
     val crashSupportHint: String = "Paste it at novastream.rork.app/assistenza and it will be fixed.",
     val crashContinue: String = "Continue",
+
+    val exitTitle: String = "Close NovaStream?",
+    val exitBody: String = "You pressed Back on the main menu. Leave the app?",
+    val exitStay: String = "Stay in the app",
+    val exitConfirm: String = "Close app",
 )
 
 /**
@@ -557,6 +562,10 @@ class Strings(
     val crashCopied: String get() = extra.crashCopied
     val crashSupportHint: String get() = extra.crashSupportHint
     val crashContinue: String get() = extra.crashContinue
+    val exitTitle: String get() = extra.exitTitle
+    val exitBody: String get() = extra.exitBody
+    val exitStay: String get() = extra.exitStay
+    val exitConfirm: String get() = extra.exitConfirm
 }
 
 private val English = Strings()
@@ -814,6 +823,10 @@ private val Italian = Strings(
         crashCopied = "Rapporto copiato.",
         crashSupportHint = "Incollalo su novastream.rork.app/assistenza e verrà risolto.",
         crashContinue = "Continua",
+        exitTitle = "Chiudere NovaStream?",
+        exitBody = "Hai premuto Indietro nel menu principale. Vuoi uscire dall'app?",
+        exitStay = "Resta nell'app",
+        exitConfirm = "Chiudi l'app",
     ),
 )
 
@@ -1062,6 +1075,10 @@ private val Spanish = Strings(
         crashCopied = "Informe copiado.",
         crashSupportHint = "Pégalo en novastream.rork.app/assistenza y lo solucionaremos.",
         crashContinue = "Continuar",
+        exitTitle = "¿Cerrar NovaStream?",
+        exitBody = "Has pulsado Atrás en el menú principal. ¿Quieres salir de la app?",
+        exitStay = "Seguir en la app",
+        exitConfirm = "Cerrar la app",
     ),
 )
 
@@ -1310,6 +1327,10 @@ private val French = Strings(
         crashCopied = "Rapport copié.",
         crashSupportHint = "Collez-le sur novastream.rork.app/assistenza et ce sera corrigé.",
         crashContinue = "Continuer",
+        exitTitle = "Fermer NovaStream ?",
+        exitBody = "Vous avez appuyé sur Retour dans le menu principal. Quitter l'application ?",
+        exitStay = "Rester dans l'application",
+        exitConfirm = "Fermer l'application",
     ),
 )
 
@@ -1558,6 +1579,10 @@ private val German = Strings(
         crashCopied = "Bericht kopiert.",
         crashSupportHint = "Fügen Sie ihn auf novastream.rork.app/assistenza ein, dann wird es behoben.",
         crashContinue = "Weiter",
+        exitTitle = "NovaStream schließen?",
+        exitBody = "Sie haben im Hauptmenü Zurück gedrückt. Die App verlassen?",
+        exitStay = "In der App bleiben",
+        exitConfirm = "App schließen",
     ),
 )
 
@@ -1806,6 +1831,10 @@ private val Portuguese = Strings(
         crashCopied = "Relatório copiado.",
         crashSupportHint = "Cole-o em novastream.rork.app/assistenza e será resolvido.",
         crashContinue = "Continuar",
+        exitTitle = "Fechar o NovaStream?",
+        exitBody = "Carregou em Voltar no menu principal. Quer sair da app?",
+        exitStay = "Ficar na app",
+        exitConfirm = "Fechar a app",
     ),
 )
 
@@ -2054,6 +2083,10 @@ private val Romanian = Strings(
         crashCopied = "Raport copiat.",
         crashSupportHint = "Lipește-l pe novastream.rork.app/assistenza și va fi rezolvat.",
         crashContinue = "Continuă",
+        exitTitle = "Închizi NovaStream?",
+        exitBody = "Ai apăsat Înapoi în meniul principal. Ieși din aplicație?",
+        exitStay = "Rămân în aplicație",
+        exitConfirm = "Închide aplicația",
     ),
 )
 
@@ -2302,6 +2335,10 @@ private val Turkish = Strings(
         crashCopied = "Rapor kopyalandı.",
         crashSupportHint = "novastream.rork.app/assistenza adresine yapıştırın, sorun giderilsin.",
         crashContinue = "Devam",
+        exitTitle = "NovaStream kapatılsın mı?",
+        exitBody = "Ana menüde Geri tuşuna bastınız. Uygulamadan çıkılsın mı?",
+        exitStay = "Uygulamada kal",
+        exitConfirm = "Uygulamayı kapat",
     ),
 )
 
