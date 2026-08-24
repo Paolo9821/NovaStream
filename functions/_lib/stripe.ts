@@ -92,6 +92,8 @@ export async function createCheckoutSession(
     "line_items[0][price_data][unit_amount]": String(plan.priceCents),
     "line_items[0][price_data][product_data][name]": `NovaStream · ${plan.label}`,
     "line_items[0][price_data][product_data][description]": `Licenza per il dispositivo ${deviceId}`,
+    // Required by Stripe Managed Payments: prewritten software downloaded for personal use.
+    "line_items[0][price_data][product_data][tax_code]": "txcd_10202000",
     client_reference_id: deviceId,
     "metadata[deviceId]": deviceId,
     "metadata[plan]": planId,
