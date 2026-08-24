@@ -21,6 +21,7 @@ import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.DeleteSweep
 import androidx.compose.material.icons.rounded.NetworkCheck
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Smartphone
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Tv
@@ -84,7 +85,6 @@ import kotlin.math.roundToInt
 fun SettingsScreen(
     viewModel: AppViewModel,
     onBack: () -> Unit,
-    onOpenAdmin: () -> Unit = {},
 ) {
     val strings = LocalStrings.current
     val settings by viewModel.settings.collectAsStateWithLifecycle()
@@ -99,10 +99,8 @@ fun SettingsScreen(
     val accounts by viewModel.accounts.collectAsStateWithLifecycle()
     val license by viewModel.license.collectAsStateWithLifecycle()
     val accents = LocalNovaAccents.current
-    val sales by viewModel.sales.collectAsStateWithLifecycle()
+    val storeUrl by viewModel.storeUrl.collectAsStateWithLifecycle()
 
-    var activationVisible by remember { mutableStateOf(false) }
-    var adminTaps by remember { mutableIntStateOf(0) }
     var pinDialogOpen by remember { mutableStateOf(false) }
     var groupsDialogOpen by remember { mutableStateOf(false) }
     var wipeDialogOpen by remember { mutableStateOf(false) }
@@ -173,7 +171,11 @@ fun SettingsScreen(
                     val status = license.status
                     Text(
                         text = when (status) {
-                            is LicenseStatus.Licensed -> strings.licenseStatusLicensed
+                            is LicenseStatus.Licensed -> when (val until = status.expiresAtMs) {
+                                null -> strings.licenseLifetime
+                                else -> strings.licenseActiveUntil
+                                    .format(licenseDate(until, settings.language))
+                            }
                             is LicenseStatus.Trial ->
                                 strings.licenseStatusTrial.format(status.daysRemaining)
                             is LicenseStatus.Expired -> strings.licenseExpiredTitle
@@ -190,31 +192,31 @@ fun SettingsScreen(
                             else -> MaterialTheme.colorScheme.onSurfaceVariant
                         },
                     )
-                    if (viewModel.onlineLicensing) {
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            text = when {
-                                license.verifying -> strings.licenseChecking
-                                license.lastVerifiedAtMs > 0L -> strings.licenseLastCheck
-                                    .format(licenseDate(license.lastVerifiedAtMs, settings.language))
-                                else -> strings.licenseNeverChecked
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = when {
+                            license.verifying -> strings.licenseChecking
+                            license.lastVerifiedAtMs > 0L -> strings.licenseLastCheck
+                                .format(licenseDate(license.lastVerifiedAtMs, settings.language))
+                            else -> strings.licenseNeverChecked
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                     Spacer(Modifier.height(12.dp))
                     DeviceIdentityCard(identity = license.identity)
-                    if (status !is LicenseStatus.Licensed) {
-                        Spacer(Modifier.height(12.dp))
-                        Button(
-                            onClick = { activationVisible = true },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Icon(Icons.Rounded.VpnKey, contentDescription = null)
-                            Spacer(Modifier.width(8.dp))
-                            Text(strings.enterActivationCode)
-                        }
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedButton(
+                        onClick = { viewModel.syncLicense(force = true) },
+                        enabled = !license.verifying,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(Icons.Rounded.Refresh, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            if (license.verifying) strings.licenseChecking
+                            else strings.alreadyPaidCheck,
+                        )
                     }
                 }
             }
@@ -539,8 +541,8 @@ fun SettingsScreen(
             item("buy") {
                 if (license.status !is LicenseStatus.Licensed) {
                     BuyLicenseCard(
-                        sales = sales,
                         identity = license.identity,
+                        storeUrl = storeUrl,
                     )
                 }
             }
@@ -570,7 +572,6 @@ fun SettingsScreen(
             }
 
             item("version") {
-                // Seven taps open the owner-only license manager.
                 Text(
                     text = strings.appVersionLine,
                     style = MaterialTheme.typography.bodySmall,
@@ -578,26 +579,10 @@ fun SettingsScreen(
                     textAlign = TextAlign.Center,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .clickable {
-                            adminTaps += 1
-                            if (adminTaps >= 7) {
-                                adminTaps = 0
-                                onOpenAdmin()
-                            }
-                        }
                         .padding(vertical = 12.dp),
                 )
             }
         }
-    }
-
-    if (activationVisible) {
-        ActivationSheet(
-            identity = license.identity,
-            onDismiss = { activationVisible = false },
-            onActivate = { code -> viewModel.activateLicense(code) },
-        )
     }
 
     if (pinDialogOpen) {

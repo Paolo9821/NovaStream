@@ -36,6 +36,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -80,7 +81,8 @@ fun HomeScreen(
     val unlocked by viewModel.parentalUnlocked.collectAsStateWithLifecycle()
     val favorites by viewModel.favorites.collectAsStateWithLifecycle()
     val license by viewModel.license.collectAsStateWithLifecycle()
-    var activationVisible by remember { mutableStateOf(false) }
+    val storeUrl by viewModel.storeUrl.collectAsStateWithLifecycle()
+    val context = LocalContext.current
 
     val active = remember(accounts, activeId) { accounts.firstOrNull { it.id == activeId } }
     val counts = remember(catalog, settings, unlocked) {
@@ -117,7 +119,7 @@ fun HomeScreen(
                 TrialBanner(
                     trial = trial,
                     language = settings.language,
-                    onActivate = { activationVisible = true },
+                    onActivate = { openStore(context, storeUrl, license.identity.deviceId) },
                 )
             }
         }
@@ -262,13 +264,6 @@ fun HomeScreen(
         }
     }
 
-    if (activationVisible) {
-        ActivationSheet(
-            identity = license.identity,
-            onDismiss = { activationVisible = false },
-            onActivate = { code -> viewModel.activateLicense(code) },
-        )
-    }
 }
 
 @Composable

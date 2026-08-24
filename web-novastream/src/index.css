@@ -1,0 +1,143 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* NovaStream storefront — deep night console with an electric signal-blue accent. */
+
+@layer base {
+  :root {
+    --background: 222 40% 4%;
+    --foreground: 210 32% 96%;
+
+    --card: 221 32% 8%;
+    --card-foreground: 210 32% 96%;
+
+    --popover: 221 34% 7%;
+    --popover-foreground: 210 32% 96%;
+
+    --primary: 221 100% 62%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 24% 13%;
+    --secondary-foreground: 210 28% 90%;
+
+    --muted: 220 22% 12%;
+    --muted-foreground: 215 16% 62%;
+
+    --accent: 165 78% 48%;
+    --accent-foreground: 222 40% 5%;
+
+    --destructive: 358 74% 56%;
+    --destructive-foreground: 0 0% 100%;
+
+    --warning: 43 92% 56%;
+
+    --border: 220 22% 16%;
+    --input: 220 22% 16%;
+    --ring: 221 100% 62%;
+
+    --radius: 0.9rem;
+
+    --sidebar-background: 221 34% 7%;
+    --sidebar-foreground: 210 28% 90%;
+    --sidebar-primary: 221 100% 62%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 220 24% 13%;
+    --sidebar-accent-foreground: 210 28% 90%;
+    --sidebar-border: 220 22% 16%;
+    --sidebar-ring: 221 100% 62%;
+  }
+
+  .dark {
+    --background: 222 40% 4%;
+    --foreground: 210 32% 96%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: "Inter", system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    background-image:
+      radial-gradient(70rem 40rem at 12% -10%, hsl(221 100% 62% / 0.16), transparent 60%),
+      radial-gradient(52rem 34rem at 96% 4%, hsl(165 78% 48% / 0.1), transparent 62%),
+      radial-gradient(40rem 30rem at 50% 110%, hsl(221 100% 62% / 0.08), transparent 65%);
+    background-attachment: fixed;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: "Bricolage Grotesque", "Inter", sans-serif;
+    letter-spacing: -0.025em;
+  }
+}
+
+@layer components {
+  .mono {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+  }
+
+  /* Hairline grid that gives the dark canvas some texture behind the hero. */
+  .grid-veil {
+    background-image:
+      linear-gradient(to right, hsl(210 32% 96% / 0.045) 1px, transparent 1px),
+      linear-gradient(to bottom, hsl(210 32% 96% / 0.045) 1px, transparent 1px);
+    background-size: 56px 56px;
+    mask-image: radial-gradient(60rem 40rem at 50% 0%, black, transparent 78%);
+  }
+
+  .panel {
+    @apply rounded-2xl border border-border/80 bg-card/70 backdrop-blur-xl;
+    box-shadow:
+      0 1px 0 0 hsl(210 32% 96% / 0.05) inset,
+      0 24px 60px -30px hsl(222 60% 2% / 0.9);
+  }
+
+  .glow-ring {
+    box-shadow:
+      0 0 0 1px hsl(221 100% 62% / 0.5),
+      0 0 40px -8px hsl(221 100% 62% / 0.55);
+  }
+}
+
+@keyframes pulse-dot {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.82);
+  }
+}
+
+.animate-pulse-dot {
+  animation: pulse-dot 1.8s ease-in-out infinite;
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-rise {
+  animation: rise-in 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}

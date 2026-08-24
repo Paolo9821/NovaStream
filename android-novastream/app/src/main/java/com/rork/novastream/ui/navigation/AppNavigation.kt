@@ -34,7 +34,6 @@ import com.rork.novastream.data.local.DeviceProfile
 import com.rork.novastream.data.model.MediaKind
 import com.rork.novastream.ui.i18n.LocalStrings
 import com.rork.novastream.ui.screens.AccountsScreen
-import com.rork.novastream.ui.screens.AdminScreen
 import com.rork.novastream.ui.screens.CatalogScreen
 import com.rork.novastream.ui.screens.DetailScreen
 import com.rork.novastream.ui.screens.HomeScreen
@@ -49,7 +48,6 @@ private const val ROUTE_MOVIES = "movies"
 private const val ROUTE_SERIES = "series"
 private const val ROUTE_ACCOUNTS = "accounts"
 private const val ROUTE_SETTINGS = "settings"
-private const val ROUTE_ADMIN = "admin"
 private const val ROUTE_DETAIL = "detail/{entryId}"
 private const val ROUTE_PLAYER = "player/{entryId}/{streamUrl}"
 
@@ -171,12 +169,7 @@ fun AppNavigation(viewModel: AppViewModel) {
                     SettingsScreen(
                         viewModel = viewModel,
                         onBack = { navController.popBackStack() },
-                        onOpenAdmin = { navController.navigate(ROUTE_ADMIN) },
                     )
-                }
-
-                composable(ROUTE_ADMIN) {
-                    AdminScreen(viewModel = viewModel, onBack = { navController.popBackStack() })
                 }
 
                 composable(

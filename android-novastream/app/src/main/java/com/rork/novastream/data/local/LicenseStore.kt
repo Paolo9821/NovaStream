@@ -1,33 +1,31 @@
 package com.rork.novastream.data.local
 
 import android.content.Context
+import com.rork.novastream.data.remote.RemoteLicense
+import com.rork.novastream.data.remote.RemoteStatus
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import java.security.MessageDigest
 import java.util.concurrent.TimeUnit
 import kotlin.math.ceil
 
-/** How long the app stays fully usable before a license is required. */
+/** How long the app stays fully usable before a licence is required. */
 const val TRIAL_DAYS: Int = 7
 
-/** How long a licensed device keeps working without reaching the license server. */
+/** How long a paid device keeps working without reaching the licence server. */
 const val ONLINE_GRACE_DAYS: Int = 14
 
-/** Why a licensed device was locked again. */
+/** Why a paid device was locked again. */
 enum class BlockReason {
-    /** The owner revoked this license for good. */
+    /** The owner revoked this licence for good. */
     REVOKED,
 
-    /** The owner paused this license; it can be reactivated remotely. */
+    /** The owner paused this licence; it can be reactivated remotely. */
     SUSPENDED,
 
-    /** No contact with the license server for longer than the grace window. */
+    /** No contact with the licence server for longer than the grace window. */
     UNVERIFIED,
 }
-
-/** Last answer received from the license server for this device. */
-enum class RemoteVerdict { UNKNOWN, ACTIVE, SUSPENDED, REVOKED }
 
 sealed interface LicenseStatus {
     /** Inside the free window. [daysRemaining] is always at least 1 while valid. */
@@ -37,13 +35,13 @@ sealed interface LicenseStatus {
         val usedFraction: Float,
     ) : LicenseStatus
 
-    /** A valid activation code for this exact device was entered. */
-    data object Licensed : LicenseStatus
+    /** A purchase is registered for this device. [expiresAtMs] is null for lifetime. */
+    data class Licensed(val expiresAtMs: Long? = null) : LicenseStatus
 
-    /** Trial is over and no valid license is bound to this device. */
-    data class Expired(val expiredAtMs: Long) : LicenseStatus
+    /** Trial is over, or the paid period ran out. A purchase unlocks the app. */
+    data class Expired(val expiredAtMs: Long, val wasPaid: Boolean = false) : LicenseStatus
 
-    /** The code is valid locally but the server refused it, or could not be reached. */
+    /** The server refused this device, or could not be reached for too long. */
     data class Blocked(val reason: BlockReason, val note: String = "") : LicenseStatus
 }
 
@@ -51,52 +49,18 @@ data class LicenseState(
     val termsAccepted: Boolean = false,
     val status: LicenseStatus = LicenseStatus.Trial(TRIAL_DAYS, 0L, 0f),
     val identity: DeviceIdentity,
-    /** When the license server last answered. 0 while it never did. */
+    /** When the licence server last answered. 0 while it never did. */
     val lastVerifiedAtMs: Long = 0L,
     /** True while a verification call is in flight. */
     val verifying: Boolean = false,
 )
 
 /**
- * Derives and verifies activation codes. A code is a pure function of the device
- * identifier, so it unlocks that single device and nothing else — copying it to
- * another install can never validate.
- */
-object LicenseCodes {
-
-    /** Shown in the admin panel so the owner knows how codes are derived. */
-    const val SALT_PREVIEW: String = "novastream-license::"
-
-    private const val ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-    private const val GROUP = 4
-    private const val LENGTH = 16
-
-    /** The one code that activates the device with this identifier. */
-    fun forDevice(deviceId: String): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-            .digest("$SALT_PREVIEW$deviceId".toByteArray(Charsets.UTF_8))
-        val raw = (0 until LENGTH)
-            .map { ALPHABET[(digest[it].toInt() and 0xFF) % ALPHABET.length] }
-            .joinToString("")
-        return raw.chunked(GROUP).joinToString("-")
-    }
-
-    fun matches(deviceId: String, input: String): Boolean =
-        normalize(input) == normalize(forDevice(deviceId))
-
-    /** Keeps only the significant characters so dashes and case never matter. */
-    fun normalize(input: String): String =
-        input.uppercase().filter { it.isLetterOrDigit() }
-
-    /** Re-inserts the dashes while the user is typing. */
-    fun format(input: String): String =
-        normalize(input).take(LENGTH).chunked(GROUP).joinToString("-")
-}
-
-/**
- * Owns the first-launch terms flag, the trial clock and the device-bound license.
- * The trial record is sealed with [SecureStore] and stamped with the device id, so
- * clearing preferences or restoring a backup on other hardware cannot extend it.
+ * Owns the first-launch terms flag, the trial clock, and the cached answer from
+ * the licence server. There is no local activation code: a device is unlocked
+ * only because the server says a payment exists for it. The cached answer is
+ * sealed with [SecureStore] and stamped with the device id, so copying
+ * preferences to other hardware unlocks nothing.
  */
 class LicenseStore(context: Context, private val secureStore: SecureStore) {
 
@@ -105,13 +69,8 @@ class LicenseStore(context: Context, private val secureStore: SecureStore) {
 
     val identity: DeviceIdentity = DeviceIdentityResolver.resolve(context)
 
-    /**
-     * Turned on by the view model when Firebase keys are present. Without it the
-     * app behaves exactly as before: offline codes, no remote enforcement.
-     */
-    var onlineEnforcement: Boolean = false
-
     private var verifying: Boolean = false
+    private var lastAttemptMs: Long = 0L
 
     private val _state = MutableStateFlow(evaluate())
     val state: StateFlow<LicenseState> = _state.asStateFlow()
@@ -128,32 +87,38 @@ class LicenseStore(context: Context, private val secureStore: SecureStore) {
         refresh()
     }
 
-    /** Returns true when the code belongs to this device and was stored. */
-    fun activate(code: String): Boolean {
-        if (!LicenseCodes.matches(identity.deviceId, code)) return false
-        secureStore.putString(KEY_LICENSE, "${identity.deviceId}|${LicenseCodes.normalize(code)}")
-        // Optimistic: the grace window starts now and the server confirms shortly after.
-        storeVerdict(RemoteVerdict.UNKNOWN, System.currentTimeMillis())
-        refresh()
-        return true
+    /**
+     * True when it is worth calling the server. A device without a valid purchase
+     * asks often, so reopening the app right after paying unlocks it immediately;
+     * a paid device settles into a twice-a-day heartbeat.
+     */
+    fun needsRemoteCheck(nowMs: Long = System.currentTimeMillis()): Boolean {
+        if (verifying) return false
+        val record = remoteRecord()
+        val settled = record != null &&
+            record.status == RemoteStatus.ACTIVE &&
+            (record.expiresAtMs == null || record.expiresAtMs > nowMs)
+        if (settled) return nowMs - record.checkedAtMs >= CHECK_INTERVAL_MS
+        return nowMs - lastAttemptMs >= RETRY_INTERVAL_MS
     }
 
-    /** The code bound to this install, needed when registering it on the server. */
-    fun boundCode(): String? = secureStore.getString(KEY_LICENSE)
-        ?.split("|")
-        ?.takeIf { it.size == 2 && it[0] == identity.deviceId }
-        ?.get(1)
-
-    /** True when a licensed device should ask the server again. */
-    fun needsRemoteCheck(nowMs: Long = System.currentTimeMillis()): Boolean {
-        if (!onlineEnforcement || !hasValidLicense()) return false
-        val record = verdictRecord() ?: return true
-        return nowMs - record.checkedAtMs >= CHECK_INTERVAL_MS
+    fun markAttempt(nowMs: Long = System.currentTimeMillis()) {
+        lastAttemptMs = nowMs
     }
 
     /** Stores a fresh server answer and re-evaluates the gate. */
-    fun applyRemoteVerdict(verdict: RemoteVerdict, note: String = "") {
-        storeVerdict(verdict, System.currentTimeMillis(), note)
+    fun applyRemote(record: RemoteLicense) {
+        val safeNote = record.note.replace('|', ' ').take(120)
+        secureStore.putString(
+            KEY_REMOTE,
+            listOf(
+                identity.deviceId,
+                record.status.name,
+                record.expiresAtMs?.toString() ?: "",
+                System.currentTimeMillis().toString(),
+                safeNote,
+            ).joinToString("|"),
+        )
         refresh()
     }
 
@@ -162,78 +127,50 @@ class LicenseStore(context: Context, private val secureStore: SecureStore) {
         refresh()
     }
 
-    fun activationCodeForSupport(): String = LicenseCodes.forDevice(identity.deviceId)
-
     private fun evaluate(): LicenseState {
-        val termsAccepted = prefs.getBoolean(KEY_TERMS, false)
-        val status = when {
-            hasValidLicense() -> licensedStatus()
-            else -> trialStatus()
-        }
-        val record = verdictRecord()
+        val record = remoteRecord()
         return LicenseState(
-            termsAccepted = termsAccepted,
-            status = status,
+            termsAccepted = prefs.getBoolean(KEY_TERMS, false),
+            status = statusOf(record),
             identity = identity,
-            lastVerifiedAtMs = if (record?.verdict != RemoteVerdict.UNKNOWN) {
-                record?.checkedAtMs ?: 0L
-            } else {
-                0L
-            },
+            lastVerifiedAtMs = record?.checkedAtMs ?: 0L,
             verifying = verifying,
         )
     }
 
-    /**
-     * A locally valid code is not enough once the registry is enabled: the last
-     * server answer decides, and it must be recent enough.
-     */
-    private fun licensedStatus(): LicenseStatus {
-        if (!onlineEnforcement) return LicenseStatus.Licensed
-
-        val record = verdictRecord() ?: run {
-            // License bound before the registry existed: start the grace window now.
-            storeVerdict(RemoteVerdict.UNKNOWN, System.currentTimeMillis())
-            return LicenseStatus.Licensed
-        }
-
-        return when (record.verdict) {
-            RemoteVerdict.REVOKED -> LicenseStatus.Blocked(BlockReason.REVOKED, record.note)
-            RemoteVerdict.SUSPENDED -> LicenseStatus.Blocked(BlockReason.SUSPENDED, record.note)
-            RemoteVerdict.ACTIVE, RemoteVerdict.UNKNOWN -> {
-                val age = System.currentTimeMillis() - record.checkedAtMs
-                if (age > TimeUnit.DAYS.toMillis(ONLINE_GRACE_DAYS.toLong())) {
+    private fun statusOf(record: RemoteRecord?): LicenseStatus {
+        if (record == null || record.status == RemoteStatus.NONE) return trialStatus()
+        val now = System.currentTimeMillis()
+        return when (record.status) {
+            RemoteStatus.REVOKED -> LicenseStatus.Blocked(BlockReason.REVOKED, record.note)
+            RemoteStatus.SUSPENDED -> LicenseStatus.Blocked(BlockReason.SUSPENDED, record.note)
+            RemoteStatus.EXPIRED -> LicenseStatus.Expired(
+                expiredAtMs = record.expiresAtMs ?: record.checkedAtMs,
+                wasPaid = true,
+            )
+            RemoteStatus.ACTIVE -> when {
+                record.expiresAtMs != null && record.expiresAtMs <= now ->
+                    LicenseStatus.Expired(record.expiresAtMs, wasPaid = true)
+                now - record.checkedAtMs > TimeUnit.DAYS.toMillis(ONLINE_GRACE_DAYS.toLong()) ->
                     LicenseStatus.Blocked(BlockReason.UNVERIFIED)
-                } else {
-                    LicenseStatus.Licensed
-                }
+                else -> LicenseStatus.Licensed(record.expiresAtMs)
             }
+            RemoteStatus.NONE -> trialStatus()
         }
     }
 
-    private fun storeVerdict(verdict: RemoteVerdict, checkedAtMs: Long, note: String = "") {
-        val safeNote = note.replace('|', ' ').take(120)
-        secureStore.putString(
-            KEY_VERDICT,
-            "${identity.deviceId}|${verdict.name}|$checkedAtMs|$safeNote",
+    /** Server answers are sealed and stamped with the device id, like the trial record. */
+    private fun remoteRecord(): RemoteRecord? {
+        val parts = secureStore.getString(KEY_REMOTE)?.split("|") ?: return null
+        if (parts.size < 4 || parts[0] != identity.deviceId) return null
+        val status = runCatching { RemoteStatus.valueOf(parts[1]) }.getOrNull() ?: return null
+        val checkedAt = parts[3].toLongOrNull() ?: return null
+        return RemoteRecord(
+            status = status,
+            expiresAtMs = parts[2].toLongOrNull(),
+            checkedAtMs = checkedAt,
+            note = parts.getOrNull(4).orEmpty(),
         )
-    }
-
-    /** Verdicts are sealed and stamped with the device id, like the trial record. */
-    private fun verdictRecord(): VerdictRecord? {
-        val parts = secureStore.getString(KEY_VERDICT)?.split("|") ?: return null
-        if (parts.size < 3 || parts[0] != identity.deviceId) return null
-        val verdict = runCatching { RemoteVerdict.valueOf(parts[1]) }.getOrNull() ?: return null
-        val checkedAt = parts[2].toLongOrNull() ?: return null
-        return VerdictRecord(verdict, checkedAt, parts.getOrNull(3).orEmpty())
-    }
-
-    private fun hasValidLicense(): Boolean {
-        val stored = secureStore.getString(KEY_LICENSE) ?: return false
-        val parts = stored.split("|")
-        if (parts.size != 2) return false
-        val (boundDeviceId, code) = parts
-        return boundDeviceId == identity.deviceId && LicenseCodes.matches(identity.deviceId, code)
     }
 
     private fun trialStatus(): LicenseStatus {
@@ -277,8 +214,9 @@ class LicenseStore(context: Context, private val secureStore: SecureStore) {
 
     private data class TrialRecord(val startedAtMs: Long, val effectiveNowMs: Long)
 
-    private data class VerdictRecord(
-        val verdict: RemoteVerdict,
+    private data class RemoteRecord(
+        val status: RemoteStatus,
+        val expiresAtMs: Long?,
         val checkedAtMs: Long,
         val note: String,
     )
@@ -287,10 +225,12 @@ class LicenseStore(context: Context, private val secureStore: SecureStore) {
         const val PREFS = "novastream_license"
         const val KEY_TERMS = "is_terms_accepted"
         const val KEY_TRIAL = "trial_record"
-        const val KEY_LICENSE = "license_record"
-        const val KEY_VERDICT = "remote_verdict"
+        const val KEY_REMOTE = "remote_license"
 
-        /** Licensed devices re-check twice a day; failures fall back to the grace window. */
+        /** Paid devices re-check twice a day. */
         val CHECK_INTERVAL_MS: Long = TimeUnit.HOURS.toMillis(12)
+
+        /** Unpaid or blocked devices retry often, so a fresh purchase lands fast. */
+        val RETRY_INTERVAL_MS: Long = TimeUnit.SECONDS.toMillis(20)
     }
 }

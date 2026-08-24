@@ -266,6 +266,14 @@ data class Strings(
     val licenseChecking: String = "Checking\u2026",
     val licenseLastCheck: String = "Last check: %s",
     val licenseNeverChecked: String = "Never verified",
+    val activateOnline: String = "Activate online",
+    val alreadyPaidCheck: String = "I already paid \u00b7 check now",
+    val storeSteps: String = "Open the website, paste this device ID, pay with PayPal. Reopen NovaStream and it is unlocked.",
+    val licenseActiveUntil: String = "Active until %s",
+    val licenseLifetime: String = "Lifetime license",
+    val licenseRenewAction: String = "Renew online",
+    val licensePaidExpiredTitle: String = "Subscription ended",
+    val licensePaidExpiredBody: String = "Your subscription ended on %s. Renew online to keep watching.",
 )
 
 private val English = Strings()
@@ -500,6 +508,14 @@ private val Italian = Strings(
     licenseChecking = "Verifica in corso…",
     licenseLastCheck = "Ultima verifica: %s",
     licenseNeverChecked = "Mai verificata",
+    activateOnline = "Attiva online",
+    alreadyPaidCheck = "Ho gi\u00e0 pagato \u00b7 controlla ora",
+    storeSteps = "Apri il sito, incolla questo ID dispositivo, paga con PayPal. Riapri NovaStream: \u00e8 gi\u00e0 sbloccata.",
+    licenseActiveUntil = "Attiva fino al %s",
+    licenseLifetime = "Licenza a vita",
+    licenseRenewAction = "Rinnova online",
+    licensePaidExpiredTitle = "Abbonamento terminato",
+    licensePaidExpiredBody = "Il tuo abbonamento \u00e8 terminato il %s. Rinnova online per continuare a guardare.",
 )
 
 private val Spanish = Strings(
