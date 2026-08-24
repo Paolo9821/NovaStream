@@ -65,6 +65,10 @@ import com.rork.novastream.data.model.PlaylistAccount
 import com.rork.novastream.data.model.SyncState
 import com.rork.novastream.data.repo.IptvRepository
 import com.rork.novastream.ui.components.PrivacyNote
+import com.rork.novastream.ui.components.RequestInitialFocus
+import com.rork.novastream.ui.components.contentFocusZone
+import com.rork.novastream.ui.components.dpadDownTo
+import com.rork.novastream.ui.components.rememberFocusRequester
 import com.rork.novastream.ui.i18n.LocalStrings
 import com.rork.novastream.ui.i18n.Strings
 import com.rork.novastream.ui.vm.AppViewModel
@@ -89,12 +93,15 @@ fun AccountsScreen(
     var submitting by remember { mutableStateOf(false) }
     var formError by remember { mutableStateOf<String?>(null) }
 
+    val contentFocus = rememberFocusRequester()
+    RequestInitialFocus(contentFocus)
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(strings.accountsTitle) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = onBack, modifier = Modifier.dpadDownTo(contentFocus)) {
                         Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = strings.back)
                     }
                 },
@@ -106,7 +113,9 @@ fun AccountsScreen(
         containerColor = MaterialTheme.colorScheme.background,
     ) { padding ->
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .contentFocusZone(contentFocus),
             contentPadding = PaddingValues(
                 start = 20.dp,
                 end = 20.dp,

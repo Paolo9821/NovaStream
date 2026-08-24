@@ -70,6 +70,10 @@ import com.rork.novastream.data.local.LicenseStatus
 import com.rork.novastream.data.local.ThemeMode
 import com.rork.novastream.data.model.SyncState
 import com.rork.novastream.ui.components.PrivacyNote
+import com.rork.novastream.ui.components.RequestInitialFocus
+import com.rork.novastream.ui.components.contentFocusZone
+import com.rork.novastream.ui.components.dpadDownTo
+import com.rork.novastream.ui.components.rememberFocusRequester
 import com.rork.novastream.ui.i18n.Language
 import com.rork.novastream.ui.i18n.LocalStrings
 import com.rork.novastream.ui.i18n.Strings
@@ -112,12 +116,15 @@ fun SettingsScreen(
         mutableStateOf(activeAccount?.epgUrl.orEmpty())
     }
 
+    val contentFocus = rememberFocusRequester()
+    RequestInitialFocus(contentFocus)
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(strings.settingsTitle) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = onBack, modifier = Modifier.dpadDownTo(contentFocus)) {
                         Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = strings.back)
                     }
                 },
@@ -129,7 +136,9 @@ fun SettingsScreen(
         containerColor = MaterialTheme.colorScheme.background,
     ) { padding ->
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .contentFocusZone(contentFocus),
             contentPadding = PaddingValues(
                 start = 20.dp,
                 end = 20.dp,

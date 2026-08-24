@@ -24,6 +24,7 @@ import com.rork.novastream.data.local.CrashReporter
 import com.rork.novastream.data.local.DeviceProfile
 import com.rork.novastream.data.local.LicenseStatus
 import com.rork.novastream.data.local.ThemeMode
+import com.rork.novastream.ui.components.LocalIsTv
 import com.rork.novastream.ui.i18n.LocalStrings
 import com.rork.novastream.ui.i18n.stringsFor
 import com.rork.novastream.ui.navigation.AppNavigation
@@ -69,7 +70,10 @@ class MainActivity : ComponentActivity() {
                 onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
             }
 
-            CompositionLocalProvider(LocalStrings provides strings) {
+            CompositionLocalProvider(
+                LocalStrings provides strings,
+                LocalIsTv provides isTv,
+            ) {
                 AppTheme(darkTheme = darkTheme) {
                     val status = license.status
                     // Cached trial/licence answers open the app instantly; anything

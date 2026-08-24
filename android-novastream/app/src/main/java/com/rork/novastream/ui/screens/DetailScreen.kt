@@ -54,6 +54,10 @@ import com.rork.novastream.data.model.Programme
 import com.rork.novastream.ui.components.FavoriteHeart
 import com.rork.novastream.ui.components.FocusableSurface
 import com.rork.novastream.ui.components.PosterCard
+import com.rork.novastream.ui.components.RequestInitialFocus
+import com.rork.novastream.ui.components.contentFocusZone
+import com.rork.novastream.ui.components.dpadDownTo
+import com.rork.novastream.ui.components.rememberFocusRequester
 import com.rork.novastream.ui.components.accentFor
 import com.rork.novastream.ui.components.containerFor
 import com.rork.novastream.ui.components.iconFor
@@ -90,6 +94,10 @@ fun DetailScreen(
         entry?.let { if (it.kind == MediaKind.SERIES) viewModel.loadEpisodes(it) }
     }
 
+    val contentFocus = rememberFocusRequester()
+    // Waits for the entry, otherwise the body is still the "unavailable" box.
+    RequestInitialFocus(contentFocus, key = entry?.id)
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -103,7 +111,7 @@ fun DetailScreen(
                     )
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = onBack, modifier = Modifier.dpadDownTo(contentFocus)) {
                         Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = strings.back)
                     }
                 },
@@ -137,7 +145,9 @@ fun DetailScreen(
         }
 
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .contentFocusZone(contentFocus),
             contentPadding = PaddingValues(
                 top = padding.calculateTopPadding(),
                 bottom = padding.calculateBottomPadding() + 32.dp,
