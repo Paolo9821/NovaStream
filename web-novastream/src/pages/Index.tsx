@@ -17,6 +17,7 @@ import {
   Zap,
 } from "lucide-react";
 
+import { LanguagePicker, LanguageSection } from "@/components/LanguagePicker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -34,18 +35,20 @@ import {
   type PlanId,
   type PlanInfo,
 } from "@/lib/api";
+import { useI18n, type TranslationKey } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
-const PLAN_COPY: Record<PlanId, { title: string; blurb: string; perks: string[] }> = {
+/** Translation keys that describe each plan card. */
+const PLAN_KEYS: Record<PlanId, { title: TranslationKey; blurb: TranslationKey; perks: TranslationKey[] }> = {
   annual: {
-    title: "12 mesi",
-    blurb: "Un anno intero di visione, si rinnova quando vuoi tu.",
-    perks: ["365 giorni di accesso", "Tutti gli aggiornamenti inclusi", "Rinnovabile con un clic"],
+    title: "plan.annual.title",
+    blurb: "plan.annual.blurb",
+    perks: ["plan.annual.perk1", "plan.annual.perk2", "plan.annual.perk3"],
   },
   lifetime: {
-    title: "A vita",
-    blurb: "Paghi una volta sola e il dispositivo resta attivo per sempre.",
-    perks: ["Nessuna scadenza", "Nessun rinnovo da ricordare", "Il miglior rapporto qualità/prezzo"],
+    title: "plan.lifetime.title",
+    blurb: "plan.lifetime.blurb",
+    perks: ["plan.lifetime.perk1", "plan.lifetime.perk2", "plan.lifetime.perk3"],
   },
 };
 
@@ -56,6 +59,7 @@ function initialDeviceId(): string {
 }
 
 export default function Index() {
+  const { t } = useI18n();
   const [deviceId, setDeviceId] = useState<string>(initialDeviceId);
   const [email, setEmail] = useState<string>("");
   const [plan, setPlan] = useState<PlanId>("annual");
@@ -79,7 +83,7 @@ export default function Index() {
     const params = new URLSearchParams(window.location.search);
     const sessionId = params.get("session_id");
     if (params.get("checkout") === "cancelled") {
-      setError("Pagamento annullato. Nessun importo è stato addebitato.");
+      setError(t("error.cancelled"));
       window.history.replaceState({}, "", window.location.pathname);
       return;
     }
@@ -91,11 +95,9 @@ export default function Index() {
         const result = await confirmCheckout(sessionId);
         if (cancelled) return;
         if (result.ok) setPurchase(result);
-        else setError(result.error ?? "Non siamo riusciti a confermare il pagamento.");
+        else setError(result.error ?? t("error.confirm"));
       } catch (err) {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Verifica del pagamento non riuscita");
-        }
+        if (!cancelled) setError(err instanceof Error ? err.message : t("error.confirmFailed"));
       } finally {
         if (!cancelled) {
           setReturning(false);
@@ -106,6 +108,8 @@ export default function Index() {
     return () => {
       cancelled = true;
     };
+    // Runs once on mount: the payment return is a one-off event.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const handleCheckout = useCallback(async (): Promise<void> => {
@@ -116,9 +120,9 @@ export default function Index() {
       window.location.assign(session.url);
     } catch (err) {
       setRedirecting(false);
-      setError(err instanceof Error ? err.message : "Impossibile aprire il pagamento");
+      setError(err instanceof Error ? err.message : t("error.open"));
     }
-  }, [deviceId, email, plan]);
+  }, [deviceId, email, plan, t]);
 
   if (returning) {
     return <ConfirmingScreen />;
@@ -132,46 +136,48 @@ export default function Index() {
     <div className="relative min-h-screen">
       <div className="pointer-events-none absolute inset-0 grid-veil" aria-hidden />
 
-      <header className="relative mx-auto flex max-w-5xl items-center justify-between px-5 py-6">
+      <header className="relative mx-auto flex max-w-5xl items-center justify-between gap-3 px-5 py-6">
         <div className="flex items-center gap-2.5">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/15 text-primary glow-ring">
             <Zap className="h-4.5 w-4.5" strokeWidth={2.5} />
           </div>
           <span className="text-lg font-bold tracking-tight">NovaStream</span>
         </div>
-        <Link
-          to="/dashboard"
-          className="flex items-center gap-1.5 rounded-full border border-border/70 px-3.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-primary/50 hover:text-foreground"
-        >
-          <LockKeyhole className="h-3.5 w-3.5" />
-          Gestione
-        </Link>
+        <div className="flex items-center gap-2">
+          <LanguagePicker />
+          <Link
+            to="/dashboard"
+            className="flex items-center gap-1.5 rounded-full border border-border/70 px-3.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-primary/50 hover:text-foreground"
+          >
+            <LockKeyhole className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">{t("nav.manage")}</span>
+          </Link>
+        </div>
       </header>
 
       <main className="relative mx-auto max-w-5xl px-5 pb-24">
         <section className="animate-rise pt-8 text-center sm:pt-14">
           <span className="inline-flex items-center gap-2 rounded-full border border-accent/30 bg-accent/10 px-3.5 py-1.5 text-xs font-medium text-accent">
             <span className="h-1.5 w-1.5 rounded-full bg-accent animate-pulse-dot" />
-            Attivazione automatica, 24 ore su 24
+            {t("hero.badge")}
           </span>
           <h1 className="mt-6 text-4xl font-extrabold leading-[1.05] sm:text-6xl">
-            Attiva NovaStream
+            {t("hero.titleA")}
             <br />
             <span className="bg-gradient-to-r from-primary via-primary to-accent bg-clip-text text-transparent">
-              in meno di un minuto
+              {t("hero.titleB")}
             </span>
           </h1>
           <p className="mx-auto mt-5 max-w-xl text-balance text-base leading-relaxed text-muted-foreground">
-            Inserisci l&apos;identificativo del tuo dispositivo, paga con carta e riapri
-            l&apos;app: sarà già sbloccata. Nessun codice da digitare, nessuna attesa.
+            {t("hero.sub")}
           </p>
         </section>
 
         <section className="mt-14 grid gap-5 lg:grid-cols-[1.05fr_0.95fr]">
           <div className="panel animate-rise p-6 sm:p-7">
-            <StepBadge index={1} label="Il tuo dispositivo" />
+            <StepBadge index={1} label={t("step.device")} />
             <Label htmlFor="device" className="mt-5 block text-sm font-medium">
-              Indirizzo MAC o ID dispositivo
+              {t("device.label")}
             </Label>
             <Input
               id="device"
@@ -186,13 +192,14 @@ export default function Index() {
               )}
             />
             <p className="mt-2.5 text-xs leading-relaxed text-muted-foreground">
-              Lo trovi nell&apos;app NovaStream in <strong className="text-foreground/80">Impostazioni → Licenza</strong>,
-              oppure nella schermata che compare quando la prova gratuita finisce.
+              {t("device.helpBefore")}
+              <strong className="text-foreground/80">{t("device.helpPath")}</strong>
+              {t("device.helpAfter")}
             </p>
             {deviceId.length > 0 && !deviceValid && (
               <p className="mt-2 flex items-center gap-1.5 text-xs text-destructive">
                 <AlertTriangle className="h-3.5 w-3.5" />
-                Controlla il codice: deve essere quello mostrato dall&apos;app.
+                {t("device.invalid")}
               </p>
             )}
             {deviceValid && (
@@ -203,27 +210,28 @@ export default function Index() {
             )}
 
             <Label htmlFor="email" className="mt-7 block text-sm font-medium">
-              Email <span className="font-normal text-muted-foreground">(facoltativa, per la ricevuta)</span>
+              {t("email.label")}{" "}
+              <span className="font-normal text-muted-foreground">{t("email.optional")}</span>
             </Label>
             <Input
               id="email"
               type="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              placeholder="tu@esempio.it"
+              placeholder={t("email.placeholder")}
               className="mt-2 h-12 border-border/80 bg-secondary/60"
             />
 
             <div className="mt-8 space-y-3">
-              <StepBadge index={3} label="Pagamento" />
+              <StepBadge index={3} label={t("step.payment")} />
               {config.isLoading && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Loader2 className="h-4 w-4 animate-spin" /> Carico il negozio…
+                  <Loader2 className="h-4 w-4 animate-spin" /> {t("pay.loading")}
                 </div>
               )}
               {config.data && !config.data.paymentsConfigured && (
                 <div className="rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-foreground/90">
-                  Il negozio non è ancora collegato a Stripe. Riprova tra poco.
+                  {t("pay.notConfigured")}
                 </div>
               )}
               {config.data?.paymentsConfigured && (
@@ -239,19 +247,17 @@ export default function Index() {
                       <CreditCard className="h-4.5 w-4.5" />
                     )}
                     {redirecting
-                      ? "Apro il pagamento sicuro…"
+                      ? t("pay.redirecting")
                       : selectedPlan
-                        ? `Paga € ${selectedPlan.price.replace(".", ",")} con carta`
-                        : "Paga con carta"}
+                        ? t("pay.button", { price: `€ ${selectedPlan.price.replace(".", ",")}` })
+                        : t("pay.buttonGeneric")}
                   </Button>
                   <p className="text-center text-xs text-muted-foreground">
-                    {deviceValid
-                      ? "Prezzo finale, IVA inclusa. Verrai portato sulla pagina sicura di Stripe e poi riportato qui."
-                      : "Inserisci prima l'identificativo del dispositivo."}
+                    {deviceValid ? t("pay.hintReady") : t("pay.hintNoDevice")}
                   </p>
                   {config.data.mode === "test" && (
                     <p className="text-center text-[11px] uppercase tracking-widest text-warning/80">
-                      Modalità test
+                      {t("pay.testMode")}
                     </p>
                   )}
                 </>
@@ -266,7 +272,7 @@ export default function Index() {
           </div>
 
           <div className="animate-rise space-y-4">
-            <StepBadge index={2} label="Scegli la formula" />
+            <StepBadge index={2} label={t("step.plan")} />
             {plans.map((info) => (
               <PlanCard
                 key={info.id}
@@ -278,26 +284,26 @@ export default function Index() {
             {selectedPlan && (
               <div className="panel flex items-center justify-between px-5 py-4">
                 <div>
-                  <span className="block text-sm text-muted-foreground">Totale</span>
-                  <span className="text-[11px] text-muted-foreground/80">IVA inclusa</span>
+                  <span className="block text-sm text-muted-foreground">{t("total.label")}</span>
+                  <span className="text-[11px] text-muted-foreground/80">{t("total.vat")}</span>
                 </div>
                 <span className="text-2xl font-bold">€ {selectedPlan.price.replace(".", ",")}</span>
               </div>
             )}
             <div className="flex items-start gap-2.5 px-1 text-xs leading-relaxed text-muted-foreground">
               <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
-              Il pagamento è gestito da Stripe: carta, Apple Pay e Google Pay. La licenza viene
-              collegata solo al dispositivo che hai indicato e si attiva subito dopo il pagamento.
+              {t("trust")}
             </div>
           </div>
         </section>
 
         <HowItWorks />
         <StatusChecker />
+        <LanguageSection />
       </main>
 
       <footer className="relative border-t border-border/60 py-8 text-center text-xs text-muted-foreground">
-        NovaStream · Assistenza e licenze
+        {t("footer")}
       </footer>
     </div>
   );
@@ -323,7 +329,8 @@ function PlanCard({
   selected: boolean;
   onSelect: () => void;
 }) {
-  const copy = PLAN_COPY[info.id];
+  const { t } = useI18n();
+  const copy = PLAN_KEYS[info.id];
   return (
     <button
       type="button"
@@ -337,7 +344,7 @@ function PlanCard({
     >
       {info.id === "lifetime" && (
         <span className="absolute right-4 top-4 rounded-full bg-accent/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-accent">
-          Più scelto
+          {t("plan.badge")}
         </span>
       )}
       <div className="flex items-center gap-2.5">
@@ -346,22 +353,22 @@ function PlanCard({
         ) : (
           <RefreshCw className="h-4 w-4 text-primary" />
         )}
-        <h3 className="text-lg font-bold">{copy.title}</h3>
+        <h3 className="text-lg font-bold">{t(copy.title)}</h3>
       </div>
       <div className="mt-3 flex items-baseline gap-1.5">
         <span className="text-3xl font-extrabold tracking-tight">
           € {info.price.replace(".", ",")}
         </span>
         <span className="text-xs text-muted-foreground">
-          {info.durationDays ? "/ anno" : "una tantum"}
+          {info.durationDays ? t("plan.perYear") : t("plan.oneTime")}
         </span>
       </div>
-      <p className="mt-2 text-sm text-muted-foreground">{copy.blurb}</p>
+      <p className="mt-2 text-sm text-muted-foreground">{t(copy.blurb)}</p>
       <ul className="mt-4 space-y-1.5">
         {copy.perks.map((perk) => (
           <li key={perk} className="flex items-center gap-2 text-xs text-foreground/75">
             <Check className={cn("h-3.5 w-3.5", selected ? "text-accent" : "text-muted-foreground")} />
-            {perk}
+            {t(perk)}
           </li>
         ))}
       </ul>
@@ -370,26 +377,15 @@ function PlanCard({
 }
 
 function HowItWorks() {
+  const { t } = useI18n();
   const steps = [
-    {
-      icon: Smartphone,
-      title: "Copia l'identificativo",
-      body: "Apri NovaStream sul telefono o sulla TV e copia il codice mostrato in Impostazioni → Licenza.",
-    },
-    {
-      icon: Zap,
-      title: "Paga con carta",
-      body: "Scegli 12 mesi o a vita e paga sulla pagina sicura di Stripe. L'attivazione è immediata.",
-    },
-    {
-      icon: Tv,
-      title: "Riapri l'app",
-      body: "Chiudi e riapri NovaStream: si collega al server, riconosce il dispositivo e si sblocca.",
-    },
+    { icon: Smartphone, title: t("how.s1.title"), body: t("how.s1.body") },
+    { icon: Zap, title: t("how.s2.title"), body: t("how.s2.body") },
+    { icon: Tv, title: t("how.s3.title"), body: t("how.s3.body") },
   ];
   return (
     <section className="mt-20">
-      <h2 className="text-center text-2xl font-bold sm:text-3xl">Come funziona</h2>
+      <h2 className="text-center text-2xl font-bold sm:text-3xl">{t("how.title")}</h2>
       <div className="mt-8 grid gap-4 sm:grid-cols-3">
         {steps.map((step, index) => (
           <div key={step.title} className="panel p-5">
@@ -409,6 +405,7 @@ function HowItWorks() {
 }
 
 function StatusChecker() {
+  const { t, locale } = useI18n();
   const [value, setValue] = useState<string>("");
   const [result, setResult] = useState<DeviceStatus | null>(null);
   const [busy, setBusy] = useState<boolean>(false);
@@ -416,7 +413,7 @@ function StatusChecker() {
 
   const check = async (): Promise<void> => {
     if (!isValidDeviceId(value)) {
-      setFailed("Inserisci un identificativo valido.");
+      setFailed(t("check.invalid"));
       return;
     }
     setBusy(true);
@@ -424,7 +421,7 @@ function StatusChecker() {
     try {
       setResult(await fetchDeviceStatus(normalizeDeviceId(value)));
     } catch (error) {
-      setFailed(error instanceof Error ? error.message : "Verifica non riuscita");
+      setFailed(error instanceof Error ? error.message : t("check.failed"));
     } finally {
       setBusy(false);
     }
@@ -436,28 +433,28 @@ function StatusChecker() {
       case "active":
         return {
           text: result.expiresAt
-            ? `Licenza attiva fino al ${formatDate(result.expiresAt)}.`
-            : "Licenza a vita attiva.",
+            ? t("check.activeUntil", { date: formatDate(result.expiresAt, locale) })
+            : t("check.activeLifetime"),
           tone: "text-accent border-accent/30 bg-accent/10",
         };
       case "expired":
         return {
-          text: `Licenza scaduta il ${formatDate(result.expiresAt)}. Rinnova qui sopra.`,
+          text: t("check.expired", { date: formatDate(result.expiresAt, locale) }),
           tone: "text-warning border-warning/30 bg-warning/10",
         };
       case "suspended":
         return {
-          text: "Licenza sospesa. Contatta l'assistenza.",
+          text: t("check.suspended"),
           tone: "text-warning border-warning/30 bg-warning/10",
         };
       case "revoked":
         return {
-          text: "Licenza revocata.",
+          text: t("check.revoked"),
           tone: "text-destructive border-destructive/30 bg-destructive/10",
         };
       default:
         return {
-          text: "Nessuna licenza per questo dispositivo. Puoi acquistarla qui sopra.",
+          text: t("check.none"),
           tone: "text-muted-foreground border-border bg-secondary/50",
         };
     }
@@ -466,10 +463,8 @@ function StatusChecker() {
   return (
     <section className="mt-20">
       <div className="panel mx-auto max-w-2xl p-6 sm:p-7">
-        <h2 className="text-xl font-bold">Verifica una licenza</h2>
-        <p className="mt-1.5 text-sm text-muted-foreground">
-          Hai già pagato e vuoi controllare lo stato del tuo dispositivo?
-        </p>
+        <h2 className="text-xl font-bold">{t("check.title")}</h2>
+        <p className="mt-1.5 text-sm text-muted-foreground">{t("check.sub")}</p>
         <div className="mt-5 flex flex-col gap-3 sm:flex-row">
           <Input
             value={value}
@@ -482,7 +477,7 @@ function StatusChecker() {
           />
           <Button onClick={() => void check()} disabled={busy} className="h-12 gap-2 px-6 sm:w-auto">
             {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-            Verifica
+            {t("check.button")}
           </Button>
         </div>
         {failed && <p className="mt-3 text-sm text-destructive">{failed}</p>}
@@ -497,21 +492,21 @@ function StatusChecker() {
 }
 
 function ConfirmingScreen() {
+  const { t } = useI18n();
   return (
     <div className="relative flex min-h-screen items-center justify-center px-5">
       <div className="pointer-events-none absolute inset-0 grid-veil" aria-hidden />
       <div className="panel animate-rise relative w-full max-w-sm p-8 text-center">
         <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
-        <h1 className="mt-5 text-xl font-bold">Confermo il pagamento…</h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Un istante: sto attivando la licenza sul tuo dispositivo.
-        </p>
+        <h1 className="mt-5 text-xl font-bold">{t("confirm.title")}</h1>
+        <p className="mt-2 text-sm text-muted-foreground">{t("confirm.body")}</p>
       </div>
     </div>
   );
 }
 
 function SuccessScreen({ result, onReset }: { result: CheckoutResult; onReset: () => void }) {
+  const { t, locale } = useI18n();
   return (
     <div className="relative flex min-h-screen items-center justify-center px-5 py-16">
       <div className="pointer-events-none absolute inset-0 grid-veil" aria-hidden />
@@ -519,29 +514,28 @@ function SuccessScreen({ result, onReset }: { result: CheckoutResult; onReset: (
         <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-accent/15 text-accent">
           <BadgeCheck className="h-8 w-8" strokeWidth={2.2} />
         </div>
-        <h1 className="mt-6 text-3xl font-extrabold">Licenza attivata</h1>
-        <p className="mt-3 text-balance leading-relaxed text-muted-foreground">
-          Il pagamento è andato a buon fine. Chiudi completamente NovaStream e riaprila: sarà
-          sbloccata su questo dispositivo.
-        </p>
+        <h1 className="mt-6 text-3xl font-extrabold">{t("success.title")}</h1>
+        <p className="mt-3 text-balance leading-relaxed text-muted-foreground">{t("success.body")}</p>
         <dl className="mt-7 space-y-2.5 rounded-xl border border-border/70 bg-secondary/40 px-5 py-4 text-left text-sm">
           <div className="flex items-center justify-between gap-4">
-            <dt className="text-muted-foreground">Dispositivo</dt>
+            <dt className="text-muted-foreground">{t("success.device")}</dt>
             <dd className="mono text-xs">{formatMac(result.deviceId ?? "")}</dd>
           </div>
           <div className="flex items-center justify-between gap-4">
-            <dt className="text-muted-foreground">Formula</dt>
-            <dd className="font-medium">{result.plan === "lifetime" ? "A vita" : "12 mesi"}</dd>
+            <dt className="text-muted-foreground">{t("success.plan")}</dt>
+            <dd className="font-medium">
+              {result.plan === "lifetime" ? t("plan.lifetime.title") : t("plan.annual.title")}
+            </dd>
           </div>
           <div className="flex items-center justify-between gap-4">
-            <dt className="text-muted-foreground">Valida fino al</dt>
+            <dt className="text-muted-foreground">{t("success.until")}</dt>
             <dd className="font-medium">
-              {result.expiresAt ? formatDate(result.expiresAt) : "Nessuna scadenza"}
+              {result.expiresAt ? formatDate(result.expiresAt, locale) : t("success.noExpiry")}
             </dd>
           </div>
         </dl>
         <Button variant="secondary" onClick={onReset} className="mt-7 h-11 w-full">
-          Attiva un altro dispositivo
+          {t("success.another")}
         </Button>
       </div>
     </div>
