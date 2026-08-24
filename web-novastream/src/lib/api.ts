@@ -52,6 +52,12 @@ export type LicenseRecord = {
   expired: boolean;
 };
 
+export type SecurityInfo = {
+  username: string;
+  usernameConfigured: boolean;
+  twofaEnabled: boolean;
+};
+
 export type RegistryStats = {
   total: number;
   active: number;
@@ -62,13 +68,44 @@ export type RegistryStats = {
   revenueCents30d: number;
 };
 
+/** Error carrying the extra hints the login endpoint returns with a 401. */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly twofaRequired: boolean;
+  readonly retryInSeconds: number;
+
+  constructor(
+    message: string,
+    status: number,
+    twofaRequired: boolean,
+    retryInSeconds: number,
+  ) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.twofaRequired = twofaRequired;
+    this.retryInSeconds = retryInSeconds;
+  }
+}
+
 async function call<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
     ...options,
     headers: { "Content-Type": "application/json", ...(options.headers ?? {}) },
   });
-  const payload = (await response.json().catch(() => ({}))) as T & { error?: string };
-  if (!response.ok) throw new Error(payload.error ?? `Request failed (${response.status})`);
+  const payload = (await response.json().catch(() => ({}))) as T & {
+    error?: string;
+    twofaRequired?: boolean;
+    retryInSeconds?: number;
+  };
+  if (!response.ok) {
+    throw new ApiError(
+      payload.error ?? `Request failed (${response.status})`,
+      response.status,
+      payload.twofaRequired === true,
+      payload.retryInSeconds ?? 0,
+    );
+  }
   return payload;
 }
 

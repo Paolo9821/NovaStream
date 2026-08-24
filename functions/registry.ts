@@ -37,6 +37,11 @@ export type LicenseView = {
   expired: boolean;
 };
 
+/** Wrong logins tolerated before the dashboard locks itself for a while. */
+const MAX_LOGIN_FAILURES = 6;
+
+const LOCKOUT_MS = 10 * 60 * 1000;
+
 function toView(row: LicenseRow): LicenseView {
   const expired = row.expires_at !== null && row.expires_at < Date.now();
   return {
@@ -83,6 +88,12 @@ export class Registry extends DurableObject {
       )
     `);
     this.ctx.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      )
+    `);
+    this.ctx.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS orders (
         order_id TEXT PRIMARY KEY,
         device_id TEXT NOT NULL,
@@ -121,9 +132,66 @@ export class Registry extends DurableObject {
       case "/remove":
         this.ctx.storage.sql.exec("DELETE FROM licenses WHERE device_id = ?", String(body.deviceId ?? ""));
         return Response.json({ ok: true });
+      case "/settings-get":
+        return Response.json({ value: this.setting(String(body.key ?? "")) });
+      case "/settings-put":
+        this.putSetting(String(body.key ?? ""), String(body.value ?? ""));
+        return Response.json({ ok: true });
+      case "/login-guard":
+        return Response.json(this.loginGuard(String(body.action ?? "check")));
       default:
         return new Response("not found", { status: 404 });
     }
+  }
+
+  /** Small key/value store for dashboard security settings (2FA, lockout). */
+  private setting(key: string): string {
+    const rows = this.ctx.storage.sql
+      .exec<{ value: string }>("SELECT value FROM settings WHERE key = ?", key)
+      .toArray();
+    return rows[0]?.value ?? "";
+  }
+
+  private putSetting(key: string, value: string): void {
+    if (!key) return;
+    this.ctx.storage.sql.exec(
+      "INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+      key,
+      value,
+    );
+  }
+
+  /**
+   * Brute-force brake on the dashboard login. After [MAX_LOGIN_FAILURES] wrong
+   * attempts the door stays shut for a few minutes, counted server-side so it
+   * cannot be bypassed by clearing the browser.
+   */
+  private loginGuard(action: string): { blocked: boolean; retryInSeconds: number; failures: number } {
+    const now = Date.now();
+    const failures = Number(this.setting("login_failures")) || 0;
+    const lockedUntil = Number(this.setting("login_locked_until")) || 0;
+
+    if (action === "reset") {
+      this.putSetting("login_failures", "0");
+      this.putSetting("login_locked_until", "0");
+      return { blocked: false, retryInSeconds: 0, failures: 0 };
+    }
+
+    if (action === "fail") {
+      const next = failures + 1;
+      this.putSetting("login_failures", String(next));
+      if (next >= MAX_LOGIN_FAILURES) {
+        this.putSetting("login_locked_until", String(now + LOCKOUT_MS));
+        this.putSetting("login_failures", "0");
+        return { blocked: true, retryInSeconds: Math.ceil(LOCKOUT_MS / 1000), failures: next };
+      }
+      return { blocked: false, retryInSeconds: 0, failures: next };
+    }
+
+    if (lockedUntil > now) {
+      return { blocked: true, retryInSeconds: Math.ceil((lockedUntil - now) / 1000), failures };
+    }
+    return { blocked: false, retryInSeconds: 0, failures };
   }
 
   private find(deviceId: string): LicenseRow | null {

@@ -14,16 +14,22 @@ import {
   Plus,
   RefreshCw,
   Search,
+  ShieldAlert,
+  ShieldCheck,
+  Smartphone,
   Trash2,
+  User,
   Users,
   Zap,
 } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  ApiError,
   formatDate,
   formatDateTime,
   formatMac,
@@ -34,10 +40,15 @@ import {
   type LicenseRecord,
   type PlanId,
   type RegistryStats,
+  type SecurityInfo,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const TOKEN_KEY = "novastream_dashboard_token";
+const USER_KEY = "novastream_dashboard_user";
+
+/** Only digits, at most six: what every authenticator app produces. */
+const cleanCode = (raw: string): string => raw.replace(/\D/g, "").slice(0, 6);
 
 type LicensesPayload = { licenses: LicenseRecord[]; stats: RegistryStats };
 type StatusFilter = "all" | "active" | "expired" | "suspended" | "revoked";
@@ -50,6 +61,7 @@ export default function Dashboard() {
     setToken("");
   }, []);
 
+
   const saveToken = useCallback((value: string): void => {
     localStorage.setItem(TOKEN_KEY, value);
     setToken(value);
@@ -60,14 +72,48 @@ export default function Dashboard() {
 }
 
 function LoginScreen({ onAuthenticated }: { onAuthenticated: (token: string) => void }) {
+  const [username, setUsername] = useState<string>(() => localStorage.getItem(USER_KEY) ?? "");
   const [password, setPassword] = useState<string>("");
+  const [code, setCode] = useState<string>("");
+  const [needsCode, setNeedsCode] = useState<boolean>(false);
   const [error, setError] = useState<string>("");
 
   const login = useMutation({
-    mutationFn: (value: string) => post<{ token: string }>("/api/admin/login", { password: value }),
-    onSuccess: (data) => onAuthenticated(data.token),
-    onError: (err: unknown) =>
-      setError(err instanceof Error ? err.message : "Accesso non riuscito"),
+    mutationFn: () =>
+      post<{ token: string }>("/api/admin/login", {
+        username,
+        password,
+        code: code.trim(),
+      }),
+    onSuccess: (data) => {
+      localStorage.setItem(USER_KEY, username.trim());
+      onAuthenticated(data.token);
+    },
+    onError: (err: unknown) => {
+      if (err instanceof ApiError && err.twofaRequired) {
+        setNeedsCode(true);
+        setCode("");
+        setError(
+          err.message === "two-factor code required"
+            ? "Inserisci il codice a 6 cifre dell'app di autenticazione."
+            : "Codice non valido o già usato. Attendi il codice successivo.",
+        );
+        return;
+      }
+      if (err instanceof ApiError && err.status === 429) {
+        setError(
+          `Troppi tentativi falliti. Riprova tra ${Math.ceil(err.retryInSeconds / 60)} minuti.`,
+        );
+        return;
+      }
+      setError(
+        err instanceof Error && err.message === "wrong username or password"
+          ? "Nome utente o password non corretti."
+          : err instanceof Error
+            ? err.message
+            : "Accesso non riuscito",
+      );
+    },
   });
 
   return (
@@ -77,7 +123,7 @@ function LoginScreen({ onAuthenticated }: { onAuthenticated: (token: string) => 
         onSubmit={(event) => {
           event.preventDefault();
           setError("");
-          login.mutate(password);
+          login.mutate();
         }}
         className="panel animate-rise relative w-full max-w-sm p-8"
       >
@@ -88,19 +134,53 @@ function LoginScreen({ onAuthenticated }: { onAuthenticated: (token: string) => 
         <p className="mt-1.5 text-sm text-muted-foreground">
           Riservata al titolare di NovaStream.
         </p>
-        <Label htmlFor="password" className="mt-7 block text-sm">
+        <Label htmlFor="username" className="mt-7 block text-sm">
+          Nome utente
+        </Label>
+        <Input
+          id="username"
+          autoFocus
+          autoComplete="username"
+          value={username}
+          onChange={(event) => setUsername(event.target.value)}
+          className="mt-2 h-12 border-border/80 bg-secondary/60"
+        />
+        <Label htmlFor="password" className="mt-4 block text-sm">
           Password
         </Label>
         <Input
           id="password"
           type="password"
-          autoFocus
+          autoComplete="current-password"
           value={password}
           onChange={(event) => setPassword(event.target.value)}
           className="mt-2 h-12 border-border/80 bg-secondary/60"
         />
+        {needsCode && (
+          <div className="animate-rise">
+            <Label htmlFor="code" className="mt-4 block text-sm">
+              Codice di verifica
+            </Label>
+            <Input
+              id="code"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              placeholder="123456"
+              value={code}
+              onChange={(event) => setCode(cleanCode(event.target.value))}
+              className="mono mt-2 h-12 border-border/80 bg-secondary/60 text-center text-lg tracking-[0.4em]"
+            />
+            <p className="mt-2 text-xs text-muted-foreground">
+              Aprí Authy sul telefono e copia il codice a 6 cifre di NovaStream.
+            </p>
+          </div>
+        )}
         {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
-        <Button type="submit" disabled={login.isPending} className="mt-6 h-12 w-full gap-2">
+        <Button
+          type="submit"
+          disabled={login.isPending || !username.trim() || !password}
+          className="mt-6 h-12 w-full gap-2"
+        >
           {login.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
           Entra
         </Button>
@@ -236,6 +316,8 @@ function Console({ token, onSignOut }: { token: string; onSignOut: () => void })
 
         <ManualGrant token={token} onDone={invalidate} />
 
+        <SecurityPanel token={token} />
+
         <section className="mt-8">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h2 className="text-lg font-bold">Clienti</h2>
@@ -303,6 +385,215 @@ function Console({ token, onSignOut }: { token: string; onSignOut: () => void })
         </section>
       </main>
     </div>
+  );
+}
+
+/** Owner account state plus the two-factor enrolment flow. */
+function SecurityPanel({ token }: { token: string }) {
+  const queryClient = useQueryClient();
+  const [enrolling, setEnrolling] = useState<boolean>(false);
+  const [code, setCode] = useState<string>("");
+  const [disablePassword, setDisablePassword] = useState<string>("");
+  const [disableCode, setDisableCode] = useState<string>("");
+  const [disabling, setDisabling] = useState<boolean>(false);
+
+  const security = useQuery({
+    queryKey: ["security"],
+    queryFn: () => post<SecurityInfo>("/api/admin/security", {}, token),
+  });
+
+  const refresh = useCallback((): void => {
+    void queryClient.invalidateQueries({ queryKey: ["security"] });
+  }, [queryClient]);
+
+  const setup = useMutation({
+    mutationFn: () => post<{ secret: string; otpauth: string }>("/api/admin/2fa/setup", {}, token),
+    onSuccess: () => setEnrolling(true),
+    onError: (error: unknown) =>
+      toast.error(error instanceof Error ? error.message : "Impossibile avviare la configurazione"),
+  });
+
+  const enable = useMutation({
+    mutationFn: () => post<{ ok: boolean }>("/api/admin/2fa/enable", { code }, token),
+    onSuccess: () => {
+      toast.success("Verifica in due passaggi attiva");
+      setEnrolling(false);
+      setCode("");
+      setup.reset();
+      refresh();
+    },
+    onError: () => toast.error("Codice non valido. Riprova con quello mostrato adesso."),
+  });
+
+  const disable = useMutation({
+    mutationFn: () =>
+      post<{ ok: boolean }>(
+        "/api/admin/2fa/disable",
+        { password: disablePassword, code: disableCode },
+        token,
+      ),
+    onSuccess: () => {
+      toast.success("Verifica in due passaggi disattivata");
+      setDisabling(false);
+      setDisablePassword("");
+      setDisableCode("");
+      refresh();
+    },
+    onError: (error: unknown) =>
+      toast.error(error instanceof Error ? error.message : "Disattivazione non riuscita"),
+  });
+
+  const info = security.data;
+  const enabled = info?.twofaEnabled === true;
+
+  return (
+    <section className="panel mt-8 p-5">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <div
+            className={cn(
+              "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl",
+              enabled ? "bg-accent/15 text-accent" : "bg-warning/15 text-warning",
+            )}
+          >
+            {enabled ? <ShieldCheck className="h-5 w-5" /> : <ShieldAlert className="h-5 w-5" />}
+          </div>
+          <div>
+            <h2 className="text-lg font-bold">Sicurezza dell'accesso</h2>
+            <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-muted-foreground">
+              <span className="inline-flex items-center gap-1.5">
+                <User className="h-3.5 w-3.5" />
+                {info?.username ?? "…"}
+              </span>
+              <span>
+                {enabled
+                  ? "Verifica in due passaggi attiva"
+                  : "Protetto solo da nome utente e password"}
+              </span>
+            </p>
+          </div>
+        </div>
+        {!enabled && !enrolling && (
+          <Button
+            onClick={() => setup.mutate()}
+            disabled={setup.isPending || security.isLoading}
+            className="h-10 gap-2"
+          >
+            {setup.isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Smartphone className="h-4 w-4" />
+            )}
+            Attiva la verifica in due passaggi
+          </Button>
+        )}
+        {enabled && !disabling && (
+          <Button variant="ghost" onClick={() => setDisabling(true)} className="h-10">
+            Disattiva
+          </Button>
+        )}
+      </div>
+
+      {info?.usernameConfigured === false && (
+        <p className="mt-4 rounded-xl border border-warning/40 bg-warning/10 px-4 py-3 text-sm text-warning">
+          Stai usando il nome utente predefinito «admin». Impostane uno personale per rendere
+          l'accesso più difficile da indovinare.
+        </p>
+      )}
+
+      {enrolling && setup.data && (
+        <div className="mt-5 grid gap-5 border-t border-border/60 pt-5 sm:grid-cols-[auto_1fr]">
+          <div className="mx-auto rounded-2xl bg-white p-3 sm:mx-0">
+            <QRCodeSVG value={setup.data.otpauth} size={168} level="M" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold">1. Inquadra il codice con Authy</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Apri Authy sul telefono, tocca «Aggiungi account» e inquadra questo codice. Funziona
+              anche con Google Authenticator, Microsoft Authenticator e 1Password.
+            </p>
+            <p className="mt-3 text-sm font-semibold">Se non puoi inquadrare</p>
+            <button
+              type="button"
+              onClick={() => {
+                void navigator.clipboard.writeText(setup.data.secret);
+                toast.success("Chiave copiata");
+              }}
+              className="mono mt-1 flex items-center gap-2 break-all rounded-lg border border-border/70 px-3 py-2 text-left text-xs"
+            >
+              {setup.data.secret}
+              <Copy className="h-3 w-3 shrink-0 text-muted-foreground" />
+            </button>
+            <p className="mt-4 text-sm font-semibold">2. Conferma il codice a 6 cifre</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Input
+                inputMode="numeric"
+                placeholder="123456"
+                value={code}
+                onChange={(event) => setCode(cleanCode(event.target.value))}
+                className="mono h-11 w-36 border-border/80 bg-secondary/60 text-center tracking-[0.3em]"
+              />
+              <Button
+                onClick={() => enable.mutate()}
+                disabled={code.length !== 6 || enable.isPending}
+                className="h-11 gap-2"
+              >
+                {enable.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+                Conferma e attiva
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setEnrolling(false);
+                  setCode("");
+                  setup.reset();
+                }}
+                className="h-11"
+              >
+                Annulla
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {enabled && disabling && (
+        <div className="mt-5 border-t border-border/60 pt-5">
+          <p className="text-sm text-muted-foreground">
+            Per disattivare la verifica servono la password e un codice valido: così nessuno può
+            farlo da una sessione lasciata aperta.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Input
+              type="password"
+              placeholder="Password"
+              value={disablePassword}
+              onChange={(event) => setDisablePassword(event.target.value)}
+              className="h-11 w-52 border-border/80 bg-secondary/60"
+            />
+            <Input
+              inputMode="numeric"
+              placeholder="123456"
+              value={disableCode}
+              onChange={(event) => setDisableCode(cleanCode(event.target.value))}
+              className="mono h-11 w-36 border-border/80 bg-secondary/60 text-center tracking-[0.3em]"
+            />
+            <Button
+              variant="destructive"
+              onClick={() => disable.mutate()}
+              disabled={disableCode.length !== 6 || !disablePassword || disable.isPending}
+              className="h-11 gap-2"
+            >
+              {disable.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+              Disattiva
+            </Button>
+            <Button variant="ghost" onClick={() => setDisabling(false)} className="h-11">
+              Annulla
+            </Button>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 

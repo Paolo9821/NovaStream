@@ -1,4 +1,12 @@
-import { issueToken, passwordMatches, verifyToken } from "./_lib/auth";
+import {
+  generateTotpSecret,
+  issueToken,
+  otpauthUri,
+  passwordMatches,
+  usernameMatches,
+  verifyToken,
+  verifyTotp,
+} from "./_lib/auth";
 import {
   createCheckoutSession,
   getCheckoutSession,
@@ -17,8 +25,19 @@ export { Registry } from "./registry";
 type Env = StripeEnv & {
   DO: Fetcher;
   ADMIN_PASSWORD: string;
+  ADMIN_USERNAME?: string;
   STORE_URL?: string;
 };
+
+/** Used until the owner sets their own name in the project settings. */
+const DEFAULT_ADMIN_USERNAME = "admin";
+
+const adminUsername = (env: Env): string => env.ADMIN_USERNAME?.trim() || DEFAULT_ADMIN_USERNAME;
+
+/** Keys of the dashboard security settings kept in the registry. */
+const TWOFA_SECRET = "twofa_secret";
+const TWOFA_PENDING = "twofa_pending";
+const TWOFA_LAST_STEP = "twofa_last_step";
 
 /** Where the app sends customers to buy. Overridable without an app update. */
 const DEFAULT_STORE_URL = "https://novastream.rork.app";
@@ -63,8 +82,19 @@ async function registryJson<T>(env: Env, path: string, body: unknown): Promise<T
 async function requireAdmin(request: Request, env: Env): Promise<boolean> {
   const header = request.headers.get("Authorization") ?? "";
   const token = header.toLowerCase().startsWith("bearer ") ? header.slice(7).trim() : null;
-  return verifyToken(env.ADMIN_PASSWORD, token);
+  return verifyToken(env.ADMIN_PASSWORD, adminUsername(env), token);
 }
+
+const setting = async (env: Env, key: string): Promise<string> =>
+  (await registryJson<{ value: string }>(env, "/settings-get", { key })).value;
+
+const putSetting = (env: Env, key: string, value: string): Promise<{ ok: boolean }> =>
+  registryJson<{ ok: boolean }>(env, "/settings-put", { key, value });
+
+type LoginGuard = { blocked: boolean; retryInSeconds: number; failures: number };
+
+const loginGuard = (env: Env, action: "check" | "fail" | "reset"): Promise<LoginGuard> =>
+  registryJson<LoginGuard>(env, "/login-guard", { action });
 
 async function readBody(request: Request): Promise<Record<string, unknown>> {
   try {
@@ -158,11 +188,43 @@ export default {
       // ---- Dashboard -----------------------------------------------------
       if (path === "/api/admin/login" && request.method === "POST") {
         const body = await readBody(request);
-        if (!env.ADMIN_PASSWORD?.trim()) return fail("dashboard password not configured", 503);
-        if (!passwordMatches(env.ADMIN_PASSWORD.trim(), String(body.password ?? ""))) {
-          return fail("wrong password", 401);
+        const password = env.ADMIN_PASSWORD?.trim() ?? "";
+        if (!password) return fail("dashboard password not configured", 503);
+
+        const guard = await loginGuard(env, "check");
+        if (guard.blocked) {
+          return json(
+            { error: "too many attempts", retryInSeconds: guard.retryInSeconds },
+            429,
+          );
         }
-        return json({ token: await issueToken(env.ADMIN_PASSWORD.trim()) });
+
+        const username = adminUsername(env);
+        const credentialsOk =
+          usernameMatches(username, String(body.username ?? "")) &&
+          passwordMatches(password, String(body.password ?? ""));
+        if (!credentialsOk) {
+          await loginGuard(env, "fail");
+          // Same message for a wrong name or a wrong password: no hints.
+          return fail("wrong username or password", 401);
+        }
+
+        const secret = await setting(env, TWOFA_SECRET);
+        if (secret) {
+          const code = String(body.code ?? "").trim();
+          if (!code) return json({ error: "two-factor code required", twofaRequired: true }, 401);
+          const result = await verifyTotp(secret, code);
+          const lastStep = Number(await setting(env, TWOFA_LAST_STEP)) || 0;
+          // A code is single-use: replaying one seen on a shoulder gets nowhere.
+          if (!result.valid || result.step <= lastStep) {
+            await loginGuard(env, "fail");
+            return json({ error: "invalid two-factor code", twofaRequired: true }, 401);
+          }
+          await putSetting(env, TWOFA_LAST_STEP, String(result.step));
+        }
+
+        await loginGuard(env, "reset");
+        return json({ token: await issueToken(password, username) });
       }
 
       if (path.startsWith("/api/admin/")) {
@@ -170,6 +232,51 @@ export default {
         const body = await readBody(request);
 
         if (path === "/api/admin/session") return json({ ok: true });
+
+        // ---- Dashboard security -----------------------------------------
+        if (path === "/api/admin/security") {
+          return json({
+            username: adminUsername(env),
+            usernameConfigured: Boolean(env.ADMIN_USERNAME?.trim()),
+            twofaEnabled: Boolean(await setting(env, TWOFA_SECRET)),
+          });
+        }
+
+        // Hands out a fresh secret and its QR payload; nothing is enforced
+        // until the owner proves they can generate a code from it.
+        if (path === "/api/admin/2fa/setup") {
+          const secret = generateTotpSecret();
+          await putSetting(env, TWOFA_PENDING, secret);
+          return json({
+            secret,
+            otpauth: otpauthUri(secret, adminUsername(env)),
+          });
+        }
+
+        if (path === "/api/admin/2fa/enable") {
+          const pending = await setting(env, TWOFA_PENDING);
+          if (!pending) return fail("start the setup first", 400);
+          const result = await verifyTotp(pending, String(body.code ?? ""));
+          if (!result.valid) return fail("invalid two-factor code", 400);
+          await putSetting(env, TWOFA_SECRET, pending);
+          await putSetting(env, TWOFA_PENDING, "");
+          await putSetting(env, TWOFA_LAST_STEP, String(result.step));
+          return json({ ok: true, twofaEnabled: true });
+        }
+
+        // Turning it off asks for both factors, so a stolen session cannot.
+        if (path === "/api/admin/2fa/disable") {
+          const secret = await setting(env, TWOFA_SECRET);
+          if (!secret) return json({ ok: true, twofaEnabled: false });
+          if (!passwordMatches(env.ADMIN_PASSWORD?.trim() ?? "", String(body.password ?? ""))) {
+            return fail("wrong password", 401);
+          }
+          const result = await verifyTotp(secret, String(body.code ?? ""));
+          if (!result.valid) return fail("invalid two-factor code", 400);
+          await putSetting(env, TWOFA_SECRET, "");
+          await putSetting(env, TWOFA_PENDING, "");
+          return json({ ok: true, twofaEnabled: false });
+        }
 
         if (path === "/api/admin/licenses") {
           return json(await registryJson(env, "/list", {}));
