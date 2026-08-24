@@ -204,7 +204,12 @@ export default {
           usernameMatches(username, String(body.username ?? "")) &&
           passwordMatches(password, String(body.password ?? ""));
         if (!credentialsOk) {
-          await loginGuard(env, "fail");
+          const after = await loginGuard(env, "fail");
+          // Say so straight away when that attempt used up the last try,
+          // instead of letting the next one look like a plain wrong password.
+          if (after.blocked) {
+            return json({ error: "too many attempts", retryInSeconds: after.retryInSeconds }, 429);
+          }
           // Same message for a wrong name or a wrong password: no hints.
           return fail("wrong username or password", 401);
         }
@@ -217,7 +222,10 @@ export default {
           const lastStep = Number(await setting(env, TWOFA_LAST_STEP)) || 0;
           // A code is single-use: replaying one seen on a shoulder gets nowhere.
           if (!result.valid || result.step <= lastStep) {
-            await loginGuard(env, "fail");
+            const after = await loginGuard(env, "fail");
+            if (after.blocked) {
+              return json({ error: "too many attempts", retryInSeconds: after.retryInSeconds }, 429);
+            }
             return json({ error: "invalid two-factor code", twofaRequired: true }, 401);
           }
           await putSetting(env, TWOFA_LAST_STEP, String(result.step));

@@ -42,6 +42,9 @@ const MAX_LOGIN_FAILURES = 6;
 
 const LOCKOUT_MS = 10 * 60 * 1000;
 
+/** Wrong attempts older than this stop counting: a typo last week is not an attack. */
+const FAILURE_WINDOW_MS = 15 * 60 * 1000;
+
 function toView(row: LicenseRow): LicenseView {
   const expired = row.expires_at !== null && row.expires_at < Date.now();
   return {
@@ -168,8 +171,10 @@ export class Registry extends DurableObject {
    */
   private loginGuard(action: string): { blocked: boolean; retryInSeconds: number; failures: number } {
     const now = Date.now();
-    const failures = Number(this.setting("login_failures")) || 0;
     const lockedUntil = Number(this.setting("login_locked_until")) || 0;
+    const lastFailure = Number(this.setting("login_last_failure")) || 0;
+    const stale = now - lastFailure > FAILURE_WINDOW_MS;
+    const failures = stale ? 0 : Number(this.setting("login_failures")) || 0;
 
     if (action === "reset") {
       this.putSetting("login_failures", "0");
@@ -179,6 +184,7 @@ export class Registry extends DurableObject {
 
     if (action === "fail") {
       const next = failures + 1;
+      this.putSetting("login_last_failure", String(now));
       this.putSetting("login_failures", String(next));
       if (next >= MAX_LOGIN_FAILURES) {
         this.putSetting("login_locked_until", String(now + LOCKOUT_MS));
