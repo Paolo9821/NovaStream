@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.rork.novastream.data.local.AdminStore
 import com.rork.novastream.data.local.AppSettings
+import com.rork.novastream.data.local.RemoteVerdict
 import com.rork.novastream.data.local.DeviceIdentity
 import com.rork.novastream.data.local.LicenseState
 import com.rork.novastream.data.local.LicenseCodes
@@ -24,11 +25,26 @@ import com.rork.novastream.data.model.WatchProgress
 import com.rork.novastream.data.net.DnsCheck
 import com.rork.novastream.data.net.SpeedResult
 import com.rork.novastream.data.parser.XmltvParser
+import com.rork.novastream.data.remote.AdminSession
+import com.rork.novastream.data.remote.LicenseApi
+import com.rork.novastream.data.remote.LicenseCheck
+import com.rork.novastream.data.remote.RemoteLicense
+import com.rork.novastream.data.remote.RemoteStatus
 import com.rork.novastream.data.repo.IptvRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+
+/** Owner-side state of the online license registry. */
+data class AdminOnlineState(
+    val configured: Boolean = false,
+    val signedIn: Boolean = false,
+    val email: String = "",
+    val busy: Boolean = false,
+    val error: String? = null,
+    val licenses: List<RemoteLicense> = emptyList(),
+)
 
 data class CatalogQuery(
     val search: String = "",
@@ -56,18 +72,75 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val encryptionLabel: String get() = repository.secureStore.algorithmLabel
 
     private val licenseStore = LicenseStore(application, repository.secureStore)
+    private val licenseApi = LicenseApi()
 
     /** Terms acceptance plus the trial/license state bound to this device. */
     val license: StateFlow<LicenseState> = licenseStore.state
     val deviceIdentity: DeviceIdentity get() = licenseStore.identity
 
+    /** True when the Firebase registry is wired, i.e. licenses can be revoked. */
+    val onlineLicensing: Boolean get() = licenseApi.isConfigured
+
+    init {
+        licenseStore.onlineEnforcement = licenseApi.isConfigured
+        licenseStore.refresh()
+        syncLicense()
+    }
+
     fun acceptTerms() = licenseStore.acceptTerms()
 
     /** Re-evaluates the trial clock, e.g. when the app returns to the foreground. */
-    fun refreshLicense() = licenseStore.refresh()
+    fun refreshLicense() {
+        licenseStore.refresh()
+        syncLicense()
+    }
 
     /** Returns false when the code does not belong to this device. */
-    fun activateLicense(code: String): Boolean = licenseStore.activate(code)
+    fun activateLicense(code: String): Boolean {
+        val accepted = licenseStore.activate(code)
+        if (accepted) syncLicense(force = true)
+        return accepted
+    }
+
+    private var syncing = false
+
+    /**
+     * Asks the registry whether this device is still allowed. A failed call is
+     * never a verdict: the device keeps working until the grace window runs out.
+     */
+    fun syncLicense(force: Boolean = false) {
+        if (!licenseApi.isConfigured || syncing) return
+        if (!force && !licenseStore.needsRemoteCheck()) return
+
+        val deviceId = licenseStore.identity.deviceId
+        val code = licenseStore.boundCode() ?: return
+
+        syncing = true
+        licenseStore.setVerifying(true)
+        viewModelScope.launch {
+            val check = when (val first = licenseApi.fetch(deviceId)) {
+                is LicenseCheck.Missing -> licenseApi.register(deviceId, code)
+                else -> first
+            }
+            when (check) {
+                is LicenseCheck.Found -> {
+                    licenseStore.applyRemoteVerdict(
+                        verdict = when (check.record.status) {
+                            RemoteStatus.ACTIVE -> RemoteVerdict.ACTIVE
+                            RemoteStatus.SUSPENDED -> RemoteVerdict.SUSPENDED
+                            RemoteStatus.REVOKED -> RemoteVerdict.REVOKED
+                        },
+                        note = check.record.note,
+                    )
+                    if (check.record.status == RemoteStatus.ACTIVE) licenseApi.touch(deviceId)
+                }
+                // Offline or server down: keep the last verdict, grace window ticks.
+                is LicenseCheck.Missing, is LicenseCheck.Unavailable -> Unit
+            }
+            licenseStore.setVerifying(false)
+            syncing = false
+        }
+    }
 
     private val adminStore = AdminStore(application)
 
@@ -84,6 +157,98 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     /** Issues the activation code for a customer identifier, offline. */
     fun generateActivationCode(deviceId: String): String =
         LicenseCodes.forDevice(deviceId.trim())
+
+    private val _adminOnline = MutableStateFlow(AdminOnlineState(configured = licenseApi.isConfigured))
+    val adminOnline: StateFlow<AdminOnlineState> = _adminOnline.asStateFlow()
+
+    private var adminSession: AdminSession? = null
+
+    fun adminSignIn(email: String, password: String) {
+        _adminOnline.value = _adminOnline.value.copy(busy = true, error = null)
+        viewModelScope.launch {
+            licenseApi.signIn(email, password)
+                .onSuccess { session ->
+                    adminSession = session
+                    _adminOnline.value = _adminOnline.value.copy(
+                        signedIn = true,
+                        email = session.email,
+                        busy = false,
+                        error = null,
+                    )
+                    adminRefreshLicenses()
+                }
+                .onFailure { error ->
+                    _adminOnline.value = _adminOnline.value.copy(
+                        busy = false,
+                        error = error.message ?: "Sign-in failed",
+                    )
+                }
+        }
+    }
+
+    fun adminSignOut() {
+        adminSession = null
+        _adminOnline.value = AdminOnlineState(configured = licenseApi.isConfigured)
+    }
+
+    fun adminRefreshLicenses() {
+        val session = adminSession ?: return
+        _adminOnline.value = _adminOnline.value.copy(busy = true, error = null)
+        viewModelScope.launch {
+            licenseApi.list(session)
+                .onSuccess { records ->
+                    _adminOnline.value = _adminOnline.value.copy(
+                        busy = false,
+                        licenses = records,
+                        error = null,
+                    )
+                }
+                .onFailure { error ->
+                    _adminOnline.value = _adminOnline.value.copy(
+                        busy = false,
+                        error = error.message ?: "Could not load licenses",
+                    )
+                }
+        }
+    }
+
+    /** Remote kill switch: suspend, revoke or reactivate one device. */
+    fun adminSetStatus(deviceId: String, status: RemoteStatus, note: String = "") {
+        val session = adminSession ?: return
+        _adminOnline.value = _adminOnline.value.copy(busy = true, error = null)
+        viewModelScope.launch {
+            licenseApi.setStatus(session, deviceId, status, note)
+                .onSuccess {
+                    adminRefreshLicenses()
+                    // The owner may be acting on their own device.
+                    if (deviceId == licenseStore.identity.deviceId) syncLicense(force = true)
+                }
+                .onFailure { error ->
+                    _adminOnline.value = _adminOnline.value.copy(
+                        busy = false,
+                        error = error.message ?: "Update failed",
+                    )
+                }
+        }
+    }
+
+    /** Registers a sold device up front, before it ever connects. */
+    fun adminIssueOnline(deviceId: String, label: String) {
+        val session = adminSession ?: return
+        val clean = deviceId.trim()
+        if (clean.isEmpty()) return
+        _adminOnline.value = _adminOnline.value.copy(busy = true, error = null)
+        viewModelScope.launch {
+            licenseApi.issue(session, clean, LicenseCodes.forDevice(clean), label)
+                .onSuccess { adminRefreshLicenses() }
+                .onFailure { error ->
+                    _adminOnline.value = _adminOnline.value.copy(
+                        busy = false,
+                        error = error.message ?: "Could not register the device",
+                    )
+                }
+        }
+    }
 
     private val _parentalUnlocked = MutableStateFlow(false)
     val parentalUnlocked: StateFlow<Boolean> = _parentalUnlocked.asStateFlow()

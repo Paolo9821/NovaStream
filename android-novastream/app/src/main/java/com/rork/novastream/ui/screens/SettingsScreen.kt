@@ -62,6 +62,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.rork.novastream.data.local.BlockReason
 import com.rork.novastream.data.local.DeviceProfile
 import com.rork.novastream.data.local.DnsPreset
 import com.rork.novastream.data.local.LicenseStatus
@@ -176,11 +177,32 @@ fun SettingsScreen(
                             is LicenseStatus.Trial ->
                                 strings.licenseStatusTrial.format(status.daysRemaining)
                             is LicenseStatus.Expired -> strings.licenseExpiredTitle
+                            is LicenseStatus.Blocked -> when (status.reason) {
+                                BlockReason.REVOKED -> strings.licenseRevokedTitle
+                                BlockReason.SUSPENDED -> strings.licenseSuspendedTitle
+                                BlockReason.UNVERIFIED -> strings.licenseUnverifiedTitle
+                            }
                         },
                         style = MaterialTheme.typography.bodyMedium,
-                        color = if (status is LicenseStatus.Licensed) accents.live
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = when (status) {
+                            is LicenseStatus.Licensed -> accents.live
+                            is LicenseStatus.Blocked -> MaterialTheme.colorScheme.error
+                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                        },
                     )
+                    if (viewModel.onlineLicensing) {
+                        Spacer(Modifier.height(4.dp))
+                        Text(
+                            text = when {
+                                license.verifying -> strings.licenseChecking
+                                license.lastVerifiedAtMs > 0L -> strings.licenseLastCheck
+                                    .format(licenseDate(license.lastVerifiedAtMs, settings.language))
+                                else -> strings.licenseNeverChecked
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     Spacer(Modifier.height(12.dp))
                     DeviceIdentityCard(identity = license.identity)
                     if (status !is LicenseStatus.Licensed) {

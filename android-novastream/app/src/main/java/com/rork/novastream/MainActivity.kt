@@ -24,6 +24,7 @@ import com.rork.novastream.data.local.ThemeMode
 import com.rork.novastream.ui.i18n.LocalStrings
 import com.rork.novastream.ui.i18n.stringsFor
 import com.rork.novastream.ui.navigation.AppNavigation
+import com.rork.novastream.ui.screens.LicenseBlockedScreen
 import com.rork.novastream.ui.screens.LicenseLockedScreen
 import com.rork.novastream.ui.screens.OnboardingScreen
 import com.rork.novastream.ui.screens.TermsScreen
@@ -79,6 +80,17 @@ class MainActivity : ComponentActivity() {
                             language = settings.language,
                             sales = sales,
                             onActivate = { code -> viewModel.activateLicense(code) },
+                        )
+
+                        status is LicenseStatus.Blocked -> LicenseBlockedScreen(
+                            identity = license.identity,
+                            reason = status.reason,
+                            note = status.note,
+                            verifying = license.verifying,
+                            lastVerifiedAtMs = license.lastVerifiedAtMs,
+                            language = settings.language,
+                            sales = sales,
+                            onRetry = { viewModel.syncLicense(force = true) },
                         )
 
                         else -> AppNavigation(viewModel = viewModel)

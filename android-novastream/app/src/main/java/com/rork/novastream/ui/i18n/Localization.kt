@@ -256,6 +256,16 @@ data class Strings(
     val buyLicenseFallback: String = "Ask the person or shop that gave you NovaStream for an activation code.",
     val buyLicenseAction: String = "Contact the seller",
     val appVersionLine: String = "NovaStream 1.0",
+    val licenseRevokedTitle: String = "License revoked",
+    val licenseRevokedBody: String = "This license was disabled by the provider. Contact your seller to restore access.",
+    val licenseSuspendedTitle: String = "License suspended",
+    val licenseSuspendedBody: String = "This license is temporarily paused. It works again as soon as the provider reactivates it.",
+    val licenseUnverifiedTitle: String = "Verification needed",
+    val licenseUnverifiedBody: String = "NovaStream could not verify this license for %d days. Connect to the internet to continue.",
+    val licenseRetryCheck: String = "Check again",
+    val licenseChecking: String = "Checking\u2026",
+    val licenseLastCheck: String = "Last check: %s",
+    val licenseNeverChecked: String = "Never verified",
 )
 
 private val English = Strings()
@@ -480,6 +490,16 @@ private val Italian = Strings(
     licenseSection = "Licenza",
     licenseStatusLicensed = "Licenza attiva su questo dispositivo",
     licenseStatusTrial = "Prova gratuita · %d giorni rimanenti",
+    licenseRevokedTitle = "Licenza revocata",
+    licenseRevokedBody = "Questa licenza è stata disattivata dal fornitore. Contatta il tuo rivenditore per ripristinare l'accesso.",
+    licenseSuspendedTitle = "Licenza sospesa",
+    licenseSuspendedBody = "Questa licenza è temporaneamente in pausa. Tornerà attiva appena il fornitore la riattiva.",
+    licenseUnverifiedTitle = "Verifica necessaria",
+    licenseUnverifiedBody = "NovaStream non riesce a verificare la licenza da %d giorni. Collegati a internet per continuare.",
+    licenseRetryCheck = "Verifica di nuovo",
+    licenseChecking = "Verifica in corso…",
+    licenseLastCheck = "Ultima verifica: %s",
+    licenseNeverChecked = "Mai verificata",
 )
 
 private val Spanish = Strings(
@@ -702,6 +722,16 @@ private val Spanish = Strings(
     licenseSection = "Licencia",
     licenseStatusLicensed = "Licencia activa en este dispositivo",
     licenseStatusTrial = "Prueba gratuita · %d días restantes",
+    licenseRevokedTitle = "Licencia revocada",
+    licenseRevokedBody = "Esta licencia ha sido desactivada por el proveedor. Contacta con tu vendedor para recuperar el acceso.",
+    licenseSuspendedTitle = "Licencia suspendida",
+    licenseSuspendedBody = "Esta licencia está pausada temporalmente. Volverá a funcionar en cuanto el proveedor la reactive.",
+    licenseUnverifiedTitle = "Verificación necesaria",
+    licenseUnverifiedBody = "NovaStream no ha podido verificar la licencia desde hace %d días. Conéctate a internet para continuar.",
+    licenseRetryCheck = "Comprobar de nuevo",
+    licenseChecking = "Comprobando…",
+    licenseLastCheck = "Última comprobación: %s",
+    licenseNeverChecked = "Nunca verificada",
 )
 
 private val French = Strings(
@@ -924,6 +954,16 @@ private val French = Strings(
     licenseSection = "Licence",
     licenseStatusLicensed = "Licence active sur cet appareil",
     licenseStatusTrial = "Essai gratuit · %d jours restants",
+    licenseRevokedTitle = "Licence révoquée",
+    licenseRevokedBody = "Cette licence a été désactivée par le fournisseur. Contactez votre revendeur pour rétablir l'accès.",
+    licenseSuspendedTitle = "Licence suspendue",
+    licenseSuspendedBody = "Cette licence est temporairement en pause. Elle fonctionnera dès que le fournisseur la réactivera.",
+    licenseUnverifiedTitle = "Vérification nécessaire",
+    licenseUnverifiedBody = "NovaStream n'a pas pu vérifier cette licence depuis %d jours. Connectez-vous à Internet pour continuer.",
+    licenseRetryCheck = "Vérifier à nouveau",
+    licenseChecking = "Vérification…",
+    licenseLastCheck = "Dernière vérification : %s",
+    licenseNeverChecked = "Jamais vérifiée",
 )
 
 private val German = Strings(
@@ -1146,6 +1186,16 @@ private val German = Strings(
     licenseSection = "Lizenz",
     licenseStatusLicensed = "Lizenz auf diesem Gerät aktiv",
     licenseStatusTrial = "Kostenlose Testphase · noch %d Tage",
+    licenseRevokedTitle = "Lizenz widerrufen",
+    licenseRevokedBody = "Diese Lizenz wurde vom Anbieter deaktiviert. Wende dich an deinen Händler, um den Zugang wiederherzustellen.",
+    licenseSuspendedTitle = "Lizenz pausiert",
+    licenseSuspendedBody = "Diese Lizenz ist vorübergehend pausiert. Sie funktioniert wieder, sobald der Anbieter sie reaktiviert.",
+    licenseUnverifiedTitle = "Überprüfung erforderlich",
+    licenseUnverifiedBody = "NovaStream konnte die Lizenz seit %d Tagen nicht prüfen. Stelle eine Internetverbindung her, um fortzufahren.",
+    licenseRetryCheck = "Erneut prüfen",
+    licenseChecking = "Wird geprüft…",
+    licenseLastCheck = "Letzte Prüfung: %s",
+    licenseNeverChecked = "Nie geprüft",
 )
 
 private val Portuguese = Strings(
@@ -1368,6 +1418,16 @@ private val Portuguese = Strings(
     licenseSection = "Licença",
     licenseStatusLicensed = "Licença ativa neste dispositivo",
     licenseStatusTrial = "Teste gratuito · faltam %d dias",
+    licenseRevokedTitle = "Licença revogada",
+    licenseRevokedBody = "Esta licença foi desativada pelo fornecedor. Contacte o seu revendedor para recuperar o acesso.",
+    licenseSuspendedTitle = "Licença suspensa",
+    licenseSuspendedBody = "Esta licença está temporariamente pausada. Voltará a funcionar assim que o fornecedor a reativar.",
+    licenseUnverifiedTitle = "Verificação necessária",
+    licenseUnverifiedBody = "O NovaStream não consegue verificar a licença há %d dias. Ligue-se à internet para continuar.",
+    licenseRetryCheck = "Verificar novamente",
+    licenseChecking = "A verificar…",
+    licenseLastCheck = "Última verificação: %s",
+    licenseNeverChecked = "Nunca verificada",
 )
 
 private val Romanian = Strings(
@@ -1590,6 +1650,16 @@ private val Romanian = Strings(
     licenseSection = "Licență",
     licenseStatusLicensed = "Licență activă pe acest dispozitiv",
     licenseStatusTrial = "Probă gratuită · %d zile rămase",
+    licenseRevokedTitle = "Licență revocată",
+    licenseRevokedBody = "Această licență a fost dezactivată de furnizor. Contactează distribuitorul pentru a restabili accesul.",
+    licenseSuspendedTitle = "Licență suspendată",
+    licenseSuspendedBody = "Această licență este suspendată temporar. Va funcționa din nou imediat ce furnizorul o reactivează.",
+    licenseUnverifiedTitle = "Verificare necesară",
+    licenseUnverifiedBody = "NovaStream nu a putut verifica licența de %d zile. Conectează-te la internet pentru a continua.",
+    licenseRetryCheck = "Verifică din nou",
+    licenseChecking = "Se verifică…",
+    licenseLastCheck = "Ultima verificare: %s",
+    licenseNeverChecked = "Niciodată verificată",
 )
 
 private val Turkish = Strings(
@@ -1812,6 +1882,16 @@ private val Turkish = Strings(
     licenseSection = "Lisans",
     licenseStatusLicensed = "Bu cihazda lisans etkin",
     licenseStatusTrial = "Ücretsiz deneme · %d gün kaldı",
+    licenseRevokedTitle = "Lisans iptal edildi",
+    licenseRevokedBody = "Bu lisans sağlayıcı tarafından devre dışı bırakıldı. Erişimi geri kazanmak için satıcınıza ulaşın.",
+    licenseSuspendedTitle = "Lisans askıya alındı",
+    licenseSuspendedBody = "Bu lisans geçici olarak duraklatıldı. Sağlayıcı yeniden etkinleştirdiğinde tekrar çalışacak.",
+    licenseUnverifiedTitle = "Doğrulama gerekli",
+    licenseUnverifiedBody = "NovaStream lisansı %d gündür doğrulayamıyor. Devam etmek için internete bağlanın.",
+    licenseRetryCheck = "Yeniden dene",
+    licenseChecking = "Doğrulanıyor…",
+    licenseLastCheck = "Son doğrulama: %s",
+    licenseNeverChecked = "Hiç doğrulanmadı",
 )
 
 fun stringsFor(language: Language): Strings = when (language) {

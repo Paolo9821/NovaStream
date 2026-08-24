@@ -29,14 +29,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.PauseCircle
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.ShoppingCart
 import androidx.compose.material.icons.rounded.Smartphone
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material.icons.rounded.VpnKey
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -69,8 +73,10 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.rork.novastream.data.local.BlockReason
 import com.rork.novastream.data.local.DeviceIdentity
 import com.rork.novastream.data.local.LicenseCodes
+import com.rork.novastream.data.local.ONLINE_GRACE_DAYS
 import com.rork.novastream.data.local.LicenseStatus
 import com.rork.novastream.data.local.SalesConfig
 import com.rork.novastream.ui.components.BrandMark
@@ -203,6 +209,183 @@ fun LicenseLockedScreen(
             onDismiss = { sheetVisible = false },
             onActivate = onActivate,
         )
+    }
+}
+
+/**
+ * Gate shown when the code is valid on this device but the registry says
+ * otherwise: revoked, suspended, or simply not reachable for too long.
+ */
+@Composable
+fun LicenseBlockedScreen(
+    identity: DeviceIdentity,
+    reason: BlockReason,
+    note: String,
+    verifying: Boolean,
+    lastVerifiedAtMs: Long,
+    language: Language,
+    sales: SalesConfig,
+    onRetry: () -> Unit,
+) {
+    val strings = LocalStrings.current
+    val accents = LocalNovaAccents.current
+    val context = LocalContext.current
+
+    val accent: Color = when (reason) {
+        BlockReason.REVOKED -> MaterialTheme.colorScheme.error
+        BlockReason.SUSPENDED -> accents.privacy
+        BlockReason.UNVERIFIED -> MaterialTheme.colorScheme.primary
+    }
+    val icon = when (reason) {
+        BlockReason.REVOKED -> Icons.Rounded.Lock
+        BlockReason.SUSPENDED -> Icons.Rounded.PauseCircle
+        BlockReason.UNVERIFIED -> Icons.Rounded.CloudOff
+    }
+    val title = when (reason) {
+        BlockReason.REVOKED -> strings.licenseRevokedTitle
+        BlockReason.SUSPENDED -> strings.licenseSuspendedTitle
+        BlockReason.UNVERIFIED -> strings.licenseUnverifiedTitle
+    }
+    val body = when (reason) {
+        BlockReason.REVOKED -> strings.licenseRevokedBody
+        BlockReason.SUSPENDED -> strings.licenseSuspendedBody
+        BlockReason.UNVERIFIED -> strings.licenseUnverifiedBody.format(ONLINE_GRACE_DAYS)
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = MaterialTheme.colorScheme.background,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 22.dp, vertical = 20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            BrandMark(size = 40.dp)
+            Spacer(Modifier.height(28.dp))
+            Box(
+                modifier = Modifier
+                    .size(84.dp)
+                    .background(accent.copy(alpha = 0.12f), CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = accent,
+                    modifier = Modifier.size(38.dp),
+                )
+            }
+            Spacer(Modifier.height(20.dp))
+            Text(
+                text = title,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = body,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+            if (note.isNotBlank()) {
+                Spacer(Modifier.height(10.dp))
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = accent.copy(alpha = 0.10f),
+                ) {
+                    Text(
+                        text = note,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = accent,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(26.dp))
+            DeviceIdentityCard(identity = identity)
+
+            Spacer(Modifier.height(24.dp))
+            Button(
+                onClick = onRetry,
+                enabled = !verifying,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(54.dp),
+                shape = RoundedCornerShape(14.dp),
+            ) {
+                if (verifying) {
+                    CircularProgressIndicator(
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.size(18.dp),
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Rounded.Refresh,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    text = if (verifying) strings.licenseChecking else strings.licenseRetryCheck,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+
+            if (reason != BlockReason.UNVERIFIED) {
+                Spacer(Modifier.height(12.dp))
+                OutlinedButton(
+                    onClick = {
+                        launchPurchase(
+                            context = context,
+                            sales = sales,
+                            subject = strings.licenseRequestSubject,
+                            message = strings.licenseRequestBody
+                                .format(identity.macAddress, identity.deviceId),
+                            chooserTitle = strings.buyLicense,
+                        )
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(54.dp),
+                    shape = RoundedCornerShape(14.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.ShoppingCart,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        text = if (sales.storeName.isNotBlank()) sales.storeName
+                        else strings.buyLicense,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(16.dp))
+            Text(
+                text = if (lastVerifiedAtMs > 0L) {
+                    strings.licenseLastCheck.format(licenseDate(lastVerifiedAtMs, language))
+                } else {
+                    strings.licenseNeverChecked
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(12.dp))
+        }
     }
 }
 

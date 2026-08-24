@@ -25,15 +25,24 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.Logout
 import androidx.compose.material.icons.rounded.AdminPanelSettings
+import androidx.compose.material.icons.rounded.Block
 import androidx.compose.material.icons.rounded.Bolt
+import androidx.compose.material.icons.rounded.CloudDone
+import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.PauseCircle
+import androidx.compose.material.icons.rounded.PlayCircle
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Storefront
 import androidx.compose.material.icons.rounded.VpnKey
 import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -56,14 +65,20 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rork.novastream.data.local.LicenseCodes
 import com.rork.novastream.data.local.SalesChannel
+import com.rork.novastream.data.remote.RemoteLicense
+import com.rork.novastream.data.remote.RemoteStatus
 import com.rork.novastream.ui.theme.LocalNovaAccents
 import com.rork.novastream.ui.vm.AppViewModel
+import java.text.DateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * Owner-only panel: issues activation codes offline and configures where
@@ -192,8 +207,13 @@ private fun AdminPanel(
     val sales by viewModel.sales.collectAsStateWithLifecycle()
     val identity = viewModel.deviceIdentity
 
+    val online by viewModel.adminOnline.collectAsStateWithLifecycle()
+
     var customerId by remember { mutableStateOf("") }
     var issuedCode by remember { mutableStateOf("") }
+    var customerLabel by remember { mutableStateOf("") }
+    var adminEmail by remember { mutableStateOf("") }
+    var adminPassword by remember { mutableStateOf("") }
     var handle by remember(sales.handle) { mutableStateOf(sales.handle) }
     var storeName by remember(sales.storeName) { mutableStateOf(sales.storeName) }
     var priceNote by remember(sales.priceNote) { mutableStateOf(sales.priceNote) }
@@ -257,6 +277,9 @@ private fun AdminPanel(
                         issuedCode = ""
                     },
                     label = { Text("Customer Device ID") },
+                    supportingText = {
+                        if (online.signedIn) Text("Registering online lets you revoke it later.")
+                    },
                     singleLine = true,
                     textStyle = MaterialTheme.typography.bodyMedium.copy(
                         fontFamily = FontFamily.Monospace
@@ -345,7 +368,172 @@ private fun AdminPanel(
                                         Text("Send")
                                     }
                                 }
+
+                                if (online.signedIn) {
+                                    Spacer(Modifier.height(12.dp))
+                                    OutlinedTextField(
+                                        value = customerLabel,
+                                        onValueChange = { customerLabel = it },
+                                        label = { Text("Customer name (optional)") },
+                                        singleLine = true,
+                                        shape = RoundedCornerShape(14.dp),
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+                                    Spacer(Modifier.height(10.dp))
+                                    Button(
+                                        onClick = {
+                                            viewModel.adminIssueOnline(customerId, customerLabel)
+                                            customerLabel = ""
+                                        },
+                                        enabled = !online.busy,
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) {
+                                        Icon(Icons.Rounded.CloudDone, contentDescription = null)
+                                        Spacer(Modifier.width(8.dp))
+                                        Text("Register in the online registry")
+                                    }
+                                }
                             }
+                        }
+                    }
+                }
+            }
+        }
+
+        item("online") {
+            AdminCard(title = "Online control") {
+                when {
+                    !online.configured -> Text(
+                        text = "The online registry is off: the Firebase keys are missing from " +
+                            "this build. Codes still work offline, but they cannot be revoked. " +
+                            "Add EXPO_PUBLIC_FIREBASE_PROJECT_ID and EXPO_PUBLIC_FIREBASE_API_KEY, " +
+                            "then rebuild.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+
+                    !online.signedIn -> {
+                        Text(
+                            text = "Sign in with your Firebase owner account to see every " +
+                                "activated device and suspend or revoke it remotely.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(14.dp))
+                        OutlinedTextField(
+                            value = adminEmail,
+                            onValueChange = { adminEmail = it.trim() },
+                            label = { Text("Owner email") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Email,
+                                capitalization = KeyboardCapitalization.None,
+                            ),
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        OutlinedTextField(
+                            value = adminPassword,
+                            onValueChange = { adminPassword = it },
+                            label = { Text("Password") },
+                            singleLine = true,
+                            visualTransformation = PasswordVisualTransformation(),
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        online.error?.let { message ->
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = message,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                        Spacer(Modifier.height(14.dp))
+                        Button(
+                            onClick = {
+                                viewModel.adminSignIn(adminEmail, adminPassword)
+                                adminPassword = ""
+                            },
+                            enabled = !online.busy && adminEmail.isNotBlank() &&
+                                adminPassword.isNotBlank(),
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            if (online.busy) {
+                                CircularProgressIndicator(
+                                    strokeWidth = 2.dp,
+                                    color = MaterialTheme.colorScheme.onPrimary,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                                Spacer(Modifier.width(8.dp))
+                            }
+                            Text("Sign in")
+                        }
+                    }
+
+                    else -> {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Rounded.CloudDone,
+                                contentDescription = null,
+                                tint = accents.live,
+                                modifier = Modifier.size(20.dp),
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Text(
+                                text = online.email,
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.weight(1f),
+                            )
+                            IconButton(onClick = { viewModel.adminRefreshLicenses() }) {
+                                Icon(Icons.Rounded.Refresh, contentDescription = "Refresh")
+                            }
+                            IconButton(onClick = { viewModel.adminSignOut() }) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Rounded.Logout,
+                                    contentDescription = "Sign out",
+                                )
+                            }
+                        }
+                        online.error?.let { message ->
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = message,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                        if (online.busy) {
+                            Spacer(Modifier.height(12.dp))
+                            CircularProgressIndicator(
+                                strokeWidth = 2.dp,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                        if (online.licenses.isEmpty() && !online.busy) {
+                            Spacer(Modifier.height(12.dp))
+                            Text(
+                                text = "No device registered yet. Devices appear here as soon " +
+                                    "as they activate a code with internet access.",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                        online.licenses.forEach { record ->
+                            Spacer(Modifier.height(14.dp))
+                            HorizontalDivider(color = accents.hairline)
+                            Spacer(Modifier.height(14.dp))
+                            RemoteLicenseRow(
+                                record = record,
+                                busy = online.busy,
+                                onSetStatus = { status ->
+                                    viewModel.adminSetStatus(record.deviceId, status)
+                                },
+                                onCopy = {
+                                    copyToClipboard(context, record.deviceId, "Device ID copied")
+                                },
+                            )
                         }
                     }
                 }
@@ -465,7 +653,11 @@ private fun AdminPanel(
                         "4. They tap \"Enter activation code\" and the app unlocks forever.\n\n" +
                         "Codes are computed offline with a one-way hash of the Device ID, so a " +
                         "code copied to another device is always rejected. Formula: " +
-                        "SHA-256 of \"${LicenseCodes.SALT_PREVIEW}<device id>\".",
+                        "SHA-256 of \"${LicenseCodes.SALT_PREVIEW}<device id>\".\n\n" +
+                        "With the online registry on, every activated device checks in twice a " +
+                        "day. Suspend pauses it, revoke kills it for good; the device locks at " +
+                        "its next check-in. A device that never reaches the server keeps " +
+                        "working for 14 days, then asks to go online.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -473,6 +665,119 @@ private fun AdminPanel(
         }
     }
 }
+
+/** One registered device with its remote kill switch. */
+@Composable
+private fun RemoteLicenseRow(
+    record: RemoteLicense,
+    busy: Boolean,
+    onSetStatus: (RemoteStatus) -> Unit,
+    onCopy: () -> Unit,
+) {
+    val accents = LocalNovaAccents.current
+    val statusColor = when (record.status) {
+        RemoteStatus.ACTIVE -> accents.live
+        RemoteStatus.SUSPENDED -> accents.privacy
+        RemoteStatus.REVOKED -> MaterialTheme.colorScheme.error
+    }
+
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = record.label.ifBlank { record.deviceId },
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = record.deviceId,
+                    style = MaterialTheme.typography.bodySmall,
+                    fontFamily = FontFamily.Monospace,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = statusColor.copy(alpha = 0.14f),
+            ) {
+                Text(
+                    text = record.status.name.lowercase(Locale.US),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = statusColor,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                )
+            }
+            IconButton(onClick = onCopy) {
+                Icon(
+                    imageVector = Icons.Rounded.ContentCopy,
+                    contentDescription = "Copy device ID",
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
+        if (record.lastSeenMs > 0L) {
+            Text(
+                text = "Last seen ${adminDate(record.lastSeenMs)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (record.status != RemoteStatus.ACTIVE) {
+                OutlinedButton(
+                    onClick = { onSetStatus(RemoteStatus.ACTIVE) },
+                    enabled = !busy,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.PlayCircle,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text("Reactivate")
+                }
+            }
+            if (record.status != RemoteStatus.SUSPENDED) {
+                OutlinedButton(
+                    onClick = { onSetStatus(RemoteStatus.SUSPENDED) },
+                    enabled = !busy,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.PauseCircle,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text("Suspend")
+                }
+            }
+            if (record.status != RemoteStatus.REVOKED) {
+                OutlinedButton(
+                    onClick = { onSetStatus(RemoteStatus.REVOKED) },
+                    enabled = !busy,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.Block,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text("Revoke", color = MaterialTheme.colorScheme.error)
+                }
+            }
+        }
+    }
+}
+
+private fun adminDate(epochMs: Long): String =
+    DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT, Locale.US)
+        .format(Date(epochMs))
 
 @Composable
 private fun AdminCard(
