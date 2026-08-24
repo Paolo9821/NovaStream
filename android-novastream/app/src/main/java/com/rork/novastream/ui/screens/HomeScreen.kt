@@ -22,6 +22,7 @@ import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PlaylistAdd
+import androidx.compose.material.icons.rounded.PlaylistPlay
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Button
@@ -109,7 +110,7 @@ fun HomeScreen(
                 PlaylistStatusChip(
                     playlistLabel = active?.let { strings.playlistPrefix.format(it.name) }
                         ?: strings.noActivePlaylist,
-                    encryption = "${strings.encryptedLocally} · ${viewModel.encryptionLabel}",
+                    connected = active != null,
                 )
             }
         }
@@ -266,36 +267,37 @@ fun HomeScreen(
 
 }
 
+/**
+ * Which provider is on air. The encryption wording used to live here too, but it
+ * is a one-off reassurance rather than daily information, so it now belongs to
+ * Settings only.
+ */
 @Composable
-private fun PlaylistStatusChip(playlistLabel: String, encryption: String) {
+private fun PlaylistStatusChip(playlistLabel: String, connected: Boolean) {
     val accents = LocalNovaAccents.current
+    val tint = if (connected) accents.live else MaterialTheme.colorScheme.onSurfaceVariant
     Surface(
         shape = RoundedCornerShape(14.dp),
-        color = accents.privacyContainer,
+        color = MaterialTheme.colorScheme.surface,
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
-                imageVector = Icons.Rounded.Lock,
+                imageVector = Icons.Rounded.PlaylistPlay,
                 contentDescription = null,
-                tint = accents.privacy,
+                tint = tint,
                 modifier = Modifier.size(18.dp),
             )
             Spacer(Modifier.width(8.dp))
-            Column {
-                Text(
-                    text = playlistLabel,
-                    style = MaterialTheme.typography.titleSmall,
-                    color = accents.privacy,
-                )
-                Text(
-                    text = encryption,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            Text(
+                text = playlistLabel,
+                style = MaterialTheme.typography.titleSmall,
+                color = tint,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }

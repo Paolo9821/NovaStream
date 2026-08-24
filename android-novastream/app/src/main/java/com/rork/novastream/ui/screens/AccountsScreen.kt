@@ -63,7 +63,6 @@ import com.rork.novastream.data.model.AccountType
 import com.rork.novastream.data.model.PlaylistAccount
 import com.rork.novastream.data.model.SyncState
 import com.rork.novastream.data.repo.IptvRepository
-import com.rork.novastream.ui.components.PrivacyNote
 import com.rork.novastream.ui.components.RequestInitialFocus
 import com.rork.novastream.ui.components.TvTextField
 import com.rork.novastream.ui.components.contentFocusZone
@@ -166,13 +165,6 @@ fun AccountsScreen(
                     strings = strings,
                     onSwitch = { pendingSwitch = account },
                     onDelete = { pendingDelete = account },
-                )
-            }
-
-            item("privacy") {
-                PrivacyNote(
-                    title = strings.privacyTotal,
-                    body = strings.privacyAccountsBody.format(viewModel.encryptionLabel),
                 )
             }
 
