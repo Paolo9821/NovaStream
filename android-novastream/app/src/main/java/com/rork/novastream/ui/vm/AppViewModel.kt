@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.rork.novastream.data.local.AppSettings
+import com.rork.novastream.data.local.CatalogUpdateInterval
 import com.rork.novastream.data.local.DeviceIdentity
 import com.rork.novastream.data.local.LicenseState
 import com.rork.novastream.data.local.LicenseStore
@@ -54,6 +55,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val epg: StateFlow<EpgGuide> = repository.epg
     val epgState: StateFlow<SyncState> = repository.epgState
 
+    /** True while the saved catalog is being read back at launch. */
+    val catalogRestoring: StateFlow<Boolean> = repository.restoring
+
+    /** True while a freshly downloaded catalog is still being written to disk. */
+    val catalogSaving: StateFlow<Boolean> = repository.saving
+
     val settingsStore: SettingsStore get() = repository.settingsStore
     val encryptionLabel: String get() = repository.secureStore.algorithmLabel
 
@@ -87,7 +94,28 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             _startupChecking.value = false
         }
         viewModelScope.launch { _storeUrl.value = licenseApi.storeUrl() }
+        // The saved catalog opens instantly; the scheduled refresh, if one is due,
+        // then runs quietly behind it.
+        viewModelScope.launch { repository.autoRefreshIfDue() }
     }
+
+    /** Re-checks the update schedule, e.g. when the app returns to the foreground. */
+    fun checkScheduledUpdate() {
+        viewModelScope.launch { repository.autoRefreshIfDue() }
+    }
+
+    fun setCatalogUpdateInterval(interval: CatalogUpdateInterval) {
+        settingsStore.update { it.copy(catalogUpdateInterval = interval) }
+        checkScheduledUpdate()
+    }
+
+    fun setAutoUpdateGuide(enabled: Boolean) {
+        settingsStore.update { it.copy(autoUpdateGuide = enabled) }
+    }
+
+    /** When the active catalog was last downloaded, or 0 when never. */
+    fun lastCatalogSyncMs(): Long = activeAccount?.lastSyncEpochMs?.takeIf { it > 0L }
+        ?: catalog.value.syncedAtEpochMs
 
     fun acceptTerms() = licenseStore.acceptTerms()
 

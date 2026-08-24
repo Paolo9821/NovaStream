@@ -72,6 +72,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
@@ -259,6 +262,27 @@ fun PlayerScreen(
             }
             delay(400)
         }
+    }
+
+    // Leaving the app must silence it. Pressing Home only stops the activity, so
+    // without this the stream would keep playing out loud behind the launcher.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner, player) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event != Lifecycle.Event.ON_STOP) return@LifecycleEventObserver
+            player.pause()
+            controlsVisible = true
+            entry?.let {
+                viewModel.saveProgress(
+                    entry = it,
+                    streamUrl = streamUrl,
+                    positionMs = player.currentPosition,
+                    durationMs = player.duration.coerceAtLeast(0L),
+                )
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     // The resume hint is a courtesy, not a dialog: it fades out on its own.

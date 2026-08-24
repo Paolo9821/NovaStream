@@ -63,6 +63,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rork.novastream.data.local.BlockReason
+import com.rork.novastream.data.local.CatalogUpdateInterval
 import com.rork.novastream.data.local.DeviceProfile
 import com.rork.novastream.data.local.DnsPreset
 import com.rork.novastream.data.local.LicenseStatus
@@ -100,6 +101,8 @@ fun SettingsScreen(
     val catalog by viewModel.catalog.collectAsStateWithLifecycle()
     val epg by viewModel.epg.collectAsStateWithLifecycle()
     val epgState by viewModel.epgState.collectAsStateWithLifecycle()
+    val syncState by viewModel.syncState.collectAsStateWithLifecycle()
+    val catalogSaving by viewModel.catalogSaving.collectAsStateWithLifecycle()
     val activeId by viewModel.activeAccountId.collectAsStateWithLifecycle()
     val accounts by viewModel.accounts.collectAsStateWithLifecycle()
     val license by viewModel.license.collectAsStateWithLifecycle()
@@ -113,6 +116,9 @@ fun SettingsScreen(
     var customDnsDoh by remember(settings.customDnsDohUrl) { mutableStateOf(settings.customDnsDohUrl) }
 
     val activeAccount = remember(accounts, activeId) { accounts.firstOrNull { it.id == activeId } }
+    val lastSync = remember(activeAccount?.lastSyncEpochMs, catalog.syncedAtEpochMs) {
+        activeAccount?.lastSyncEpochMs?.takeIf { it > 0L } ?: catalog.syncedAtEpochMs
+    }
     var epgUrlField by remember(activeId, activeAccount?.epgUrl) {
         mutableStateOf(activeAccount?.epgUrl.orEmpty())
     }
@@ -282,6 +288,88 @@ fun SettingsScreen(
                                 shape = SegmentedButtonDefaults.itemShape(index, ThemeMode.entries.size),
                             ) { Text(themeLabel(mode, strings)) }
                         }
+                    }
+                }
+            }
+
+            item("autoupdate") {
+                SettingsCard(title = strings.autoUpdateSection) {
+                    Text(
+                        text = strings.autoUpdateSubtitle,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(12.dp))
+
+                    ResultRow(
+                        title = strings.catalogSavedLabel,
+                        value = strings.catalogSavedValue.format(catalog.entries.size),
+                        hint = when {
+                            lastSync > 0L -> strings.catalogLastSync.format(dateLabel(lastSync))
+                            else -> strings.catalogNeverSynced
+                        },
+                    )
+
+                    Spacer(Modifier.height(12.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        CatalogUpdateInterval.entries.forEach { interval ->
+                            DnsRow(
+                                label = intervalLabel(interval, strings),
+                                description = intervalDescription(interval, strings),
+                                selected = settings.catalogUpdateInterval == interval,
+                                onClick = { viewModel.setCatalogUpdateInterval(interval) },
+                            )
+                        }
+                    }
+
+                    if (settings.catalogUpdateInterval != CatalogUpdateInterval.MANUAL) {
+                        Spacer(Modifier.height(4.dp))
+                        ToggleRow(
+                            title = strings.autoUpdateGuideToggle,
+                            subtitle = strings.autoUpdateGuideToggleSub,
+                            checked = settings.autoUpdateGuide,
+                            onCheckedChange = { viewModel.setAutoUpdateGuide(it) },
+                        )
+                    }
+
+                    Spacer(Modifier.height(12.dp))
+                    val syncing = syncState is SyncState.Running
+                    Button(
+                        onClick = { viewModel.refresh() },
+                        enabled = !syncing && activeAccount != null,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        if (syncing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onPrimary,
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Text(strings.catalogUpdating)
+                        } else {
+                            Icon(Icons.Rounded.Refresh, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text(strings.catalogUpdateAction)
+                        }
+                    }
+
+                    if (catalogSaving) {
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            text = strings.catalogSavingNotice,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+
+                    (syncState as? SyncState.Failed)?.let { failure ->
+                        Spacer(Modifier.height(10.dp))
+                        Text(
+                            text = failure.message,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.error,
+                        )
                     }
                 }
             }
@@ -888,6 +976,21 @@ private fun dnsDescription(preset: DnsPreset, strings: Strings): String = when (
     DnsPreset.CUSTOM -> strings.dnsCustomDesc
     else -> preset.addressLabel
 }
+
+private fun intervalLabel(interval: CatalogUpdateInterval, strings: Strings): String =
+    when (interval) {
+        CatalogUpdateInterval.MANUAL -> strings.autoUpdateManual
+        CatalogUpdateInterval.DAILY -> strings.autoUpdateDaily
+        CatalogUpdateInterval.EVERY_2_DAYS -> strings.autoUpdateEvery2
+        CatalogUpdateInterval.EVERY_3_DAYS -> strings.autoUpdateEvery3
+        CatalogUpdateInterval.WEEKLY -> strings.autoUpdateWeekly
+    }
+
+private fun intervalDescription(interval: CatalogUpdateInterval, strings: Strings): String =
+    when (interval) {
+        CatalogUpdateInterval.MANUAL -> strings.catalogUpdateAction
+        else -> strings.autoUpdateSubtitle.substringBefore('.')
+    }
 
 private fun dateLabel(epochMs: Long): String {
     val formatter = SimpleDateFormat("d MMM, HH:mm", Locale.getDefault())

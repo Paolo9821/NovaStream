@@ -2,6 +2,7 @@ package com.rork.novastream.data.repo
 
 import android.content.Context
 import android.util.Log
+import com.rork.novastream.data.local.CatalogUpdateInterval
 import com.rork.novastream.data.local.SecureStore
 import com.rork.novastream.data.local.SettingsStore
 import com.rork.novastream.data.model.AccountType
@@ -91,6 +92,14 @@ class IptvRepository(context: Context) {
     private val _epgState = MutableStateFlow<SyncState>(SyncState.Idle)
     val epgState: StateFlow<SyncState> = _epgState.asStateFlow()
 
+    private val _restoring = MutableStateFlow(false)
+    /** True while the saved catalog is being read back from the device. */
+    val restoring: StateFlow<Boolean> = _restoring.asStateFlow()
+
+    private val _saving = MutableStateFlow(false)
+    /** True while a freshly downloaded catalog is still being written to disk. */
+    val saving: StateFlow<Boolean> = _saving.asStateFlow()
+
     /** Background worker for disk work that must never run on the UI thread. */
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -105,6 +114,10 @@ class IptvRepository(context: Context) {
         get() = _accounts.value.firstOrNull { it.id == _activeAccountId.value }
 
     private fun restore() {
+        // A save that never finished leaves a scratch file behind; it is dropped
+        // here so it can never be mistaken for the real catalog.
+        secureStore.sweepUnfinishedWrites()
+
         // Accounts, favorites and progress are a few kilobytes: reading them
         // inline keeps the first frame correct.
         _accounts.value = secureStore.getString(KEY_ACCOUNTS)
@@ -122,12 +135,54 @@ class IptvRepository(context: Context) {
         // parsing them takes seconds on a TV box, so they load in the
         // background and appear as soon as they are ready.
         val activeId = _activeAccountId.value ?: return
+        _restoring.value = true
         ioScope.launch {
-            vaultMutex.withLock {
-                readVault<Catalog>(catalogFile(activeId))?.let { _catalog.value = it }
-                readVault<EpgGuide>(epgFile(activeId))?.let { _epg.value = it }
+            try {
+                vaultMutex.withLock {
+                    val stored = readVault<Catalog>(catalogFile(activeId))
+                    if (stored != null && stored.entries.isNotEmpty()) {
+                        _catalog.value = stored
+                    } else if (secureStore.hasVault(catalogFile(activeId))) {
+                        // The file is there but cannot be read: it is damaged and
+                        // would keep failing, so it goes and a fresh copy is fetched.
+                        Log.w(TAG, "Catalogo salvato illeggibile: verrà riscaricato")
+                        secureStore.deleteVault(catalogFile(activeId))
+                    }
+                    readVault<EpgGuide>(epgFile(activeId))?.let { _epg.value = it }
+                }
+            } finally {
+                _restoring.value = false
             }
         }
+    }
+
+    /**
+     * Milliseconds since the active catalog was last downloaded, or null when
+     * there has never been a successful sync.
+     */
+    fun catalogAgeMs(): Long? {
+        val syncedAt = activeAccount?.lastSyncEpochMs?.takeIf { it > 0L }
+            ?: _catalog.value.syncedAtEpochMs.takeIf { it > 0L }
+            ?: return null
+        return (System.currentTimeMillis() - syncedAt).coerceAtLeast(0L)
+    }
+
+    /**
+     * Downloads the catalog again only when the chosen schedule says it is due.
+     * A saved catalog is never thrown away first: the current one keeps playing
+     * until the new one has been parsed successfully.
+     */
+    suspend fun autoRefreshIfDue() {
+        val account = activeAccount ?: return
+        if (_syncState.value is SyncState.Running) return
+        val interval = settingsStore.settings.value.catalogUpdateInterval
+        if (interval == CatalogUpdateInterval.MANUAL) return
+        // Nothing stored yet: the first download is triggered by the user, not here.
+        if (_catalog.value.entries.isEmpty()) return
+        val age = catalogAgeMs() ?: return
+        if (age < interval.intervalMs) return
+        sync(account)
+        if (settingsStore.settings.value.autoUpdateGuide) refreshEpg()
     }
 
     /** Decodes an encrypted cache file without ever holding its text in memory. */
@@ -276,8 +331,13 @@ class IptvRepository(context: Context) {
             // The catalog is already usable at this point. Writing the encrypted
             // copy of a huge provider can take a while, so it happens in the
             // background: the loading screen must never wait for the disk.
+            _saving.value = true
             ioScope.launch {
-                vaultMutex.withLock { writeVault(catalogFile(account.id), catalog) }
+                try {
+                    vaultMutex.withLock { writeVault(catalogFile(account.id), catalog) }
+                } finally {
+                    _saving.value = false
+                }
             }
             _syncState.value = SyncState.Success(live = live, movies = movies, series = series)
         }.onFailure { error ->

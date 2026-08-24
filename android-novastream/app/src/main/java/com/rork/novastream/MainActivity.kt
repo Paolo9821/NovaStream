@@ -64,7 +64,11 @@ class MainActivity : ComponentActivity() {
             val lifecycleOwner = LocalLifecycleOwner.current
             DisposableEffect(lifecycleOwner) {
                 val observer = LifecycleEventObserver { _, event ->
-                    if (event == Lifecycle.Event.ON_RESUME) viewModel.refreshLicense()
+                    if (event != Lifecycle.Event.ON_RESUME) return@LifecycleEventObserver
+                    viewModel.refreshLicense()
+                    // A box left on for days never gets a fresh launch: the update
+                    // schedule is checked again every time the app comes forward.
+                    viewModel.checkScheduledUpdate()
                 }
                 lifecycleOwner.lifecycle.addObserver(observer)
                 onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }

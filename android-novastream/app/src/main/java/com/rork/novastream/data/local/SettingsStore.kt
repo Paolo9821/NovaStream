@@ -27,6 +27,21 @@ enum class DnsPreset(
     val addressLabel: String get() = if (primary.isEmpty()) "" else "$primary · $secondary"
 }
 
+/**
+ * How often the catalog is refreshed on its own. The provider list changes far
+ * less than the guide, so a daily pass is plenty and a manual refresh is always
+ * available from Home and from Settings.
+ */
+enum class CatalogUpdateInterval(val days: Int) {
+    MANUAL(0),
+    DAILY(1),
+    EVERY_2_DAYS(2),
+    EVERY_3_DAYS(3),
+    WEEKLY(7);
+
+    val intervalMs: Long get() = days * 24L * 60 * 60 * 1000
+}
+
 data class AppSettings(
     val onboardingDone: Boolean = false,
     val deviceProfile: DeviceProfile = DeviceProfile.PHONE,
@@ -38,6 +53,8 @@ data class AppSettings(
     val bufferSeconds: Int = 30,
     val hardwareDecoding: Boolean = true,
     val autoplayNextEpisode: Boolean = true,
+    val catalogUpdateInterval: CatalogUpdateInterval = CatalogUpdateInterval.DAILY,
+    val autoUpdateGuide: Boolean = true,
     val parentalEnabled: Boolean = false,
     val pinHash: String = "",
     val blockedGroups: Set<String> = emptySet(),
@@ -68,6 +85,10 @@ class SettingsStore(context: Context) {
         bufferSeconds = prefs.getInt(KEY_BUFFER, 30),
         hardwareDecoding = prefs.getBoolean(KEY_HW, true),
         autoplayNextEpisode = prefs.getBoolean(KEY_AUTOPLAY, true),
+        catalogUpdateInterval = runCatching {
+            CatalogUpdateInterval.valueOf(prefs.getString(KEY_AUTO_UPDATE, null) ?: "DAILY")
+        }.getOrDefault(CatalogUpdateInterval.DAILY),
+        autoUpdateGuide = prefs.getBoolean(KEY_AUTO_UPDATE_EPG, true),
         parentalEnabled = prefs.getBoolean(KEY_PARENTAL, false),
         pinHash = prefs.getString(KEY_PIN, "").orEmpty(),
         blockedGroups = prefs.getStringSet(KEY_BLOCKED, emptySet())?.toSet() ?: emptySet(),
@@ -85,6 +106,8 @@ class SettingsStore(context: Context) {
             .putInt(KEY_BUFFER, settings.bufferSeconds)
             .putBoolean(KEY_HW, settings.hardwareDecoding)
             .putBoolean(KEY_AUTOPLAY, settings.autoplayNextEpisode)
+            .putString(KEY_AUTO_UPDATE, settings.catalogUpdateInterval.name)
+            .putBoolean(KEY_AUTO_UPDATE_EPG, settings.autoUpdateGuide)
             .putBoolean(KEY_PARENTAL, settings.parentalEnabled)
             .putString(KEY_PIN, settings.pinHash)
             .putStringSet(KEY_BLOCKED, settings.blockedGroups)
@@ -135,6 +158,8 @@ class SettingsStore(context: Context) {
         const val KEY_BUFFER = "buffer_seconds"
         const val KEY_HW = "hardware_decoding"
         const val KEY_AUTOPLAY = "autoplay_next"
+        const val KEY_AUTO_UPDATE = "catalog_auto_update"
+        const val KEY_AUTO_UPDATE_EPG = "catalog_auto_update_epg"
         const val KEY_PARENTAL = "parental_enabled"
         const val KEY_PIN = "parental_pin"
         const val KEY_BLOCKED = "parental_blocked_groups"

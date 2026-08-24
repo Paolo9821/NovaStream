@@ -67,21 +67,40 @@ class SecureStore(context: Context) {
      * The file format is unchanged, so vaults written earlier still open.
      */
     fun writeVaultStream(name: String, body: (OutputStream) -> Unit): Boolean = runCatching {
+        val target = File(vaultDir, name)
+        val temp = File(vaultDir, name + TEMP_SUFFIX)
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, masterKey())
-        File(vaultDir, name).outputStream().buffered(BUFFER_BYTES).use { raw ->
-            raw.write(Base64.encodeToString(cipher.iv, Base64.NO_WRAP).toByteArray(Charsets.UTF_8))
-            raw.write(SEPARATOR.code)
-            // The buffer matters: kotlinx writes JSON in small pieces and every
-            // single one of them would otherwise mean a cipher update plus a
-            // Base64 pass. On a big catalog that is the difference between a
-            // couple of seconds and several minutes.
-            CipherOutputStream(Base64OutputStream(raw, Base64.NO_WRAP), cipher)
-                .buffered(BUFFER_BYTES)
-                .use(body)
+        temp.outputStream().use { fileStream ->
+            fileStream.buffered(BUFFER_BYTES).use { raw ->
+                raw.write(
+                    Base64.encodeToString(cipher.iv, Base64.NO_WRAP).toByteArray(Charsets.UTF_8)
+                )
+                raw.write(SEPARATOR.code)
+                // The buffer matters: kotlinx writes JSON in small pieces and every
+                // single one of them would otherwise mean a cipher update plus a
+                // Base64 pass. On a big catalog that is the difference between a
+                // couple of seconds and several minutes.
+                CipherOutputStream(Base64OutputStream(raw, Base64.NO_WRAP), cipher)
+                    .buffered(BUFFER_BYTES)
+                    .use(body)
+            }
+            // Pushes the bytes out of the OS cache before the swap, so a power cut
+            // straight after the rename cannot leave an unreadable file behind.
+            runCatching { fileStream.fd.sync() }
         }
+        if (temp.length() == 0L) throw IllegalStateException("empty vault write")
+        target.delete()
+        if (!temp.renameTo(target)) throw IllegalStateException("vault swap failed")
         true
-    }.onFailure { Log.w(TAG, "Scrittura cifrata non riuscita") }.getOrDefault(false)
+    }.onFailure {
+        Log.w(TAG, "Scrittura cifrata non riuscita")
+        runCatching { File(vaultDir, name + TEMP_SUFFIX).delete() }
+    }.getOrDefault(false)
+
+    /** True when a usable copy of this vault file is already on the device. */
+    fun hasVault(name: String): Boolean =
+        File(vaultDir, name).let { it.exists() && it.length() > 0L }
 
     /** Opens a vault file for streaming reads. The caller closes the stream. */
     fun readVaultStream(name: String): InputStream? = runCatching {
@@ -102,6 +121,7 @@ class SecureStore(context: Context) {
 
     fun deleteVault(name: String) {
         runCatching { File(vaultDir, name).delete() }
+        runCatching { File(vaultDir, name + TEMP_SUFFIX).delete() }
     }
 
     fun clearVault() {
@@ -110,6 +130,15 @@ class SecureStore(context: Context) {
 
     fun vaultSizeBytes(): Long =
         runCatching { vaultDir.listFiles()?.sumOf { it.length() } ?: 0L }.getOrDefault(0L)
+
+    /** Clears leftovers of a save that never finished, e.g. after the app was killed. */
+    fun sweepUnfinishedWrites() {
+        runCatching {
+            vaultDir.listFiles()?.forEach { file ->
+                if (file.name.endsWith(TEMP_SUFFIX)) file.delete()
+            }
+        }
+    }
 
     private fun seal(plain: String): String? = runCatching {
         val cipher = Cipher.getInstance(TRANSFORMATION)
@@ -158,5 +187,6 @@ class SecureStore(context: Context) {
         const val TAG = "SecureStore"
         const val SEPARATOR = ':'
         const val BUFFER_BYTES = 64 * 1024
+        const val TEMP_SUFFIX = ".writing"
     }
 }
