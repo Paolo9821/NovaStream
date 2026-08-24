@@ -1,5 +1,8 @@
 package com.rork.novastream.ui.screens
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -13,6 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -56,10 +60,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rork.novastream.data.local.BlockReason
@@ -73,6 +80,8 @@ import com.rork.novastream.ui.components.PrivacyNote
 import com.rork.novastream.ui.components.RequestInitialFocus
 import com.rork.novastream.ui.components.TvTextField
 import com.rork.novastream.ui.components.dpadVerticalEscape
+import com.rork.novastream.ui.components.sectionFocusTracker
+import com.rork.novastream.ui.components.tvFocusFrame
 import com.rork.novastream.ui.components.contentFocusZone
 import com.rork.novastream.ui.components.dpadDownTo
 import com.rork.novastream.ui.components.rememberFocusRequester
@@ -225,7 +234,7 @@ fun SettingsScreen(
                     OutlinedButton(
                         onClick = { viewModel.syncLicense(force = true) },
                         enabled = !license.verifying,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().tvFocusFrame(cornerRadius = 20.dp),
                     ) {
                         Icon(Icons.Rounded.Refresh, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
@@ -251,6 +260,9 @@ fun SettingsScreen(
                                 selected = settings.deviceProfile == profile,
                                 onClick = { viewModel.settingsStore.setDeviceProfile(profile) },
                                 shape = SegmentedButtonDefaults.itemShape(index, DeviceProfile.entries.size),
+                                modifier = Modifier.tvFocusFrame(
+                                    cornerRadius = segmentCorner(index, DeviceProfile.entries.size),
+                                ),
                                 icon = {
                                     Icon(
                                         imageVector = if (profile == DeviceProfile.TV) Icons.Rounded.Tv
@@ -286,6 +298,9 @@ fun SettingsScreen(
                                 selected = settings.themeMode == mode,
                                 onClick = { viewModel.settingsStore.update { it.copy(themeMode = mode) } },
                                 shape = SegmentedButtonDefaults.itemShape(index, ThemeMode.entries.size),
+                                modifier = Modifier.tvFocusFrame(
+                                    cornerRadius = segmentCorner(index, ThemeMode.entries.size),
+                                ),
                             ) { Text(themeLabel(mode, strings)) }
                         }
                     }
@@ -337,7 +352,7 @@ fun SettingsScreen(
                     Button(
                         onClick = { viewModel.refresh() },
                         enabled = !syncing && activeAccount != null,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().tvFocusFrame(cornerRadius = 20.dp),
                     ) {
                         if (syncing) {
                             CircularProgressIndicator(
@@ -410,7 +425,7 @@ fun SettingsScreen(
                         Button(
                             onClick = { viewModel.refreshEpg() },
                             enabled = !running,
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().tvFocusFrame(cornerRadius = 20.dp),
                         ) {
                             if (running) {
                                 CircularProgressIndicator(
@@ -501,7 +516,7 @@ fun SettingsScreen(
                     OutlinedButton(
                         onClick = { viewModel.checkDns() },
                         enabled = !dnsChecking,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().tvFocusFrame(cornerRadius = 20.dp),
                     ) {
                         if (dnsChecking) {
                             CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
@@ -537,7 +552,7 @@ fun SettingsScreen(
                     Button(
                         onClick = { viewModel.runSpeedTest() },
                         enabled = !speedRunning,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().tvFocusFrame(cornerRadius = 20.dp),
                     ) {
                         if (speedRunning) {
                             CircularProgressIndicator(
@@ -579,7 +594,9 @@ fun SettingsScreen(
                         steps = 16,
                         // Without this the remote would keep changing the value
                         // instead of moving on to the rest of the page.
-                        modifier = Modifier.dpadVerticalEscape(),
+                        modifier = Modifier
+                            .dpadVerticalEscape()
+                            .tvFocusFrame(cornerRadius = 22.dp),
                     )
                     ToggleRow(
                         title = strings.hwDecoding,
@@ -620,13 +637,13 @@ fun SettingsScreen(
                         Spacer(Modifier.height(10.dp))
                         OutlinedButton(
                             onClick = { groupsDialogOpen = true },
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().tvFocusFrame(cornerRadius = 20.dp),
                             enabled = catalog.entries.isNotEmpty(),
                         ) { Text(strings.parentalChooseGroups) }
                         Spacer(Modifier.height(8.dp))
                         OutlinedButton(
                             onClick = { pinDialogOpen = true },
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth().tvFocusFrame(cornerRadius = 20.dp),
                         ) { Text(strings.parentalChangePin) }
                     }
                 }
@@ -658,7 +675,7 @@ fun SettingsScreen(
                     Spacer(Modifier.height(12.dp))
                     OutlinedButton(
                         onClick = { viewModel.clearCatalogCache() },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().tvFocusFrame(cornerRadius = 20.dp),
                     ) {
                         Icon(Icons.Rounded.DeleteSweep, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
@@ -667,7 +684,7 @@ fun SettingsScreen(
                     Spacer(Modifier.height(8.dp))
                     OutlinedButton(
                         onClick = { wipeDialogOpen = true },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth().tvFocusFrame(cornerRadius = 20.dp),
                     ) { Text(strings.wipeAction) }
                 }
             }
@@ -762,19 +779,43 @@ private fun LanguageChip(
             }
         } else null,
         shape = RoundedCornerShape(12.dp),
-        modifier = modifier.height(44.dp),
+        modifier = modifier
+            .height(44.dp)
+            .tvFocusFrame(cornerRadius = 12.dp),
     )
 }
 
+/** Ring rounding that matches the shape of a segmented button at [index]. */
+private fun segmentCorner(index: Int, count: Int): Dp =
+    if (index == 0 || index == count - 1) 20.dp else 4.dp
+
 @Composable
 private fun SettingsCard(title: String, content: @Composable () -> Unit) {
+    // The section itself lights up while the cursor is anywhere inside it, so a
+    // glance at the screen answers "where am I?" without hunting for the ring.
+    var focusWithin by remember { mutableStateOf(false) }
+    val borderColor by animateColorAsState(
+        targetValue = if (focusWithin) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)
+        else Color.Transparent,
+        animationSpec = tween(durationMillis = 160),
+        label = "sectionBorder",
+    )
+
     Surface(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .sectionFocusTracker { focusWithin = it },
         shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(2.dp, borderColor),
     ) {
         Column(Modifier.padding(16.dp)) {
-            Text(text = title, style = MaterialTheme.typography.titleMedium)
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                color = if (focusWithin) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurface,
+            )
             Spacer(Modifier.height(10.dp))
             content()
         }
@@ -790,7 +831,9 @@ private fun DnsRow(
 ) {
     Surface(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .tvFocusFrame(cornerRadius = 14.dp),
         shape = RoundedCornerShape(14.dp),
         color = if (selected) MaterialTheme.colorScheme.primaryContainer
         else MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -830,7 +873,16 @@ private fun ToggleRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp),
+            .clip(RoundedCornerShape(12.dp))
+            // The whole row answers the OK key: on a remote the switch alone is
+            // a tiny target and an easy stop to lose sight of.
+            .toggleable(
+                value = checked,
+                role = Role.Switch,
+                onValueChange = onCheckedChange,
+            )
+            .tvFocusFrame(cornerRadius = 12.dp)
+            .padding(horizontal = 10.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(Modifier.weight(1f)) {
@@ -842,7 +894,7 @@ private fun ToggleRow(
             )
         }
         Spacer(Modifier.width(12.dp))
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        Switch(checked = checked, onCheckedChange = null)
     }
 }
 
@@ -942,7 +994,9 @@ private fun GroupsDialog(
                                     )
                                 }
                             } else null,
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .tvFocusFrame(cornerRadius = 8.dp),
                             colors = FilterChipDefaults.filterChipColors(
                                 selectedContainerColor = MaterialTheme.colorScheme.errorContainer,
                                 selectedLabelColor = MaterialTheme.colorScheme.onErrorContainer,
