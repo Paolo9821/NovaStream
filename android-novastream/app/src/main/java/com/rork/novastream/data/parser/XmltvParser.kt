@@ -5,8 +5,8 @@ import android.util.Xml
 import com.rork.novastream.data.model.EpgGuide
 import com.rork.novastream.data.model.Programme
 import org.xmlpull.v1.XmlPullParser
-import java.io.ByteArrayInputStream
 import java.io.InputStream
+import java.io.PushbackInputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -20,6 +20,7 @@ import java.util.zip.GZIPInputStream
 object XmltvParser {
 
     private const val TAG = "XmltvParser"
+    private const val BUFFER_BYTES = 64 * 1024
     private val withZone = SimpleDateFormat("yyyyMMddHHmmss Z", Locale.US)
     private val withoutZone = SimpleDateFormat("yyyyMMddHHmmss", Locale.US)
 
@@ -30,8 +31,13 @@ object XmltvParser {
         .replace(Regex("\\b(hd|fhd|uhd|4k|sd|full ?hd)\\b"), " ")
         .replace(Regex("[^a-z0-9]"), "")
 
+    /**
+     * Reads a guide straight from the network or disk stream. Guides are often
+     * gzipped and can be very large, so the file is decompressed and pulled
+     * through the parser in chunks rather than held in memory as bytes.
+     */
     fun parse(
-        bytes: ByteArray,
+        input: InputStream,
         sourceUrl: String,
         windowStartMs: Long,
         windowEndMs: Long,
@@ -39,7 +45,7 @@ object XmltvParser {
         val programmes = HashMap<String, MutableList<Programme>>()
         val nameIndex = HashMap<String, String>()
 
-        openStream(bytes).use { stream ->
+        openStream(input).use { stream ->
             val parser = Xml.newPullParser()
             parser.setFeature(XmlPullParser.FEATURE_PROCESS_NAMESPACES, false)
             parser.setInput(stream, null)
@@ -68,12 +74,16 @@ object XmltvParser {
         )
     }
 
-    private fun openStream(bytes: ByteArray): InputStream {
-        val raw = ByteArrayInputStream(bytes)
-        val gzipped = bytes.size > 2 &&
-            bytes[0] == 0x1f.toByte() &&
-            bytes[1] == 0x8b.toByte()
-        return if (gzipped) GZIPInputStream(raw) else raw
+    /** Sniffs the gzip magic number without consuming it. */
+    private fun openStream(input: InputStream): InputStream {
+        val pushback = PushbackInputStream(input.buffered(BUFFER_BYTES), 2)
+        val header = ByteArray(2)
+        val read = pushback.read(header, 0, 2)
+        if (read > 0) pushback.unread(header, 0, read)
+        val gzipped = read == 2 &&
+            header[0] == 0x1f.toByte() &&
+            header[1] == 0x8b.toByte()
+        return if (gzipped) GZIPInputStream(pushback, BUFFER_BYTES) else pushback
     }
 
     private fun readChannel(parser: XmlPullParser, nameIndex: MutableMap<String, String>) {

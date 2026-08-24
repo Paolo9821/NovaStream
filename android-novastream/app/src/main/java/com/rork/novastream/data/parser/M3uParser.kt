@@ -15,12 +15,20 @@ object M3uParser {
     private val looseYearRegex = Regex("\\b(19\\d{2}|20\\d{2})\\b")
     private val qualityRegex = Regex("\\b(4K|UHD|FHD|FULL ?HD|HD|SD)\\b", RegexOption.IGNORE_CASE)
 
-    fun parse(content: String, nowMs: Long): List<MediaEntry> {
+    fun parse(content: String, nowMs: Long): List<MediaEntry> =
+        parse(content.lineSequence(), nowMs)
+
+    /**
+     * Reads a playlist as it streams off the disk. Large providers ship files of
+     * tens of megabytes, so the text is never held whole: only the entries built
+     * from it stay in memory.
+     */
+    fun parse(lines: Sequence<String>, nowMs: Long): List<MediaEntry> {
         val entries = ArrayList<MediaEntry>()
         var pendingInfo: String? = null
         var order = 0
 
-        content.lineSequence().forEach { rawLine ->
+        lines.forEach { rawLine ->
             val line = rawLine.trim()
             when {
                 line.isEmpty() -> Unit
@@ -35,6 +43,7 @@ object M3uParser {
                 }
             }
         }
+        entries.trimToSize()
         return entries
     }
 

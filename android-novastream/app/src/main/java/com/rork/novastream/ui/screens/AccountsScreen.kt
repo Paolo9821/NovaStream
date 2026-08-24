@@ -36,7 +36,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -66,6 +65,7 @@ import com.rork.novastream.data.model.SyncState
 import com.rork.novastream.data.repo.IptvRepository
 import com.rork.novastream.ui.components.PrivacyNote
 import com.rork.novastream.ui.components.RequestInitialFocus
+import com.rork.novastream.ui.components.TvTextField
 import com.rork.novastream.ui.components.contentFocusZone
 import com.rork.novastream.ui.components.dpadDownTo
 import com.rork.novastream.ui.components.rememberFocusRequester
@@ -361,7 +361,7 @@ private fun AccountForm(
                 ) { Text(strings.tabXtream) }
             }
 
-            OutlinedTextField(
+            TvTextField(
                 value = name,
                 onValueChange = { name = it },
                 label = { Text(strings.fieldPlaylistName) },
@@ -370,7 +370,7 @@ private fun AccountForm(
             )
 
             if (type == AccountType.XTREAM) {
-                OutlinedTextField(
+                TvTextField(
                     value = server,
                     onValueChange = { server = it },
                     label = { Text(strings.fieldServer) },
@@ -379,14 +379,14 @@ private fun AccountForm(
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                     modifier = Modifier.fillMaxWidth(),
                 )
-                OutlinedTextField(
+                TvTextField(
                     value = username,
                     onValueChange = { username = it },
                     label = { Text(strings.fieldUsername) },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                OutlinedTextField(
+                TvTextField(
                     value = password,
                     onValueChange = { password = it },
                     label = { Text(strings.fieldPassword) },
@@ -407,7 +407,7 @@ private fun AccountForm(
                     modifier = Modifier.fillMaxWidth(),
                 )
             } else {
-                OutlinedTextField(
+                TvTextField(
                     value = m3uUrl,
                     onValueChange = { m3uUrl = it },
                     label = { Text(strings.fieldM3uUrl) },
@@ -418,7 +418,7 @@ private fun AccountForm(
                 )
             }
 
-            OutlinedTextField(
+            TvTextField(
                 value = epgUrl,
                 onValueChange = { epgUrl = it },
                 label = { Text(strings.fieldEpgUrl) },

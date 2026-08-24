@@ -16,22 +16,24 @@ import com.rork.novastream.data.model.WatchProgress
 import com.rork.novastream.data.net.DnsCheck
 import com.rork.novastream.data.net.DohResolver
 import com.rork.novastream.data.net.SpeedTester
+import com.rork.novastream.data.net.downloadToFile
 import com.rork.novastream.data.parser.M3uParser
 import com.rork.novastream.data.parser.XmltvParser
 import com.rork.novastream.data.remote.XtreamClient
 import io.ktor.client.HttpClient
-import io.ktor.client.call.body
 import io.ktor.client.engine.android.Android
 import io.ktor.client.plugins.HttpTimeout
-import io.ktor.client.request.get
-import io.ktor.client.statement.bodyAsText
 import io.ktor.http.encodeURLParameter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.decodeFromStream
+import kotlinx.serialization.json.encodeToStream
+import java.io.File
 import java.util.UUID
 
 /**
@@ -55,7 +57,8 @@ class IptvRepository(context: Context) {
 
     val secureStore = SecureStore(appContext)
     val settingsStore = SettingsStore(appContext)
-    private val xtream = XtreamClient(http)
+    private val downloadDir: File = File(appContext.cacheDir, "downloads").apply { mkdirs() }
+    private val xtream = XtreamClient(http, downloadDir)
     private val resolver = DohResolver(http)
     private val speedTester = SpeedTester(http)
 
@@ -102,14 +105,17 @@ class IptvRepository(context: Context) {
             ?.let { runCatching { json.decodeFromString<Set<String>>(it) }.getOrNull() }
             .orEmpty()
         _activeAccountId.value?.let { id ->
-            secureStore.readVault(catalogFile(id))
-                ?.let { runCatching { json.decodeFromString<Catalog>(it) }.getOrNull() }
-                ?.let { _catalog.value = it }
-            secureStore.readVault(epgFile(id))
-                ?.let { runCatching { json.decodeFromString<EpgGuide>(it) }.getOrNull() }
-                ?.let { _epg.value = it }
+            readVault<Catalog>(catalogFile(id))?.let { _catalog.value = it }
+            readVault<EpgGuide>(epgFile(id))?.let { _epg.value = it }
         }
     }
+
+    /** Decodes an encrypted cache file without ever holding its text in memory. */
+    @OptIn(ExperimentalSerializationApi::class)
+    private inline fun <reified T> readVault(name: String): T? =
+        secureStore.readVaultStream(name)?.use { stream ->
+            runCatching { json.decodeFromStream<T>(stream) }.getOrNull()
+        }
 
     private fun persistAccounts() {
         secureStore.putString(KEY_ACCOUNTS, json.encodeToString(_accounts.value))
@@ -205,12 +211,22 @@ class IptvRepository(context: Context) {
                 }
                 AccountType.M3U -> withContext(Dispatchers.IO) {
                     _syncState.value = SyncState.Running("Scarico la playlist…")
-                    val body = http.get(account.m3uUrl).bodyAsText()
-                    if (!body.contains("#EXTINF", ignoreCase = true)) {
-                        throw IllegalStateException("L'URL non contiene una playlist m3u valida")
+                    // Playlists are commonly tens of megabytes: the file goes to
+                    // disk and is read back a line at a time.
+                    val temp = File(downloadDir, "playlist-${account.id}.m3u")
+                    try {
+                        http.downloadToFile(account.m3uUrl, temp)
+                        _syncState.value = SyncState.Running("Organizzo i contenuti…")
+                        val entries = temp.bufferedReader().useLines { lines ->
+                            M3uParser.parse(lines, System.currentTimeMillis())
+                        }
+                        if (entries.isEmpty()) {
+                            throw IllegalStateException("L'URL non contiene una playlist m3u valida")
+                        }
+                        entries
+                    } finally {
+                        temp.delete()
                     }
-                    _syncState.value = SyncState.Running("Organizzo i contenuti…")
-                    M3uParser.parse(body, System.currentTimeMillis())
                 }
             }
         }
@@ -222,7 +238,7 @@ class IptvRepository(context: Context) {
                 syncedAtEpochMs = System.currentTimeMillis(),
             )
             _catalog.value = catalog
-            secureStore.writeVault(catalogFile(account.id), json.encodeToString(catalog))
+            writeVault(catalogFile(account.id), catalog)
             _accounts.value = _accounts.value.map {
                 if (it.id == account.id) it.copy(lastSyncEpochMs = catalog.syncedAtEpochMs) else it
             }
@@ -282,14 +298,23 @@ class IptvRepository(context: Context) {
         val now = System.currentTimeMillis()
         val result = runCatching {
             withContext(Dispatchers.IO) {
-                val bytes: ByteArray = http.get(url).body()
-                if (bytes.isEmpty()) throw IllegalStateException("Guida vuota o non raggiungibile")
-                XmltvParser.parse(
-                    bytes = bytes,
-                    sourceUrl = url,
-                    windowStartMs = now - EPG_PAST_WINDOW_MS,
-                    windowEndMs = now + EPG_FUTURE_WINDOW_MS,
-                )
+                val temp = File(downloadDir, "epg-${account.id}.xml")
+                try {
+                    http.downloadToFile(url, temp)
+                    if (temp.length() == 0L) {
+                        throw IllegalStateException("Guida vuota o non raggiungibile")
+                    }
+                    temp.inputStream().use { stream ->
+                        XmltvParser.parse(
+                            input = stream,
+                            sourceUrl = url,
+                            windowStartMs = now - EPG_PAST_WINDOW_MS,
+                            windowEndMs = now + EPG_FUTURE_WINDOW_MS,
+                        )
+                    }
+                } finally {
+                    temp.delete()
+                }
             }
         }
 
@@ -299,7 +324,7 @@ class IptvRepository(context: Context) {
                 return@onSuccess
             }
             _epg.value = guide
-            secureStore.writeVault(epgFile(account.id), json.encodeToString(guide))
+            writeVault(epgFile(account.id), guide)
             _epgState.value = SyncState.Success(guide.channelCount, guide.programmeCount, 0)
         }.onFailure { error ->
             Log.w(TAG, "Download della guida EPG non riuscito")
@@ -376,6 +401,12 @@ class IptvRepository(context: Context) {
         resolver.resolve(host, settingsStore.settings.value)
 
     suspend fun runSpeedTest() = speedTester.run()
+
+    /** Encrypts a cache file straight to disk, without building the whole string. */
+    @OptIn(ExperimentalSerializationApi::class)
+    private inline fun <reified T> writeVault(name: String, value: T) {
+        secureStore.writeVaultStream(name) { stream -> json.encodeToStream(value, stream) }
+    }
 
     private fun catalogFile(accountId: String) = "catalog_$accountId.bin"
 

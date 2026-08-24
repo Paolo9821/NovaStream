@@ -71,6 +71,12 @@
 -keep class com.rork.novastream.data.model.** { *; }
 -keep class com.rork.novastream.data.parser.** { *; }
 -keep class com.rork.novastream.data.remote.XtreamClient { *; }
+# Xtream response models and their lenient string serializer.
+-keep class com.rork.novastream.data.remote.XtreamCategoryDto { *; }
+-keep class com.rork.novastream.data.remote.XtreamLiveDto { *; }
+-keep class com.rork.novastream.data.remote.XtreamVodDto { *; }
+-keep class com.rork.novastream.data.remote.XtreamSeriesDto { *; }
+-keep class com.rork.novastream.data.remote.LooseText { *; }
 -keep class com.rork.novastream.data.repo.** { *; }
 -keep class com.rork.novastream.data.net.** { *; }
 

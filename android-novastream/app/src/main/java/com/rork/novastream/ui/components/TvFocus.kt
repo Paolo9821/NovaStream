@@ -7,9 +7,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalFocusManager
 
 /**
  * True when the app is driven by a remote control rather than a touchscreen.
@@ -55,4 +62,29 @@ fun RequestInitialFocus(
         withFrameNanos { }
         runCatching { requester.requestFocus() }
     }
+}
+
+/**
+ * Frees the D-pad from a control that reads up and down as value changes.
+ *
+ * A slider answers vertical presses by moving its own value, so the highlight
+ * gets stuck on it: the remote scrolls seconds instead of walking further down
+ * the page. Vertical presses are claimed here, before the control sees them,
+ * and turned back into focus movement. Left and right still adjust the value.
+ */
+@Composable
+fun Modifier.dpadVerticalEscape(): Modifier {
+    val focusManager = LocalFocusManager.current
+    return this.then(
+        remember(focusManager) {
+            Modifier.onPreviewKeyEvent { event ->
+                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                when (event.key) {
+                    Key.DirectionUp -> focusManager.moveFocus(FocusDirection.Up)
+                    Key.DirectionDown -> focusManager.moveFocus(FocusDirection.Down)
+                    else -> false
+                }
+            }
+        }
+    )
 }

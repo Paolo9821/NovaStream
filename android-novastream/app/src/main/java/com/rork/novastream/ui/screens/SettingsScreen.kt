@@ -36,7 +36,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
@@ -71,6 +70,8 @@ import com.rork.novastream.data.local.ThemeMode
 import com.rork.novastream.data.model.SyncState
 import com.rork.novastream.ui.components.PrivacyNote
 import com.rork.novastream.ui.components.RequestInitialFocus
+import com.rork.novastream.ui.components.TvTextField
+import com.rork.novastream.ui.components.dpadVerticalEscape
 import com.rork.novastream.ui.components.contentFocusZone
 import com.rork.novastream.ui.components.dpadDownTo
 import com.rork.novastream.ui.components.rememberFocusRequester
@@ -300,7 +301,7 @@ fun SettingsScreen(
                             style = MaterialTheme.typography.bodyMedium,
                         )
                     } else {
-                        OutlinedTextField(
+                        TvTextField(
                             value = epgUrlField,
                             onValueChange = {
                                 epgUrlField = it
@@ -382,7 +383,7 @@ fun SettingsScreen(
 
                     if (settings.dnsPreset == DnsPreset.CUSTOM) {
                         Spacer(Modifier.height(4.dp))
-                        OutlinedTextField(
+                        TvTextField(
                             value = customDnsIp,
                             onValueChange = {
                                 customDnsIp = it
@@ -394,7 +395,7 @@ fun SettingsScreen(
                             modifier = Modifier.fillMaxWidth(),
                         )
                         Spacer(Modifier.height(10.dp))
-                        OutlinedTextField(
+                        TvTextField(
                             value = customDnsDoh,
                             onValueChange = {
                                 customDnsDoh = it
@@ -488,6 +489,9 @@ fun SettingsScreen(
                         },
                         valueRange = 5f..90f,
                         steps = 16,
+                        // Without this the remote would keep changing the value
+                        // instead of moving on to the rest of the page.
+                        modifier = Modifier.dpadVerticalEscape(),
                     )
                     ToggleRow(
                         title = strings.hwDecoding,
@@ -800,7 +804,7 @@ private fun PinDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
-            OutlinedTextField(
+            TvTextField(
                 value = pin,
                 onValueChange = { if (it.length <= 6 && it.all { char -> char.isDigit() }) pin = it },
                 label = { Text(label) },
