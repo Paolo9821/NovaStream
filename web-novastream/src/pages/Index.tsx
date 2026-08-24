@@ -246,7 +246,7 @@ export default function Index() {
                   </Button>
                   <p className="text-center text-xs text-muted-foreground">
                     {deviceValid
-                      ? "Verrai portato sulla pagina sicura di Stripe e poi riportato qui."
+                      ? "Prezzo finale, IVA inclusa. Verrai portato sulla pagina sicura di Stripe e poi riportato qui."
                       : "Inserisci prima l'identificativo del dispositivo."}
                   </p>
                   {config.data.mode === "test" && (
@@ -277,7 +277,10 @@ export default function Index() {
             ))}
             {selectedPlan && (
               <div className="panel flex items-center justify-between px-5 py-4">
-                <span className="text-sm text-muted-foreground">Totale</span>
+                <div>
+                  <span className="block text-sm text-muted-foreground">Totale</span>
+                  <span className="text-[11px] text-muted-foreground/80">IVA inclusa</span>
+                </div>
                 <span className="text-2xl font-bold">€ {selectedPlan.price.replace(".", ",")}</span>
               </div>
             )}
