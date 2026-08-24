@@ -21,7 +21,7 @@ type Env = StripeEnv & {
 };
 
 /** Where the app sends customers to buy. Overridable without an app update. */
-const DEFAULT_STORE_URL = "https://y3r8htb0dd0n4d7e25ikz-web-novastream.rork.live";
+const DEFAULT_STORE_URL = "https://novastream.rork.app";
 
 const CORS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
