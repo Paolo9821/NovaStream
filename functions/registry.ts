@@ -79,7 +79,7 @@ export class Registry extends DurableObject {
         last_seen_at INTEGER,
         order_id TEXT NOT NULL DEFAULT '',
         amount_cents INTEGER NOT NULL DEFAULT 0,
-        source TEXT NOT NULL DEFAULT 'paypal'
+        source TEXT NOT NULL DEFAULT 'stripe'
       )
     `);
     this.ctx.storage.sql.exec(`
@@ -181,7 +181,7 @@ export class Registry extends DurableObject {
     const orderId = String(body.orderId ?? "");
     const email = String(body.email ?? "");
     const label = String(body.label ?? "");
-    const source = String(body.source ?? "paypal");
+    const source = String(body.source ?? "stripe");
     const amountCents = Number(body.amountCents ?? plan.priceCents);
 
     let expiresAt: number | null = null;

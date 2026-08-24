@@ -1,10 +1,11 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
   BadgeCheck,
   Check,
+  CreditCard,
   Infinity as InfinityIcon,
   Loader2,
   LockKeyhole,
@@ -16,17 +17,19 @@ import {
   Zap,
 } from "lucide-react";
 
-import { PayPalCheckout, type CaptureResult } from "@/components/PayPalCheckout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  confirmCheckout,
   fetchConfig,
   fetchDeviceStatus,
   formatDate,
   formatMac,
   isValidDeviceId,
   normalizeDeviceId,
+  startCheckout,
+  type CheckoutResult,
   type DeviceStatus,
   type PlanId,
   type PlanInfo,
@@ -46,12 +49,22 @@ const PLAN_COPY: Record<PlanId, { title: string; blurb: string; perks: string[] 
   },
 };
 
+/** Reads the device id Stripe/the app may have put in the URL. */
+function initialDeviceId(): string {
+  const params = new URLSearchParams(window.location.search);
+  return params.get("device") ?? params.get("deviceId") ?? "";
+}
+
 export default function Index() {
-  const [deviceId, setDeviceId] = useState<string>("");
+  const [deviceId, setDeviceId] = useState<string>(initialDeviceId);
   const [email, setEmail] = useState<string>("");
   const [plan, setPlan] = useState<PlanId>("annual");
-  const [purchase, setPurchase] = useState<CaptureResult | null>(null);
+  const [purchase, setPurchase] = useState<CheckoutResult | null>(null);
   const [error, setError] = useState<string>("");
+  const [redirecting, setRedirecting] = useState<boolean>(false);
+  const [returning, setReturning] = useState<boolean>(() =>
+    new URLSearchParams(window.location.search).has("session_id"),
+  );
 
   const config = useQuery({ queryKey: ["config"], queryFn: fetchConfig });
 
@@ -61,15 +74,55 @@ export default function Index() {
   const plans: PlanInfo[] = useMemo(() => config.data?.plans ?? [], [config.data]);
   const selectedPlan = plans.find((p) => p.id === plan);
 
-  const handleSuccess = useCallback((result: CaptureResult) => {
-    setError("");
-    setPurchase(result);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+  // Stripe sends the buyer back with ?session_id=… — settle it and show the receipt.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const sessionId = params.get("session_id");
+    if (params.get("checkout") === "cancelled") {
+      setError("Pagamento annullato. Nessun importo è stato addebitato.");
+      window.history.replaceState({}, "", window.location.pathname);
+      return;
+    }
+    if (!sessionId) return;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const result = await confirmCheckout(sessionId);
+        if (cancelled) return;
+        if (result.ok) setPurchase(result);
+        else setError(result.error ?? "Non siamo riusciti a confermare il pagamento.");
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : "Verifica del pagamento non riuscita");
+        }
+      } finally {
+        if (!cancelled) {
+          setReturning(false);
+          window.history.replaceState({}, "", window.location.pathname);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
-  const handleFailure = useCallback((message: string) => {
-    setError(message);
-  }, []);
+  const handleCheckout = useCallback(async (): Promise<void> => {
+    setError("");
+    setRedirecting(true);
+    try {
+      const session = await startCheckout(plan, normalizeDeviceId(deviceId), email.trim());
+      window.location.assign(session.url);
+    } catch (err) {
+      setRedirecting(false);
+      setError(err instanceof Error ? err.message : "Impossibile aprire il pagamento");
+    }
+  }, [deviceId, email, plan]);
+
+  if (returning) {
+    return <ConfirmingScreen />;
+  }
 
   if (purchase?.ok) {
     return <SuccessScreen result={purchase} onReset={() => setPurchase(null)} />;
@@ -109,7 +162,7 @@ export default function Index() {
             </span>
           </h1>
           <p className="mx-auto mt-5 max-w-xl text-balance text-base leading-relaxed text-muted-foreground">
-            Inserisci l&apos;identificativo del tuo dispositivo, paga con PayPal e riapri
+            Inserisci l&apos;identificativo del tuo dispositivo, paga con carta e riapri
             l&apos;app: sarà già sbloccata. Nessun codice da digitare, nessuna attesa.
           </p>
         </section>
@@ -168,30 +221,35 @@ export default function Index() {
                   <Loader2 className="h-4 w-4 animate-spin" /> Carico il negozio…
                 </div>
               )}
-              {config.data && !config.data.paypalConfigured && (
+              {config.data && !config.data.paymentsConfigured && (
                 <div className="rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-foreground/90">
-                  Il negozio non è ancora collegato a PayPal. Riprova tra poco.
+                  Il negozio non è ancora collegato a Stripe. Riprova tra poco.
                 </div>
               )}
-              {config.data?.paypalConfigured && (
+              {config.data?.paymentsConfigured && (
                 <>
-                  {!deviceValid && (
-                    <p className="text-sm text-muted-foreground">
-                      Inserisci prima l&apos;identificativo del dispositivo.
-                    </p>
-                  )}
-                  <div className={cn(!deviceValid && "pointer-events-none opacity-40")}>
-                    <PayPalCheckout
-                      clientId={config.data.paypalClientId}
-                      planId={plan}
-                      deviceId={normalized}
-                      email={email}
-                      disabled={!deviceValid}
-                      onSuccess={handleSuccess}
-                      onFailure={handleFailure}
-                    />
-                  </div>
-                  {config.data.mode === "sandbox" && (
+                  <Button
+                    onClick={() => void handleCheckout()}
+                    disabled={!deviceValid || redirecting}
+                    className="h-13 w-full gap-2.5 text-base font-semibold"
+                  >
+                    {redirecting ? (
+                      <Loader2 className="h-4.5 w-4.5 animate-spin" />
+                    ) : (
+                      <CreditCard className="h-4.5 w-4.5" />
+                    )}
+                    {redirecting
+                      ? "Apro il pagamento sicuro…"
+                      : selectedPlan
+                        ? `Paga € ${selectedPlan.price.replace(".", ",")} con carta`
+                        : "Paga con carta"}
+                  </Button>
+                  <p className="text-center text-xs text-muted-foreground">
+                    {deviceValid
+                      ? "Verrai portato sulla pagina sicura di Stripe e poi riportato qui."
+                      : "Inserisci prima l'identificativo del dispositivo."}
+                  </p>
+                  {config.data.mode === "test" && (
                     <p className="text-center text-[11px] uppercase tracking-widest text-warning/80">
                       Modalità test
                     </p>
@@ -225,8 +283,8 @@ export default function Index() {
             )}
             <div className="flex items-start gap-2.5 px-1 text-xs leading-relaxed text-muted-foreground">
               <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-accent" />
-              Il pagamento è gestito da PayPal. La licenza viene collegata solo al dispositivo che
-              hai indicato e si attiva subito dopo il pagamento.
+              Il pagamento è gestito da Stripe: carta, Apple Pay e Google Pay. La licenza viene
+              collegata solo al dispositivo che hai indicato e si attiva subito dopo il pagamento.
             </div>
           </div>
         </section>
@@ -317,8 +375,8 @@ function HowItWorks() {
     },
     {
       icon: Zap,
-      title: "Paga con PayPal",
-      body: "Scegli 12 mesi o a vita e completa il pagamento. L'attivazione è immediata e automatica.",
+      title: "Paga con carta",
+      body: "Scegli 12 mesi o a vita e paga sulla pagina sicura di Stripe. L'attivazione è immediata.",
     },
     {
       icon: Tv,
@@ -435,7 +493,22 @@ function StatusChecker() {
   );
 }
 
-function SuccessScreen({ result, onReset }: { result: CaptureResult; onReset: () => void }) {
+function ConfirmingScreen() {
+  return (
+    <div className="relative flex min-h-screen items-center justify-center px-5">
+      <div className="pointer-events-none absolute inset-0 grid-veil" aria-hidden />
+      <div className="panel animate-rise relative w-full max-w-sm p-8 text-center">
+        <Loader2 className="mx-auto h-8 w-8 animate-spin text-primary" />
+        <h1 className="mt-5 text-xl font-bold">Confermo il pagamento…</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Un istante: sto attivando la licenza sul tuo dispositivo.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function SuccessScreen({ result, onReset }: { result: CheckoutResult; onReset: () => void }) {
   return (
     <div className="relative flex min-h-screen items-center justify-center px-5 py-16">
       <div className="pointer-events-none absolute inset-0 grid-veil" aria-hidden />

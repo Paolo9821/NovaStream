@@ -22,7 +22,7 @@ import kotlinx.serialization.json.put
 
 private const val TAG = "LicenseApi"
 
-/** Public licence server that also settles the PayPal purchases made on the site. */
+/** Public licence server that also settles the card purchases made on the site. */
 const val LICENSE_BACKEND_URL: String =
     "https://crea-un-applicazione-di-iptv-che-accetta-backend.rork.app"
 

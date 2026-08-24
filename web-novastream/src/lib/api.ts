@@ -11,11 +11,19 @@ export type PlanInfo = {
 };
 
 export type StoreConfig = {
-  paypalConfigured: boolean;
-  paypalClientId: string;
-  mode: "live" | "sandbox";
+  provider: "stripe";
+  paymentsConfigured: boolean;
+  mode: "live" | "test";
   currency: string;
   plans: PlanInfo[];
+};
+
+export type CheckoutResult = {
+  ok: boolean;
+  error?: string;
+  deviceId?: string;
+  plan?: PlanId;
+  expiresAt?: number | null;
 };
 
 export type DeviceStatus = {
@@ -76,6 +84,17 @@ export const fetchConfig = (): Promise<StoreConfig> => call<StoreConfig>("/api/c
 
 export const fetchDeviceStatus = (deviceId: string): Promise<DeviceStatus> =>
   post<DeviceStatus>("/api/license/status", { deviceId });
+
+/** Opens a hosted Stripe Checkout page; price and device binding stay server-side. */
+export const startCheckout = (
+  plan: PlanId,
+  deviceId: string,
+  email: string,
+): Promise<{ id: string; url: string }> =>
+  post<{ id: string; url: string }>("/api/checkout/create-session", { plan, deviceId, email });
+
+export const confirmCheckout = (sessionId: string): Promise<CheckoutResult> =>
+  post<CheckoutResult>("/api/checkout/confirm", { sessionId });
 
 /** Folds a typed MAC into the canonical form the registry stores. */
 export function normalizeDeviceId(raw: string): string {

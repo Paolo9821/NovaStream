@@ -1,16 +1,20 @@
 import { issueToken, passwordMatches, verifyToken } from "./_lib/auth";
 import {
-  captureOrder,
-  createOrder,
-  getOrder,
-  payPalConfigured,
-  type PayPalEnv,
-} from "./_lib/paypal";
+  createCheckoutSession,
+  getCheckoutSession,
+  readSession,
+  stripeConfigured,
+  stripeMode,
+  verifyWebhook,
+  type CheckoutSession,
+  type RawSession,
+  type StripeEnv,
+} from "./_lib/stripe";
 import { PLANS, isPlanId, isValidDeviceId, normalizeDeviceId, priceString } from "./_lib/plans";
 
 export { Registry } from "./registry";
 
-type Env = PayPalEnv & {
+type Env = StripeEnv & {
   DO: Fetcher;
   ADMIN_PASSWORD: string;
   STORE_URL?: string;
@@ -84,9 +88,9 @@ export default {
 
       if (path === "/api/config") {
         return json({
-          paypalConfigured: payPalConfigured(env),
-          paypalClientId: payPalConfigured(env) ? env.PAYPAL_CLIENT_ID.trim() : "",
-          mode: env.PAYPAL_MODE?.trim().toLowerCase() === "live" ? "live" : "sandbox",
+          provider: "stripe",
+          paymentsConfigured: stripeConfigured(env),
+          mode: stripeMode(env),
           currency: "EUR",
           storeUrl: env.STORE_URL?.trim() || DEFAULT_STORE_URL,
           plans: Object.values(PLANS).map((plan) => ({
@@ -109,40 +113,46 @@ export default {
       }
 
       // ---- Checkout ------------------------------------------------------
-      if (path === "/api/checkout/create-order" && request.method === "POST") {
-        if (!payPalConfigured(env)) return fail("payments not configured", 503);
+      if (path === "/api/checkout/create-session" && request.method === "POST") {
+        if (!stripeConfigured(env)) return fail("payments not configured", 503);
         const body = await readBody(request);
         const planId = String(body.plan ?? "");
         const deviceId = normalizeDeviceId(String(body.deviceId ?? ""));
+        const email = String(body.email ?? "").trim();
         if (!isPlanId(planId)) return fail("unknown plan");
         if (!isValidDeviceId(deviceId)) return fail("invalid device id");
-        const order = await createOrder(env, planId, deviceId);
-        return json({ id: order.id });
+        const storeUrl = (env.STORE_URL?.trim() || DEFAULT_STORE_URL).replace(/\/+$/, "");
+        const session = await createCheckoutSession(env, planId, deviceId, email, storeUrl);
+        return json({ id: session.id, url: session.url });
       }
 
-      if (path === "/api/checkout/capture" && request.method === "POST") {
-        if (!payPalConfigured(env)) return fail("payments not configured", 503);
+      // Called when Stripe sends the buyer back to the store with a session id.
+      if (path === "/api/checkout/confirm" && request.method === "POST") {
+        if (!stripeConfigured(env)) return fail("payments not configured", 503);
         const body = await readBody(request);
-        const orderId = String(body.orderId ?? "").trim();
-        const email = String(body.email ?? "").trim();
-        if (!orderId) return fail("orderId required");
-        const order = await captureOrder(env, orderId);
-        return json(await settle(env, order, email));
+        const sessionId = String(body.sessionId ?? "").trim();
+        if (!sessionId) return fail("sessionId required");
+        const session = await getCheckoutSession(env, sessionId);
+        return json(await settle(env, session));
       }
 
-      // Safety net for a buyer who paid but lost the tab before capture ran.
-      if (path === "/api/checkout/recover" && request.method === "POST") {
-        if (!payPalConfigured(env)) return fail("payments not configured", 503);
-        const body = await readBody(request);
-        const orderId = String(body.orderId ?? "").trim();
-        if (!orderId) return fail("orderId required");
-        const known = await registryJson<{ known: boolean }>(env, "/order-seen", { orderId });
-        if (known.known) return json({ ok: true, alreadyIssued: true });
-        let order = await getOrder(env, orderId);
-        if (order.status !== "COMPLETED") {
-          order = await captureOrder(env, orderId).catch(() => order);
+      // Authoritative path: fires even if the buyer closed the tab after paying.
+      if (path === "/api/stripe/webhook" && request.method === "POST") {
+        const payload = await request.text();
+        const secret = env.STRIPE_WEBHOOK_SECRET?.trim() ?? "";
+        if (!secret) return fail("webhook secret not configured", 503);
+        const signature = request.headers.get("Stripe-Signature");
+        if (!(await verifyWebhook(secret, payload, signature))) {
+          console.warn("stripe webhook signature rejected");
+          return fail("invalid signature", 400);
         }
-        return json(await settle(env, order, ""));
+        const event = JSON.parse(payload) as { type?: string; data?: { object?: RawSession } };
+        if (event.type === "checkout.session.completed" || event.type === "checkout.session.async_payment_succeeded") {
+          const session = readSession(event.data?.object ?? {});
+          const result = await settle(env, session);
+          if (!result.ok) console.warn("stripe webhook not settled", session.id, result.error);
+        }
+        return json({ received: true });
       }
 
       // ---- Dashboard -----------------------------------------------------
@@ -224,33 +234,39 @@ export default {
   },
 } satisfies ExportedHandler<Env>;
 
-/** Verifies a captured PayPal order and writes the licence it paid for. */
+/** Verifies a paid Stripe session and writes the licence it paid for. */
 async function settle(
   env: Env,
-  order: { id: string; status: string; amountValue: string; currency: string; customId: string; payerEmail: string },
-  fallbackEmail: string,
-): Promise<Record<string, unknown>> {
-  if (order.status !== "COMPLETED") {
-    return { ok: false, error: `payment not completed (${order.status})` };
+  session: CheckoutSession,
+): Promise<{ ok: boolean; error?: string; deviceId?: string; plan?: string; expiresAt?: number | null }> {
+  if (!session.paid) {
+    return { ok: false, error: "payment not completed" };
   }
-  const [rawDeviceId, rawPlan] = order.customId.split("|");
-  const deviceId = normalizeDeviceId(rawDeviceId ?? "");
-  if (!isPlanId(rawPlan) || !isValidDeviceId(deviceId)) {
+  const deviceId = normalizeDeviceId(session.deviceId);
+  if (!isPlanId(session.plan) || !isValidDeviceId(deviceId)) {
     return { ok: false, error: "order is missing device details" };
   }
-  const plan = PLANS[rawPlan];
-  const paidCents = Math.round(Number(order.amountValue) * 100);
-  if (order.currency !== plan.currency || paidCents < plan.priceCents) {
-    console.warn("amount mismatch", order.id, order.amountValue, order.currency);
+  const plan = PLANS[session.plan];
+  if (session.currency !== plan.currency || session.amountTotal < plan.priceCents) {
+    console.warn("amount mismatch", session.id, session.amountTotal, session.currency);
     return { ok: false, error: "payment amount does not match the plan" };
   }
+
+  // Stripe can deliver the same purchase twice (redirect + webhook); the first
+  // write wins so a buyer is never granted two stacked periods for one payment.
+  const known = await registryJson<{ known: boolean }>(env, "/order-seen", { orderId: session.id });
+  if (known.known) {
+    const current = await registryJson<{ expiresAt: number | null }>(env, "/status", { deviceId });
+    return { ok: true, deviceId, plan: plan.id, expiresAt: current.expiresAt };
+  }
+
   const result = await registryJson<{ license: { expiresAt: number | null } }>(env, "/issue", {
     deviceId,
     plan: plan.id,
-    orderId: order.id,
-    amountCents: paidCents,
-    email: order.payerEmail || fallbackEmail,
-    source: "paypal",
+    orderId: session.id,
+    amountCents: session.amountTotal,
+    email: session.email,
+    source: "stripe",
   });
   return {
     ok: true,
