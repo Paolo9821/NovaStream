@@ -140,8 +140,14 @@ export default {
       if (path === "/api/license/status" && request.method === "POST") {
         const body = await readBody(request);
         const deviceId = normalizeDeviceId(String(body.deviceId ?? ""));
-        if (!deviceId) return fail("deviceId required");
-        const result = await registryJson<Record<string, unknown>>(env, "/status", { deviceId });
+        // The app also reports its MAC, because that is what most customers type
+        // on the store. Either identifier must open the licence they paid for.
+        const mac = normalizeDeviceId(String(body.mac ?? ""));
+        if (!deviceId && !mac) return fail("deviceId required");
+        const result = await registryJson<Record<string, unknown>>(env, "/status", {
+          deviceId: deviceId || mac,
+          identifiers: [deviceId, mac],
+        });
         return json(result);
       }
 
@@ -364,12 +370,14 @@ export default {
 
         if (path === "/api/admin/grant") {
           const deviceId = normalizeDeviceId(String(body.deviceId ?? ""));
+          const mac = normalizeDeviceId(String(body.mac ?? ""));
           const planId = String(body.plan ?? "");
           if (!isValidDeviceId(deviceId)) return fail("invalid device id");
           if (!isPlanId(planId)) return fail("unknown plan");
           return json(
             await registryJson(env, "/issue", {
               deviceId,
+              identifiers: [deviceId, mac],
               plan: planId,
               label: String(body.label ?? ""),
               email: String(body.email ?? ""),

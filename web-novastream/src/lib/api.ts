@@ -37,6 +37,8 @@ export type DeviceStatus = {
 
 export type LicenseRecord = {
   deviceId: string;
+  /** Other identifiers that open this same licence, typically the MAC. */
+  aliases: string[];
   status: "active" | "suspended" | "revoked";
   plan: string;
   email: string;

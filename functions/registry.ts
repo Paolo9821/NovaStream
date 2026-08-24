@@ -58,6 +58,8 @@ export type TicketView = {
 
 export type LicenseView = {
   deviceId: string;
+  /** Other identifiers that unlock this same licence (typically the MAC). */
+  aliases: string[];
   status: StoredStatus;
   plan: string;
   email: string;
@@ -87,10 +89,25 @@ const MAX_TICKETS_PER_MINUTE = 12;
 /** Oldest requests are dropped past this, so storage cannot grow without bound. */
 const MAX_TICKETS_KEPT = 500;
 
-function toView(row: LicenseRow): LicenseView {
+/** Drops blanks and duplicates while keeping the caller's order of preference. */
+function unique(values: string[]): string[] {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+/**
+ * Every name a device answers to, most specific first: the id the app sends,
+ * then the MAC and any other identifier the Worker passed along.
+ */
+function identifiersOf(body: Record<string, unknown>): string[] {
+  const extra = Array.isArray(body.identifiers) ? body.identifiers.map((value) => String(value)) : [];
+  return unique([String(body.deviceId ?? ""), String(body.mac ?? ""), ...extra]);
+}
+
+function toView(row: LicenseRow, aliases: string[] = []): LicenseView {
   const expired = row.expires_at !== null && row.expires_at < Date.now();
   return {
     deviceId: row.device_id,
+    aliases,
     status: row.status as StoredStatus,
     plan: row.plan,
     email: row.email,
@@ -132,6 +149,19 @@ export class Registry extends DurableObject {
         source TEXT NOT NULL DEFAULT 'stripe'
       )
     `);
+    // A device is known by two names: the MAC printed on the box (what customers
+    // type on the site) and the ANDROID_ID the app sends. Whichever one paid for
+    // the licence, both must open it — that is what this table records.
+    this.ctx.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS device_aliases (
+        alias TEXT PRIMARY KEY,
+        device_id TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      )
+    `);
+    this.ctx.storage.sql.exec(
+      "CREATE INDEX IF NOT EXISTS idx_device_aliases_device ON device_aliases (device_id)",
+    );
     this.ctx.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS settings (
         key TEXT PRIMARY KEY,
@@ -171,7 +201,7 @@ export class Registry extends DurableObject {
 
     switch (url.pathname) {
       case "/status":
-        return Response.json(this.status(String(body.deviceId ?? "")));
+        return Response.json(this.status(identifiersOf(body)));
       case "/issue":
         return Response.json(this.issue(body));
       case "/order-seen":
@@ -188,9 +218,17 @@ export class Registry extends DurableObject {
         return Response.json(
           this.updateDetails(String(body.deviceId ?? ""), String(body.label ?? ""), String(body.email ?? "")),
         );
-      case "/remove":
-        this.ctx.storage.sql.exec("DELETE FROM licenses WHERE device_id = ?", String(body.deviceId ?? ""));
+      case "/remove": {
+        const deviceId = String(body.deviceId ?? "");
+        this.ctx.storage.sql.exec("DELETE FROM licenses WHERE device_id = ?", deviceId);
+        // Free the MAC too, otherwise it would keep pointing at a deleted licence.
+        this.ctx.storage.sql.exec(
+          "DELETE FROM device_aliases WHERE device_id = ? OR alias = ?",
+          deviceId,
+          deviceId,
+        );
         return Response.json({ ok: true });
+      }
       case "/settings-get":
         return Response.json({ value: this.setting(String(body.key ?? "")) });
       case "/settings-put":
@@ -318,7 +356,9 @@ export class Registry extends DurableObject {
       .exec<TicketRow>("SELECT * FROM tickets ORDER BY created_at DESC LIMIT 500")
       .toArray()
       .map((row) => {
-        const license = row.device_id ? this.find(row.device_id) : null;
+        // Customers write whichever identifier they have to hand, so a ticket
+        // quoting a MAC still shows the licence behind it.
+        const license = row.device_id ? this.resolve([row.device_id]) : null;
         return {
           id: row.id,
           createdAt: row.created_at,
@@ -355,27 +395,99 @@ export class Registry extends DurableObject {
   }
 
   private find(deviceId: string): LicenseRow | null {
+    if (!deviceId) return null;
     const rows = this.ctx.storage.sql
       .exec<LicenseRow>("SELECT * FROM licenses WHERE device_id = ?", deviceId)
       .toArray();
     return rows[0] ?? null;
   }
 
+  /** Every extra name this licence answers to, newest last. */
+  private aliasesOf(deviceId: string): string[] {
+    return this.ctx.storage.sql
+      .exec<{ alias: string }>(
+        "SELECT alias FROM device_aliases WHERE device_id = ? ORDER BY created_at",
+        deviceId,
+      )
+      .toArray()
+      .map((row) => row.alias);
+  }
+
+  private findByAlias(identifier: string): LicenseRow | null {
+    if (!identifier) return null;
+    const target = this.ctx.storage.sql
+      .exec<{ device_id: string }>("SELECT device_id FROM device_aliases WHERE alias = ?", identifier)
+      .toArray()[0]?.device_id;
+    return target ? this.find(target) : null;
+  }
+
+  /**
+   * Finds the licence behind any of the names a device answers to. A purchase
+   * made against the MAC is therefore honoured when the app asks with its
+   * ANDROID_ID, and the other way round.
+   */
+  private resolve(identifiers: string[]): LicenseRow | null {
+    const ids = unique(identifiers);
+    for (const id of ids) {
+      const row = this.find(id);
+      if (row) return row;
+    }
+    for (const id of ids) {
+      const row = this.findByAlias(id);
+      if (row) return row;
+    }
+    return null;
+  }
+
+  /**
+   * Records the other names of a device the first time it presents them, so the
+   * next lookup is a direct hit. First claim wins and is never reassigned: a MAC
+   * copied from someone else's box cannot pull their licence onto a second
+   * device, and an identifier that already owns a licence is left alone.
+   */
+  private link(deviceId: string, identifiers: string[]): void {
+    const now = Date.now();
+    for (const id of unique(identifiers)) {
+      if (id === deviceId || this.find(id)) continue;
+      this.ctx.storage.sql.exec(
+        `INSERT INTO device_aliases (alias, device_id, created_at) VALUES (?, ?, ?)
+         ON CONFLICT(alias) DO NOTHING`,
+        id,
+        deviceId,
+        now,
+      );
+    }
+  }
+
   /** Read used by the Android app on every launch; also records the heartbeat. */
-  private status(deviceId: string): {
+  private status(identifiers: string[]): {
     found: boolean;
     status: "active" | "suspended" | "revoked" | "expired" | "none";
     plan: string;
     expiresAt: number | null;
     note: string;
+    deviceId: string;
     serverTime: number;
   } {
-    const row = this.find(deviceId);
+    const row = this.resolve(identifiers);
     const serverTime = Date.now();
     if (!row) {
-      return { found: false, status: "none", plan: "", expiresAt: null, note: "", serverTime };
+      return {
+        found: false,
+        status: "none",
+        plan: "",
+        expiresAt: null,
+        note: "",
+        deviceId: unique(identifiers)[0] ?? "",
+        serverTime,
+      };
     }
-    this.ctx.storage.sql.exec("UPDATE licenses SET last_seen_at = ? WHERE device_id = ?", serverTime, deviceId);
+    this.link(row.device_id, identifiers);
+    this.ctx.storage.sql.exec(
+      "UPDATE licenses SET last_seen_at = ? WHERE device_id = ?",
+      serverTime,
+      row.device_id,
+    );
     const view = toView(row);
     const status =
       view.status === "active" && view.expired ? "expired" : (view.status as "active" | "suspended" | "revoked");
@@ -385,6 +497,7 @@ export class Registry extends DurableObject {
       plan: view.plan,
       expiresAt: view.expiresAt,
       note: view.note,
+      deviceId: row.device_id,
       serverTime,
     };
   }
@@ -464,8 +577,11 @@ export class Registry extends DurableObject {
       );
     }
 
+    // A licence granted for one name also covers the other names presented with it.
+    this.link(deviceId, identifiersOf(body));
+
     const row = this.find(deviceId);
-    return { ok: true, license: toView(row as LicenseRow) };
+    return { ok: true, license: toView(row as LicenseRow, this.aliasesOf(deviceId)) };
   }
 
   private setStatus(deviceId: string, status: StoredStatus, note: string): { ok: boolean } {
@@ -510,7 +626,7 @@ export class Registry extends DurableObject {
     return this.ctx.storage.sql
       .exec<LicenseRow>("SELECT * FROM licenses ORDER BY updated_at DESC LIMIT 2000")
       .toArray()
-      .map(toView);
+      .map((row) => toView(row, this.aliasesOf(row.device_id)));
   }
 
   private stats(): {

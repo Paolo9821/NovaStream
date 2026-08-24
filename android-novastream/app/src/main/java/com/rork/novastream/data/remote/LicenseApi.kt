@@ -82,12 +82,23 @@ class LicenseApi(private val baseUrl: String = LICENSE_BACKEND_URL) {
         }
     }
 
-    /** Asks the registry about one device and records the heartbeat server-side. */
-    suspend fun check(deviceId: String): LicenseCheck = withContext(Dispatchers.IO) {
+    /**
+     * Asks the registry about one device and records the heartbeat server-side.
+     *
+     * Both names of the device travel together: customers usually type the MAC
+     * shown on screen when they buy, while the app identifies itself with its
+     * device id. The server honours whichever one the purchase was made against.
+     */
+    suspend fun check(deviceId: String, mac: String = ""): LicenseCheck = withContext(Dispatchers.IO) {
         runCatching {
             val response = http.post("$baseUrl/api/license/status") {
                 contentType(ContentType.Application.Json)
-                setBody(buildJsonObject { put("deviceId", deviceId) }.toString())
+                setBody(
+                    buildJsonObject {
+                        put("deviceId", deviceId)
+                        if (mac.isNotBlank()) put("mac", mac)
+                    }.toString(),
+                )
             }
             if (response.status.value !in 200..299) {
                 return@runCatching LicenseCheck.Unavailable("http ${response.status.value}")

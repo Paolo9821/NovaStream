@@ -248,6 +248,9 @@ function Console({ token, onSignOut }: { token: string; onSignOut: () => void })
       const matchesSearch =
         !search.trim() ||
         row.deviceId.includes(needle) ||
+        // A customer quoting their MAC must find their licence even when the
+        // purchase was recorded against the app's device id.
+        (row.aliases ?? []).some((alias) => alias.includes(needle)) ||
         row.email.toLowerCase().includes(plain) ||
         row.label.toLowerCase().includes(plain);
       if (!matchesSearch) return false;
@@ -1035,6 +1038,9 @@ function LicenseRow({
             )}
           </div>
           <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            {(row.aliases ?? []).length > 0 && (
+              <span className="mono">Anche: {(row.aliases ?? []).map(formatMac).join(" · ")}</span>
+            )}
             {row.label && <span className="text-foreground/80">{row.label}</span>}
             {row.email && <span>{row.email}</span>}
             <span>
