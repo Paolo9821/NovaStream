@@ -12,18 +12,22 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.rork.novastream.data.local.CrashReporter
 import com.rork.novastream.data.local.DeviceProfile
 import com.rork.novastream.data.local.LicenseStatus
 import com.rork.novastream.data.local.ThemeMode
 import com.rork.novastream.ui.i18n.LocalStrings
 import com.rork.novastream.ui.i18n.stringsFor
 import com.rork.novastream.ui.navigation.AppNavigation
+import com.rork.novastream.ui.screens.CrashScreen
 import com.rork.novastream.ui.screens.LicenseBlockedScreen
 import com.rork.novastream.ui.screens.LicenseCheckScreen
 import com.rork.novastream.ui.screens.LicenseLockedScreen
@@ -48,6 +52,8 @@ class MainActivity : ComponentActivity() {
                 ThemeMode.DARK -> true
             }
             val strings = remember(settings.language) { stringsFor(settings.language) }
+            // Survives a crash instead of letting the app disappear silently.
+            var crashReport by remember { mutableStateOf(CrashReporter.pending(this)) }
             val suggestedProfile = remember { detectDeviceProfile() }
             // A remote-controlled screen: the QR fallback replaces typing a URL.
             val isTv = settings.deviceProfile == DeviceProfile.TV ||
@@ -73,6 +79,14 @@ class MainActivity : ComponentActivity() {
                         status !is LicenseStatus.Licensed
 
                     when {
+                        crashReport != null -> CrashScreen(
+                            report = crashReport.orEmpty(),
+                            onContinue = {
+                                CrashReporter.clear(this)
+                                crashReport = null
+                            },
+                        )
+
                         !license.termsAccepted -> TermsScreen(
                             onAccept = { viewModel.acceptTerms() },
                             onDecline = { finishAffinity() },
