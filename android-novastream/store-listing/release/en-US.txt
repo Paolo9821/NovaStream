@@ -1,0 +1,11 @@
+First public version of NovaStream.
+
+• Add your own IPTV accounts in M3U or Xtream Codes format
+• Live TV with programme guide, movies and series with posters
+• Continue watching and favourites saved on your device
+• Fast search across channels, movies and series
+• HLS player that reconnects automatically on unstable networks
+• Optimised for phone, tablet and Android TV with a remote
+• Credentials encrypted on device with AES-256
+
+Thanks for trying NovaStream.
