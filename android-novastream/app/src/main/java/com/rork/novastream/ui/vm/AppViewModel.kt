@@ -299,6 +299,18 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         repository.saveProgress(entry, streamUrl, positionMs, durationMs)
     }
 
+    /**
+     * Where playback of a title should pick up again, in milliseconds. Returns 0
+     * for live channels, for titles never started, and for ones already watched
+     * to the end, so those always open from the beginning.
+     */
+    fun resumePositionFor(entryId: String): Long {
+        val saved = repository.progressFor(entryId) ?: return 0L
+        if (saved.kind == MediaKind.LIVE) return 0L
+        if (saved.durationMs > 0L && saved.durationMs - saved.positionMs < 90_000L) return 0L
+        return saved.positionMs.coerceAtLeast(0L)
+    }
+
     fun clearProgress() = repository.clearProgress()
 
     fun clearCatalogCache() = repository.clearCatalogCache()

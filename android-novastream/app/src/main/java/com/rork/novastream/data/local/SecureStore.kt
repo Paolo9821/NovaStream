@@ -72,7 +72,13 @@ class SecureStore(context: Context) {
         File(vaultDir, name).outputStream().buffered(BUFFER_BYTES).use { raw ->
             raw.write(Base64.encodeToString(cipher.iv, Base64.NO_WRAP).toByteArray(Charsets.UTF_8))
             raw.write(SEPARATOR.code)
-            CipherOutputStream(Base64OutputStream(raw, Base64.NO_WRAP), cipher).use(body)
+            // The buffer matters: kotlinx writes JSON in small pieces and every
+            // single one of them would otherwise mean a cipher update plus a
+            // Base64 pass. On a big catalog that is the difference between a
+            // couple of seconds and several minutes.
+            CipherOutputStream(Base64OutputStream(raw, Base64.NO_WRAP), cipher)
+                .buffered(BUFFER_BYTES)
+                .use(body)
         }
         true
     }.onFailure { Log.w(TAG, "Scrittura cifrata non riuscita") }.getOrDefault(false)
@@ -91,7 +97,7 @@ class SecureStore(context: Context) {
         val iv = Base64.decode(ivText.toByteArray(), Base64.NO_WRAP)
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.DECRYPT_MODE, masterKey(), GCMParameterSpec(TAG_LENGTH, iv))
-        CipherInputStream(Base64InputStream(raw, Base64.NO_WRAP), cipher)
+        CipherInputStream(Base64InputStream(raw, Base64.NO_WRAP), cipher).buffered(BUFFER_BYTES)
     }.onFailure { Log.w(TAG, "Apertura del file cifrato non riuscita") }.getOrNull()
 
     fun deleteVault(name: String) {

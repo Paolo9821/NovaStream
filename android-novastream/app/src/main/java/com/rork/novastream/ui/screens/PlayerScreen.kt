@@ -7,6 +7,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -51,9 +52,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -75,6 +82,7 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
 import com.rork.novastream.data.model.MediaKind
+import com.rork.novastream.ui.components.rememberFocusRequester
 import com.rork.novastream.ui.i18n.LocalStrings
 import com.rork.novastream.ui.vm.AppViewModel
 import kotlinx.coroutines.delay
@@ -82,6 +90,15 @@ import java.util.Locale
 
 private const val CONTROLS_TIMEOUT_MS = 4_000L
 private const val SEEK_STEP_MS = 10_000L
+
+/**
+ * Grace period after the last D-pad press before the jump is actually made, so
+ * holding left or right scrubs in one go instead of firing a seek per press.
+ */
+private const val SEEK_COMMIT_DELAY_MS = 400L
+
+/** How often playback position is written down while watching. */
+private const val PROGRESS_SAVE_INTERVAL_MS = 15_000L
 
 /** How many times a dropped stream is picked up again before giving up. */
 private const val MAX_RECONNECT_ATTEMPTS = 6
@@ -122,6 +139,12 @@ fun PlayerScreen(
     var resumePositionMs by remember(streamUrl) { mutableLongStateOf(0L) }
     /** Bumped on every interaction so the auto-hide countdown restarts. */
     var interactionTick by remember { mutableLongStateOf(0L) }
+    /** Pending D-pad jump: shown right away, applied once the presses stop. */
+    var pendingSeekMs by remember(streamUrl) { mutableStateOf<Long?>(null) }
+
+    /** Where this title was left last time, 0 when it should start from the top. */
+    val resumeFromMs = remember(entryId, streamUrl) { viewModel.resumePositionFor(entryId) }
+    var resumeNoticeVisible by remember(streamUrl) { mutableStateOf(resumeFromMs > 0L) }
 
     val player = remember(streamUrl) {
         val bufferMs = settings.bufferSeconds * 1000
@@ -144,6 +167,8 @@ fun PlayerScreen(
             .build()
             .apply {
                 setMediaItem(MediaItem.fromUri(streamUrl))
+                // Picks the film back up where it was left instead of restarting it.
+                if (resumeFromMs > 0L) seekTo(resumeFromMs)
                 playWhenReady = true
                 prepare()
             }
@@ -210,12 +235,46 @@ fun PlayerScreen(
     }
 
     LaunchedEffect(player) {
+        var sinceLastSaveMs = 0L
         while (true) {
-            if (!scrubbing) positionMs = player.currentPosition.coerceAtLeast(0L)
+            if (!scrubbing && pendingSeekMs == null) {
+                positionMs = player.currentPosition.coerceAtLeast(0L)
+            }
             val reported = player.duration
             durationMs = if (reported == C.TIME_UNSET) 0L else reported.coerceAtLeast(0L)
+
+            // Position is written down as we go, so a film keeps its place even
+            // if the box is switched off instead of leaving the player.
+            sinceLastSaveMs += 400
+            if (sinceLastSaveMs >= PROGRESS_SAVE_INTERVAL_MS) {
+                sinceLastSaveMs = 0L
+                entry?.let {
+                    viewModel.saveProgress(
+                        entry = it,
+                        streamUrl = streamUrl,
+                        positionMs = player.currentPosition,
+                        durationMs = player.duration.coerceAtLeast(0L),
+                    )
+                }
+            }
             delay(400)
         }
+    }
+
+    // The resume hint is a courtesy, not a dialog: it fades out on its own.
+    LaunchedEffect(resumeNoticeVisible) {
+        if (!resumeNoticeVisible) return@LaunchedEffect
+        delay(5_000)
+        resumeNoticeVisible = false
+    }
+
+    // Applies the accumulated D-pad jump once the user stops pressing.
+    LaunchedEffect(pendingSeekMs) {
+        val target = pendingSeekMs ?: return@LaunchedEffect
+        delay(SEEK_COMMIT_DELAY_MS)
+        player.seekTo(target)
+        positionMs = target
+        pendingSeekMs = null
     }
 
     // Reopens the stream after the backoff delay and restores the position.
@@ -267,16 +326,85 @@ fun PlayerScreen(
     val isLive = isLiveStream || durationMs <= 0L
     val seekable = !isLive && durationMs > 0L
 
+    /** Queues a jump of [deltaMs], stacking with presses that came just before. */
+    fun nudgeSeek(deltaMs: Long) {
+        if (!seekable) {
+            showControls()
+            return
+        }
+        val base = pendingSeekMs ?: player.currentPosition
+        val target = (base + deltaMs).coerceIn(0L, durationMs)
+        pendingSeekMs = target
+        positionMs = target
+        showControls()
+    }
+
+    fun togglePlayback() {
+        if (player.isPlaying) player.pause() else player.play()
+        showControls()
+    }
+
+    // The remote drives the player directly: the D-pad never has to hunt for a
+    // button, so left/right scrub, OK pauses and resumes, and any other key
+    // simply brings the controls back on screen.
+    val keyFocus = rememberFocusRequester()
+    LaunchedEffect(streamUrl) {
+        runCatching { keyFocus.requestFocus() }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
+            .onPreviewKeyEvent { event ->
+                if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                when (event.key) {
+                    Key.DirectionLeft, Key.MediaRewind -> {
+                        nudgeSeek(-SEEK_STEP_MS)
+                        true
+                    }
+                    Key.DirectionRight, Key.MediaFastForward -> {
+                        nudgeSeek(SEEK_STEP_MS)
+                        true
+                    }
+                    Key.DirectionCenter, Key.Enter, Key.NumPadEnter, Key.Spacebar,
+                    Key.MediaPlayPause -> {
+                        togglePlayback()
+                        true
+                    }
+                    Key.MediaPlay -> {
+                        player.play()
+                        showControls()
+                        true
+                    }
+                    Key.MediaPause -> {
+                        player.pause()
+                        showControls()
+                        true
+                    }
+                    Key.MediaStop -> {
+                        onBack()
+                        true
+                    }
+                    Key.DirectionUp, Key.DirectionDown, Key.Menu, Key.Info -> {
+                        showControls()
+                        true
+                    }
+                    else -> false
+                }
+            }
+            .focusRequester(keyFocus)
+            .focusable()
     ) {
         AndroidView(
             factory = { viewContext ->
                 PlayerView(viewContext).apply {
                     this.player = player
                     useController = false
+                    // The video surface must never hold the highlight, or the
+                    // remote keys stop reaching the controls above it.
+                    isFocusable = false
+                    descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
                     layoutParams = ViewGroup.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT,
@@ -356,13 +484,6 @@ fun PlayerScreen(
                         )
                     )
             ) {
-                PlayerTopBar(
-                    title = entry?.title.orEmpty(),
-                    closeLabel = strings.closePlayer,
-                    onBack = onBack,
-                    modifier = Modifier.align(Alignment.TopStart),
-                )
-
                 CenterControls(
                     isPlaying = isPlaying,
                     seekable = seekable,
@@ -413,6 +534,28 @@ fun PlayerScreen(
                     modifier = Modifier.align(Alignment.BottomStart),
                 )
             }
+        }
+
+        // The title stays on screen for as long as the film is paused, so a
+        // room coming back to a frozen picture knows what is playing.
+        AnimatedVisibility(
+            visible = error == null && (controlsVisible || !isPlaying),
+            enter = fadeIn(tween(180)),
+            exit = fadeOut(tween(220)),
+            modifier = Modifier.align(Alignment.TopStart),
+        ) {
+            PlayerTopBar(
+                title = entry?.title.orEmpty(),
+                subtitle = when {
+                    !isPlaying && !buffering && !reconnecting -> strings.playerPausedBadge
+                    resumeNoticeVisible && resumeFromMs > 0L ->
+                        strings.playerResumedFrom.format(formatTime(resumeFromMs))
+                    seekable -> "${formatTime(positionMs)} / ${formatTime(durationMs)}"
+                    else -> null
+                },
+                closeLabel = strings.closePlayer,
+                onBack = onBack,
+            )
         }
 
         error?.let { message ->
@@ -496,6 +639,7 @@ private fun ReconnectOverlay(
 @Composable
 private fun PlayerTopBar(
     title: String,
+    subtitle: String?,
     closeLabel: String,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
@@ -503,8 +647,14 @@ private fun PlayerTopBar(
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .background(
+                Brush.verticalGradient(
+                    0f to Color.Black.copy(alpha = 0.78f),
+                    1f to Color.Transparent,
+                )
+            )
             .windowInsetsPadding(WindowInsets.safeDrawing)
-            .padding(horizontal = 8.dp, vertical = 6.dp),
+            .padding(horizontal = 8.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = onBack) {
@@ -515,13 +665,25 @@ private fun PlayerTopBar(
             )
         }
         Spacer(Modifier.width(4.dp))
-        Text(
-            text = title,
-            color = Color.White,
-            style = MaterialTheme.typography.titleSmall,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        Column {
+            Text(
+                text = title,
+                color = Color.White,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (subtitle != null) {
+                Text(
+                    text = subtitle,
+                    color = Color.White.copy(alpha = 0.76f),
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
     }
 }
 

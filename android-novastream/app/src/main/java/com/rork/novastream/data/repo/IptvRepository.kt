@@ -31,6 +31,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.json.Json
@@ -92,6 +94,9 @@ class IptvRepository(context: Context) {
     /** Background worker for disk work that must never run on the UI thread. */
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    /** Serializes cache writes so two syncs never fight over the same file. */
+    private val vaultMutex = Mutex()
+
     init {
         restore()
     }
@@ -118,8 +123,10 @@ class IptvRepository(context: Context) {
         // background and appear as soon as they are ready.
         val activeId = _activeAccountId.value ?: return
         ioScope.launch {
-            readVault<Catalog>(catalogFile(activeId))?.let { _catalog.value = it }
-            readVault<EpgGuide>(epgFile(activeId))?.let { _epg.value = it }
+            vaultMutex.withLock {
+                readVault<Catalog>(catalogFile(activeId))?.let { _catalog.value = it }
+                readVault<EpgGuide>(epgFile(activeId))?.let { _epg.value = it }
+            }
         }
     }
 
@@ -245,35 +252,34 @@ class IptvRepository(context: Context) {
         }
 
         result.onSuccess { entries ->
-            // Encrypting a large catalog takes seconds. It has to stay off the
-            // UI thread, otherwise the screen freezes exactly when the download
-            // ends and the progress bar stops moving.
-            withContext(Dispatchers.IO) {
-                val catalog = Catalog(
-                    accountId = account.id,
-                    entries = entries,
-                    syncedAtEpochMs = System.currentTimeMillis(),
-                )
-                var live = 0
-                var movies = 0
-                var series = 0
-                entries.forEach { entry ->
-                    when (entry.kind) {
-                        MediaKind.LIVE -> live++
-                        MediaKind.MOVIE -> movies++
-                        MediaKind.SERIES -> series++
-                    }
+            val catalog = Catalog(
+                accountId = account.id,
+                entries = entries,
+                syncedAtEpochMs = System.currentTimeMillis(),
+            )
+            var live = 0
+            var movies = 0
+            var series = 0
+            entries.forEach { entry ->
+                when (entry.kind) {
+                    MediaKind.LIVE -> live++
+                    MediaKind.MOVIE -> movies++
+                    MediaKind.SERIES -> series++
                 }
-
-                _catalog.value = catalog
-                _syncState.value = SyncState.Running("Salvo il catalogo…")
-                writeVault(catalogFile(account.id), catalog)
-                _accounts.value = _accounts.value.map {
-                    if (it.id == account.id) it.copy(lastSyncEpochMs = catalog.syncedAtEpochMs) else it
-                }
-                persistAccounts()
-                _syncState.value = SyncState.Success(live = live, movies = movies, series = series)
             }
+
+            _catalog.value = catalog
+            _accounts.value = _accounts.value.map {
+                if (it.id == account.id) it.copy(lastSyncEpochMs = catalog.syncedAtEpochMs) else it
+            }
+            persistAccounts()
+            // The catalog is already usable at this point. Writing the encrypted
+            // copy of a huge provider can take a while, so it happens in the
+            // background: the loading screen must never wait for the disk.
+            ioScope.launch {
+                vaultMutex.withLock { writeVault(catalogFile(account.id), catalog) }
+            }
+            _syncState.value = SyncState.Success(live = live, movies = movies, series = series)
         }.onFailure { error ->
             Log.w(TAG, "Import della playlist non riuscito")
             _syncState.value = SyncState.Failed(
@@ -350,7 +356,7 @@ class IptvRepository(context: Context) {
                 return@onSuccess
             }
             _epg.value = guide
-            withContext(Dispatchers.IO) { writeVault(epgFile(account.id), guide) }
+            ioScope.launch { vaultMutex.withLock { writeVault(epgFile(account.id), guide) } }
             _epgState.value = SyncState.Success(guide.channelCount, guide.programmeCount, 0)
         }.onFailure { error ->
             Log.w(TAG, "Download della guida EPG non riuscito")
@@ -376,7 +382,12 @@ class IptvRepository(context: Context) {
             .getOrDefault(emptyList())
     }
 
+    /** Saved position of a title, or 0 when there is nothing to resume. */
+    fun progressFor(entryId: String): WatchProgress? =
+        _progress.value.firstOrNull { it.entryId == entryId }
+
     fun saveProgress(entry: MediaEntry, streamUrl: String, positionMs: Long, durationMs: Long) {
+        if (entry.kind == MediaKind.LIVE) return
         if (durationMs <= 0L || positionMs < 15_000L) return
         val updated = WatchProgress(
             entryId = entry.id,
