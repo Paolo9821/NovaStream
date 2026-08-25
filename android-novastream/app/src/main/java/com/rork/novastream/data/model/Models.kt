@@ -98,6 +98,15 @@ data class EpgGuide(
     val isEmpty: Boolean get() = byChannel.isEmpty()
 }
 
+/**
+ * What was watched of a title and where it was left.
+ *
+ * Series carry the episode they were last on ([season], [episodeNumber]), so the
+ * series page can offer to carry on without the viewer hunting for the right
+ * episode. [completed] marks a title watched to the end: it stays in the history
+ * rather than being forgotten, which is what lets a finished episode point at
+ * the one after it.
+ */
 @Serializable
 data class WatchProgress(
     val entryId: String,
@@ -108,12 +117,19 @@ data class WatchProgress(
     val positionMs: Long,
     val durationMs: Long,
     val updatedAtEpochMs: Long,
+    val season: Int = 0,
+    val episodeNumber: Int = 0,
+    val episodeTitle: String? = null,
+    val completed: Boolean = false,
 ) {
     val fraction: Float
         get() = if (durationMs <= 0L) 0f else (positionMs.toFloat() / durationMs).coerceIn(0f, 1f)
 
     val remainingMinutes: Long
         get() = (durationMs - positionMs).coerceAtLeast(0L) / 60000L
+
+    /** True when this record names a specific episode of a series. */
+    val hasEpisode: Boolean get() = kind == MediaKind.SERIES && episodeNumber > 0
 }
 
 /** Sort modes offered above every catalog. */

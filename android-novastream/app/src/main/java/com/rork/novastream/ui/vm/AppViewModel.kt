@@ -353,8 +353,46 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         return list.getOrNull(index + delta)
     }
 
-    fun saveProgress(entry: MediaEntry, streamUrl: String, positionMs: Long, durationMs: Long) {
-        repository.saveProgress(entry, streamUrl, positionMs, durationMs)
+    fun saveProgress(
+        entry: MediaEntry,
+        streamUrl: String,
+        positionMs: Long,
+        durationMs: Long,
+        episode: Episode? = null,
+    ) {
+        repository.saveProgress(
+            entry = entry,
+            streamUrl = streamUrl,
+            positionMs = positionMs,
+            durationMs = durationMs,
+            season = episode?.season ?: 0,
+            episodeNumber = episode?.number ?: 0,
+            episodeTitle = episode?.title,
+        )
+    }
+
+    /** Everything still worth carrying on with, newest first. */
+    fun inProgressEntries(): List<WatchProgress> = progress.value.filterNot { it.completed }
+
+    /** The last thing watched of a title, finished or not. */
+    fun lastWatched(entryId: String): WatchProgress? = repository.progressFor(entryId)
+
+    /**
+     * Where a series should carry on from: the episode left unfinished, or the
+     * one right after the last episode watched to the end. Null when the series
+     * has never been started or has been finished entirely.
+     */
+    fun resumeEpisode(entryId: String, episodes: List<Episode>): Episode? {
+        if (episodes.isEmpty()) return null
+        val saved = repository.progressFor(entryId) ?: return null
+        if (saved.kind != MediaKind.SERIES) return null
+        val index = episodes.indexOfFirst { it.streamUrl == saved.streamUrl }
+            .takeIf { it >= 0 }
+            ?: episodes.indexOfFirst {
+                it.season == saved.season && it.number == saved.episodeNumber
+            }
+        if (index < 0) return null
+        return if (saved.completed) episodes.getOrNull(index + 1) else episodes[index]
     }
 
     /**
@@ -362,9 +400,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
      * for live channels, for titles never started, and for ones already watched
      * to the end, so those always open from the beginning.
      */
-    fun resumePositionFor(entryId: String): Long {
+    fun resumePositionFor(entryId: String, streamUrl: String? = null): Long {
         val saved = repository.progressFor(entryId) ?: return 0L
         if (saved.kind == MediaKind.LIVE) return 0L
+        if (saved.completed) return 0L
+        // A series keeps one position per show, so an episode picked by hand must
+        // never inherit the position of a different one.
+        if (streamUrl != null && saved.streamUrl.isNotBlank() && saved.streamUrl != streamUrl) {
+            return 0L
+        }
         if (saved.durationMs > 0L && saved.durationMs - saved.positionMs < 90_000L) return 0L
         return saved.positionMs.coerceAtLeast(0L)
     }

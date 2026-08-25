@@ -94,6 +94,9 @@ fun HomeScreen(
     val favoriteEntries = remember(catalog, favorites, settings, unlocked) {
         viewModel.favoriteEntries()
     }
+    // Finished titles stay in the history so a series can offer its next
+    // episode, but this row is about what is still unwatched.
+    val unfinished = remember(progress) { progress.filterNot { it.completed } }
 
     LazyColumn(
         modifier = Modifier.fillMaxWidth(),
@@ -191,7 +194,7 @@ fun HomeScreen(
             }
         }
 
-        if (progress.isNotEmpty()) {
+        if (unfinished.isNotEmpty()) {
             item("continue-header") {
                 SectionHeader(
                     title = strings.continueWatching,
@@ -202,11 +205,16 @@ fun HomeScreen(
             }
             item("continue-row") {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    items(progress, key = { it.entryId }) { item ->
+                    items(unfinished, key = { it.entryId }) { item ->
                         ContinueCard(
                             title = item.title,
-                            subtitle = if (item.remainingMinutes <= 0L) strings.almostDone
-                            else strings.minutesRemaining.format(item.remainingMinutes),
+                            subtitle = when {
+                                item.hasEpisode -> "S${item.season}E${item.episodeNumber} · " +
+                                    if (item.remainingMinutes <= 0L) strings.almostDone
+                                    else strings.minutesRemaining.format(item.remainingMinutes)
+                                item.remainingMinutes <= 0L -> strings.almostDone
+                                else -> strings.minutesRemaining.format(item.remainingMinutes)
+                            },
                             imageUrl = item.imageUrl,
                             fraction = item.fraction,
                             onClick = { onResume(item.entryId, item.streamUrl) },

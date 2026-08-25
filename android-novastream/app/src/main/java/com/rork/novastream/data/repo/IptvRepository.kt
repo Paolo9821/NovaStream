@@ -489,7 +489,21 @@ class IptvRepository(context: Context) {
     fun progressFor(entryId: String): WatchProgress? =
         _progress.value.firstOrNull { it.entryId == entryId }
 
-    fun saveProgress(entry: MediaEntry, streamUrl: String, positionMs: Long, durationMs: Long) {
+    /**
+     * Writes down where a title was left, together with the episode it belongs
+     * to. A finished title is kept rather than dropped: the history is what the
+     * series page reads to offer the next episode, and it has to outlive any
+     * number of catalog refreshes.
+     */
+    fun saveProgress(
+        entry: MediaEntry,
+        streamUrl: String,
+        positionMs: Long,
+        durationMs: Long,
+        season: Int = 0,
+        episodeNumber: Int = 0,
+        episodeTitle: String? = null,
+    ) {
         if (entry.kind == MediaKind.LIVE) return
         if (durationMs <= 0L || positionMs < 15_000L) return
         val updated = WatchProgress(
@@ -501,11 +515,13 @@ class IptvRepository(context: Context) {
             positionMs = positionMs,
             durationMs = durationMs,
             updatedAtEpochMs = System.currentTimeMillis(),
+            season = season,
+            episodeNumber = episodeNumber,
+            episodeTitle = episodeTitle,
+            completed = durationMs - positionMs < FINISHED_THRESHOLD_MS,
         )
-        val remaining = durationMs - positionMs
         val list = _progress.value.filterNot { it.entryId == entry.id }
-        _progress.value = if (remaining < 90_000L) list.take(12)
-        else (listOf(updated) + list).take(12)
+        _progress.value = (listOf(updated) + list).take(MAX_HISTORY)
         secureStore.putString(KEY_PROGRESS, json.encodeToString(_progress.value))
     }
 
@@ -562,6 +578,16 @@ class IptvRepository(context: Context) {
         private const val TAG = "IptvRepository"
         private const val EPG_PAST_WINDOW_MS = 6L * 60 * 60 * 1000
         private const val EPG_FUTURE_WINDOW_MS = 48L * 60 * 60 * 1000
+
+        /** Closer than this to the end counts as watched. */
+        private const val FINISHED_THRESHOLD_MS = 90_000L
+
+        /**
+         * Titles remembered in the history. Generous on purpose: it covers years
+         * of viewing for a few kilobytes, so nothing a viewer started ever
+         * quietly disappears.
+         */
+        private const val MAX_HISTORY = 400
 
         fun newAccountId(): String = UUID.randomUUID().toString()
     }

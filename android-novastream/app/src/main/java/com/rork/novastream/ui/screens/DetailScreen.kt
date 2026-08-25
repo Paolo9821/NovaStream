@@ -71,6 +71,7 @@ import com.rork.novastream.ui.i18n.LocalStrings
 import com.rork.novastream.ui.i18n.Strings
 import com.rork.novastream.ui.theme.LocalNovaAccents
 import com.rork.novastream.ui.vm.AppViewModel
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -87,6 +88,7 @@ fun DetailScreen(
     val episodesLoading by viewModel.episodesLoading.collectAsStateWithLifecycle()
     val favorites by viewModel.favorites.collectAsStateWithLifecycle()
     val epg by viewModel.epg.collectAsStateWithLifecycle()
+    val history by viewModel.progress.collectAsStateWithLifecycle()
 
     val entry = remember(catalog, entryId) { viewModel.entryById(entryId) }
     val related = remember(catalog, entryId) { entry?.let { viewModel.related(it) }.orEmpty() }
@@ -104,8 +106,22 @@ fun DetailScreen(
     // Providers hand over every episode of every season in one flat list. Split
     // it by season so a long-running series is not an endless scroll.
     val seasons = remember(episodes) { episodes.map { it.season }.distinct().sorted() }
+
+    /** The episode this series should carry on from, if it was ever started. */
+    val resumeEpisode = remember(episodes, history, entryId) {
+        viewModel.resumeEpisode(entryId, episodes)
+    }
+    /** Where a film was left, so its button offers to carry on instead of restarting. */
+    val movieResumeMs = remember(history, entryId) {
+        if (entry?.kind == MediaKind.MOVIE) viewModel.resumePositionFor(entryId, entry.streamUrl)
+        else 0L
+    }
+
     var chosenSeason by remember(entryId) { mutableStateOf<Int?>(null) }
-    val activeSeason = chosenSeason?.takeIf { seasons.contains(it) } ?: seasons.firstOrNull()
+    // Until a season is picked by hand, the page opens on the one being watched.
+    val activeSeason = chosenSeason?.takeIf { seasons.contains(it) }
+        ?: resumeEpisode?.season?.takeIf { seasons.contains(it) }
+        ?: seasons.firstOrNull()
     val seasonEpisodes = remember(episodes, activeSeason) {
         if (activeSeason == null) episodes else episodes.filter { it.season == activeSeason }
     }
@@ -218,15 +234,32 @@ fun DetailScreen(
                         onClick = { onPlay(entry.id, entry.streamUrl) },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 20.dp, vertical = 20.dp),
+                            .padding(horizontal = 20.dp, vertical = 20.dp)
+                            .tvFocusFrame(cornerRadius = 22.dp),
                         contentPadding = PaddingValues(vertical = 16.dp),
                     ) {
                         Icon(Icons.Rounded.PlayArrow, contentDescription = null)
                         Spacer(Modifier.width(10.dp))
-                        Text(
-                            text = if (entry.kind == MediaKind.LIVE) strings.watchNow else strings.playNow,
-                            style = MaterialTheme.typography.titleMedium,
-                        )
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text(
+                                text = when {
+                                    entry.kind == MediaKind.LIVE -> strings.watchNow
+                                    movieResumeMs > 0L -> strings.resumeAction
+                                    else -> strings.playNow
+                                },
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                            // Films say out loud where they will pick up, so the
+                            // button is never a gamble between resume and restart.
+                            if (movieResumeMs > 0L) {
+                                Text(
+                                    text = strings.playerResumedFrom.format(
+                                        formatClock(movieResumeMs)
+                                    ),
+                                    style = MaterialTheme.typography.labelMedium,
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -284,6 +317,20 @@ fun DetailScreen(
                             }
                         }
                         Spacer(Modifier.height(14.dp))
+                    }
+                }
+
+                // The whole point of a series page for someone mid-binge: one
+                // button that goes straight to the right episode.
+                if (resumeEpisode != null) {
+                    item("resume") {
+                        ResumeEpisodeButton(
+                            label = strings.resumeAction,
+                            episodeLabel = "S${resumeEpisode.season}E${resumeEpisode.number}" +
+                                " · ${resumeEpisode.title}",
+                            hint = strings.resumeSeriesHint,
+                            onClick = { onPlay(entry.id, resumeEpisode.streamUrl) },
+                        )
                     }
                 }
 
@@ -359,6 +406,61 @@ fun DetailScreen(
                 }
             }
         }
+    }
+}
+
+/**
+ * Big, unmissable way back into a series: names the exact episode it will play
+ * so nobody has to remember where they stopped.
+ */
+@Composable
+private fun ResumeEpisodeButton(
+    label: String,
+    episodeLabel: String,
+    hint: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Button(
+        onClick = onClick,
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp)
+            .padding(bottom = 16.dp)
+            .tvFocusFrame(cornerRadius = 22.dp),
+        contentPadding = PaddingValues(horizontal = 20.dp, vertical = 14.dp),
+    ) {
+        Icon(Icons.Rounded.PlayArrow, contentDescription = null)
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(text = label, style = MaterialTheme.typography.titleMedium)
+            Text(
+                text = episodeLabel,
+                style = MaterialTheme.typography.labelLarge,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = hint,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.72f),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+/** Formats a saved position as `m:ss` or `h:mm:ss` for the resume label. */
+private fun formatClock(ms: Long): String {
+    val totalSeconds = ms.coerceAtLeast(0L) / 1000
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    val seconds = totalSeconds % 60
+    return if (hours > 0) {
+        String.format(Locale.US, "%d:%02d:%02d", hours, minutes, seconds)
+    } else {
+        String.format(Locale.US, "%d:%02d", minutes, seconds)
     }
 }
 

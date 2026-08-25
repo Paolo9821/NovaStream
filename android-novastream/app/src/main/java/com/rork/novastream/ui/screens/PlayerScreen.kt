@@ -164,7 +164,7 @@ fun PlayerScreen(
 
     /** Where this title was left last time, 0 when it should start from the top. */
     val resumeFromMs = remember(activeEntryId, activeStreamUrl) {
-        viewModel.resumePositionFor(activeEntryId)
+        viewModel.resumePositionFor(activeEntryId, activeStreamUrl)
     }
     var resumeNoticeVisible by remember(activeStreamUrl) { mutableStateOf(resumeFromMs > 0L) }
 
@@ -230,6 +230,12 @@ fun PlayerScreen(
         entry?.let { if (it.kind == MediaKind.SERIES) viewModel.loadEpisodes(it) }
     }
 
+    // The episode on screen, so the history remembers exactly where the series
+    // was left and can offer to carry on from its page.
+    val currentEpisode = remember(episodes, activeStreamUrl, isSeries) {
+        if (isSeries) episodes.firstOrNull { it.streamUrl == activeStreamUrl } else null
+    }
+
     val nextEpisode = remember(episodes, activeStreamUrl, isSeries) {
         if (isSeries) viewModel.episodeNeighbour(activeStreamUrl, 1) else null
     }
@@ -290,6 +296,17 @@ fun PlayerScreen(
                 if (playbackState == Player.STATE_ENDED) {
                     playbackEnded = true
                     controlsVisible = true
+                    // Marks the episode as watched right away, so the series page
+                    // offers the next one even if the box is switched off here.
+                    entry?.let {
+                        viewModel.saveProgress(
+                            entry = it,
+                            streamUrl = activeStreamUrl,
+                            positionMs = player.duration.coerceAtLeast(0L),
+                            durationMs = player.duration.coerceAtLeast(0L),
+                            episode = currentEpisode,
+                        )
+                    }
                 }
             }
 
@@ -320,6 +337,7 @@ fun PlayerScreen(
                     streamUrl = activeStreamUrl,
                     positionMs = player.currentPosition,
                     durationMs = player.duration.coerceAtLeast(0L),
+                    episode = currentEpisode,
                 )
             }
             player.removeListener(listener)
@@ -347,6 +365,7 @@ fun PlayerScreen(
                         streamUrl = activeStreamUrl,
                         positionMs = player.currentPosition,
                         durationMs = player.duration.coerceAtLeast(0L),
+                        episode = currentEpisode,
                     )
                 }
             }
@@ -368,6 +387,7 @@ fun PlayerScreen(
                     streamUrl = activeStreamUrl,
                     positionMs = player.currentPosition,
                     durationMs = player.duration.coerceAtLeast(0L),
+                    episode = currentEpisode,
                 )
             }
         }
