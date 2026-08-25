@@ -614,6 +614,28 @@ fun SettingsScreen(
                             viewModel.settingsStore.update { it.copy(autoplayNextEpisode = value) }
                         },
                     )
+                    // How long the "up next" card stays on screen before the
+                    // following episode starts by itself.
+                    if (settings.autoplayNextEpisode) {
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = strings.autoplayDelayLabel.format(settings.nextEpisodeDelaySeconds),
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Slider(
+                            value = settings.nextEpisodeDelaySeconds.toFloat(),
+                            onValueChange = { value ->
+                                viewModel.settingsStore.update {
+                                    it.copy(nextEpisodeDelaySeconds = value.roundToInt().coerceIn(3, 30))
+                                }
+                            },
+                            valueRange = 3f..30f,
+                            steps = 8,
+                            modifier = Modifier
+                                .dpadVerticalEscape()
+                                .tvFocusFrame(cornerRadius = 22.dp),
+                        )
+                    }
                 }
             }
 

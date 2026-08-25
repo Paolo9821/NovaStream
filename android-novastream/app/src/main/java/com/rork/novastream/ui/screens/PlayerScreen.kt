@@ -31,9 +31,13 @@ import androidx.compose.material.icons.rounded.Forward10
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Replay10
+import androidx.compose.material.icons.rounded.SkipNext
+import androidx.compose.material.icons.rounded.SkipPrevious
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
@@ -85,6 +89,9 @@ import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.rork.novastream.data.model.Episode
+import com.rork.novastream.data.model.MediaEntry
 import com.rork.novastream.data.model.MediaKind
 import com.rork.novastream.ui.components.rememberFocusRequester
 import com.rork.novastream.ui.i18n.LocalStrings
@@ -125,8 +132,14 @@ fun PlayerScreen(
     val strings = LocalStrings.current
     val context = LocalContext.current
     val haptics = LocalHapticFeedback.current
-    val settings = viewModel.settings.value
-    val entry = remember(entryId) { viewModel.entryById(entryId) }
+    val settings by viewModel.settings.collectAsStateWithLifecycle()
+
+    // What is on screen right now. It starts from what was opened, then follows
+    // the viewer as they zap channels or move through a series without ever
+    // leaving the player.
+    var activeEntryId by remember(entryId) { mutableStateOf(entryId) }
+    var activeStreamUrl by remember(streamUrl) { mutableStateOf(streamUrl) }
+    val entry = remember(activeEntryId) { viewModel.entryById(activeEntryId) }
 
     var error by remember { mutableStateOf<String?>(null) }
     var buffering by remember { mutableStateOf(true) }
@@ -147,10 +160,12 @@ fun PlayerScreen(
     var pendingSeekMs by remember(streamUrl) { mutableStateOf<Long?>(null) }
 
     /** Where this title was left last time, 0 when it should start from the top. */
-    val resumeFromMs = remember(entryId, streamUrl) { viewModel.resumePositionFor(entryId) }
-    var resumeNoticeVisible by remember(streamUrl) { mutableStateOf(resumeFromMs > 0L) }
+    val resumeFromMs = remember(activeEntryId, activeStreamUrl) {
+        viewModel.resumePositionFor(activeEntryId)
+    }
+    var resumeNoticeVisible by remember(activeStreamUrl) { mutableStateOf(resumeFromMs > 0L) }
 
-    val player = remember(streamUrl) {
+    val player = remember(activeStreamUrl) {
         val bufferMs = settings.bufferSeconds * 1000
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
@@ -170,7 +185,7 @@ fun PlayerScreen(
             .setLoadControl(loadControl)
             .build()
             .apply {
-                setMediaItem(MediaItem.fromUri(streamUrl))
+                setMediaItem(MediaItem.fromUri(activeStreamUrl))
                 // Keeps the box awake while a stream is running: without it a TV
                 // suspends the CPU and the picture dies mid-programme.
                 setWakeMode(C.WAKE_MODE_NETWORK)
@@ -181,16 +196,10 @@ fun PlayerScreen(
             }
     }
 
-    // A television turns itself off after its own idle timeout, and watching a
-    // channel counts as idle because nothing is being pressed. While a stream is
-    // running the screen is held on, exactly as any other TV app does; the
-    // moment playback stops the timeout goes back to normal.
-    val hostView = LocalView.current
-    val screenBusy = isPlaying || buffering || reconnecting
-    DisposableEffect(hostView, screenBusy) {
-        hostView.keepScreenOn = screenBusy
-        onDispose { hostView.keepScreenOn = false }
-    }
+    /** Set when the stream reaches its natural end, to offer what comes next. */
+    var playbackEnded by remember(activeStreamUrl) { mutableStateOf(false) }
+    var upNextDismissed by remember(activeStreamUrl) { mutableStateOf(false) }
+    var secondsLeft by remember(activeStreamUrl) { mutableIntStateOf(0) }
 
     fun showControls() {
         controlsVisible = true
@@ -198,6 +207,54 @@ fun PlayerScreen(
     }
 
     val isLiveStream = entry?.kind == MediaKind.LIVE
+    val isSeries = entry?.kind == MediaKind.SERIES
+
+    // Episodes of the series being watched, so the player can move on by itself
+    // and offer previous/next without going back to the series page.
+    val episodes by viewModel.episodes.collectAsStateWithLifecycle()
+    LaunchedEffect(entry?.id) {
+        entry?.let { if (it.kind == MediaKind.SERIES) viewModel.loadEpisodes(it) }
+    }
+
+    val nextEpisode = remember(episodes, activeStreamUrl, isSeries) {
+        if (isSeries) viewModel.episodeNeighbour(activeStreamUrl, 1) else null
+    }
+    val previousEpisode = remember(episodes, activeStreamUrl, isSeries) {
+        if (isSeries) viewModel.episodeNeighbour(activeStreamUrl, -1) else null
+    }
+    val nextChannel = remember(activeEntryId, isLiveStream) {
+        if (isLiveStream) viewModel.channelNeighbour(activeEntryId, 1) else null
+    }
+    val previousChannel = remember(activeEntryId, isLiveStream) {
+        if (isLiveStream) viewModel.channelNeighbour(activeEntryId, -1) else null
+    }
+
+    val upNextVisible = playbackEnded && !upNextDismissed && nextEpisode != null
+    val endOfSeriesVisible = playbackEnded && !upNextDismissed && isSeries && nextEpisode == null
+
+    // A television turns itself off after its own idle timeout, and watching a
+    // channel counts as idle because nothing is being pressed. While a stream is
+    // running the screen is held on, exactly as any other TV app does; the
+    // moment playback stops the timeout goes back to normal.
+    val hostView = LocalView.current
+    val screenBusy = isPlaying || buffering || reconnecting || upNextVisible
+    DisposableEffect(hostView, screenBusy) {
+        hostView.keepScreenOn = screenBusy
+        onDispose { hostView.keepScreenOn = false }
+    }
+
+    /** Swaps what is playing in place, keeping the viewer inside the player. */
+    fun switchTo(newEntryId: String, newStreamUrl: String) {
+        if (newStreamUrl.isBlank()) return
+        activeEntryId = newEntryId
+        activeStreamUrl = newStreamUrl
+        controlsVisible = true
+        interactionTick += 1
+    }
+
+    fun playEpisode(episode: Episode) = switchTo(activeEntryId, episode.streamUrl)
+
+    fun playChannel(channel: MediaEntry) = switchTo(channel.id, channel.streamUrl)
 
     /**
      * Queues another attempt at the same stream. Anything already playing keeps
@@ -216,6 +273,10 @@ fun PlayerScreen(
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
                 buffering = playbackState == Player.STATE_BUFFERING
+                if (playbackState == Player.STATE_ENDED) {
+                    playbackEnded = true
+                    controlsVisible = true
+                }
             }
 
             override fun onIsPlayingChanged(playing: Boolean) {
@@ -242,7 +303,7 @@ fun PlayerScreen(
             entry?.let {
                 viewModel.saveProgress(
                     entry = it,
-                    streamUrl = streamUrl,
+                    streamUrl = activeStreamUrl,
                     positionMs = player.currentPosition,
                     durationMs = player.duration.coerceAtLeast(0L),
                 )
@@ -269,7 +330,7 @@ fun PlayerScreen(
                 entry?.let {
                     viewModel.saveProgress(
                         entry = it,
-                        streamUrl = streamUrl,
+                        streamUrl = activeStreamUrl,
                         positionMs = player.currentPosition,
                         durationMs = player.duration.coerceAtLeast(0L),
                     )
@@ -290,7 +351,7 @@ fun PlayerScreen(
             entry?.let {
                 viewModel.saveProgress(
                     entry = it,
-                    streamUrl = streamUrl,
+                    streamUrl = activeStreamUrl,
                     positionMs = player.currentPosition,
                     durationMs = player.duration.coerceAtLeast(0L),
                 )
@@ -316,13 +377,31 @@ fun PlayerScreen(
         pendingSeekMs = null
     }
 
+    // The end of an episode is announced rather than sprung on the viewer: the
+    // card names what comes next and counts down the delay set in Settings, and
+    // anyone who does not want it can stop the countdown.
+    LaunchedEffect(playbackEnded, nextEpisode, upNextDismissed, settings.autoplayNextEpisode) {
+        val next = nextEpisode
+        if (!playbackEnded || upNextDismissed || next == null) return@LaunchedEffect
+        if (!settings.autoplayNextEpisode) {
+            secondsLeft = 0
+            return@LaunchedEffect
+        }
+        secondsLeft = settings.nextEpisodeDelaySeconds.coerceIn(3, 60)
+        while (secondsLeft > 0) {
+            delay(1_000)
+            secondsLeft -= 1
+        }
+        playEpisode(next)
+    }
+
     // Reopens the stream after the backoff delay and restores the position.
     LaunchedEffect(reconnectTick) {
         if (reconnectTick == 0 || !reconnecting) return@LaunchedEffect
         error = null
         delay(reconnectDelayMs(reconnectAttempt))
         player.stop()
-        player.setMediaItem(MediaItem.fromUri(streamUrl))
+        player.setMediaItem(MediaItem.fromUri(activeStreamUrl))
         player.prepare()
         // Live channels always rejoin at the edge; on-demand resumes where it froze.
         if (!isLiveStream && resumePositionMs > 0L) player.seekTo(resumePositionMs)
@@ -330,7 +409,7 @@ fun PlayerScreen(
     }
 
     // Watchdog for a stream that never errors out but stops delivering data.
-    LaunchedEffect(player, streamUrl) {
+    LaunchedEffect(player, activeStreamUrl) {
         var lastPosition = -1L
         var lastProgressAtMs = System.currentTimeMillis()
         while (true) {
@@ -355,8 +434,8 @@ fun PlayerScreen(
         }
     }
 
-    LaunchedEffect(controlsVisible, isPlaying, scrubbing, error, interactionTick) {
-        if (controlsVisible && isPlaying && !scrubbing && error == null) {
+    LaunchedEffect(controlsVisible, isPlaying, scrubbing, error, interactionTick, upNextVisible) {
+        if (controlsVisible && isPlaying && !scrubbing && error == null && !upNextVisible) {
             delay(CONTROLS_TIMEOUT_MS)
             controlsVisible = false
         }
@@ -387,9 +466,28 @@ fun PlayerScreen(
     // button, so left/right scrub, OK pauses and resumes, and any other key
     // simply brings the controls back on screen.
     val keyFocus = rememberFocusRequester()
-    LaunchedEffect(streamUrl) {
+    LaunchedEffect(activeStreamUrl) {
         runCatching { keyFocus.requestFocus() }
     }
+
+    /** What the up/down keys and the side buttons do on this stream. */
+    val goNext: (() -> Unit)? = when {
+        isLiveStream -> nextChannel?.let { channel -> { playChannel(channel) } }
+        nextEpisode != null -> {
+            { playEpisode(nextEpisode) }
+        }
+        else -> null
+    }
+    val goPrevious: (() -> Unit)? = when {
+        isLiveStream -> previousChannel?.let { channel -> { playChannel(channel) } }
+        previousEpisode != null -> {
+            { playEpisode(previousEpisode) }
+        }
+        else -> null
+    }
+    val nextLabel = if (isLiveStream) strings.nextChannelAction else strings.nextEpisodeAction
+    val previousLabel =
+        if (isLiveStream) strings.previousChannelAction else strings.previousEpisodeAction
 
     Box(
         modifier = Modifier
@@ -397,6 +495,22 @@ fun PlayerScreen(
             .background(Color.Black)
             .onPreviewKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                // While the up-next card is on screen the remote drives it: OK
+                // starts the episode straight away, Back calls the whole thing off.
+                if (upNextVisible && nextEpisode != null) {
+                    when (event.key) {
+                        Key.DirectionCenter, Key.Enter, Key.NumPadEnter, Key.MediaPlay,
+                        Key.MediaPlayPause, Key.MediaNext -> {
+                            playEpisode(nextEpisode)
+                            return@onPreviewKeyEvent true
+                        }
+                        Key.Back, Key.Escape -> {
+                            upNextDismissed = true
+                            return@onPreviewKeyEvent true
+                        }
+                        else -> Unit
+                    }
+                }
                 when (event.key) {
                     Key.DirectionLeft, Key.MediaRewind -> {
                         nudgeSeek(-SEEK_STEP_MS)
@@ -425,7 +539,28 @@ fun PlayerScreen(
                         onBack()
                         true
                     }
-                    Key.DirectionUp, Key.DirectionDown, Key.Menu, Key.Info -> {
+                    Key.ChannelUp, Key.MediaNext -> {
+                        goNext?.invoke() ?: showControls()
+                        true
+                    }
+                    Key.ChannelDown, Key.MediaPrevious -> {
+                        goPrevious?.invoke() ?: showControls()
+                        true
+                    }
+                    // Zapping with up/down is second nature on a live channel.
+                    // On a series it only works once the controls are up, so a
+                    // stray press never skips an episode by accident.
+                    Key.DirectionUp -> {
+                        if (isLiveStream || controlsVisible) goNext?.invoke() ?: showControls()
+                        else showControls()
+                        true
+                    }
+                    Key.DirectionDown -> {
+                        if (isLiveStream || controlsVisible) goPrevious?.invoke() ?: showControls()
+                        else showControls()
+                        true
+                    }
+                    Key.Menu, Key.Info -> {
                         showControls()
                         true
                     }
@@ -530,6 +665,23 @@ fun PlayerScreen(
                     pauseLabel = strings.pauseAction,
                     rewindLabel = strings.rewindTen,
                     forwardLabel = strings.forwardTen,
+                    previousLabel = previousLabel,
+                    nextLabel = nextLabel,
+                    hint = if (goNext != null || goPrevious != null) {
+                        "▲ $nextLabel   ▼ $previousLabel"
+                    } else null,
+                    onPrevious = goPrevious?.let { action ->
+                        {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            action()
+                        }
+                    },
+                    onNext = goNext?.let { action ->
+                        {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            action()
+                        }
+                    },
                     onRewind = {
                         haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                         val target = (player.currentPosition - SEEK_STEP_MS).coerceAtLeast(0L)
@@ -575,6 +727,44 @@ fun PlayerScreen(
             }
         }
 
+        if (upNextVisible && nextEpisode != null && error == null) {
+            val total = settings.nextEpisodeDelaySeconds.coerceIn(3, 60).toFloat()
+            UpNextCard(
+                title = strings.upNextTitle,
+                episodeLabel = "S${nextEpisode.season}E${nextEpisode.number} · ${nextEpisode.title}",
+                countdownLabel = if (settings.autoplayNextEpisode) {
+                    strings.upNextCountdown.format(secondsLeft)
+                } else null,
+                progress = if (total > 0f) (secondsLeft / total).coerceIn(0f, 1f) else 0f,
+                playNowLabel = strings.upNextPlayNow,
+                cancelLabel = strings.cancel,
+                onPlayNow = { playEpisode(nextEpisode) },
+                onCancel = { upNextDismissed = true },
+                modifier = Modifier.align(Alignment.BottomEnd),
+            )
+        }
+
+        if (endOfSeriesVisible && error == null) {
+            Column(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(24.dp)
+                    .background(Color.Black.copy(alpha = 0.82f), RoundedCornerShape(20.dp))
+                    .padding(horizontal = 22.dp, vertical = 18.dp),
+            ) {
+                Text(
+                    text = strings.lastEpisodeNotice,
+                    color = Color.White,
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Spacer(Modifier.height(12.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Button(onClick = onBack) { Text(strings.close) }
+                    OutlinedButton(onClick = { upNextDismissed = true }) { Text(strings.cancel) }
+                }
+            }
+        }
+
         // The title stays on screen for as long as the film is paused, so a
         // room coming back to a frozen picture knows what is playing.
         AnimatedVisibility(
@@ -617,7 +807,7 @@ fun PlayerScreen(
                     OutlinedButton(onClick = {
                         error = null
                         reconnectAttempt = 0
-                        player.setMediaItem(MediaItem.fromUri(streamUrl))
+                        player.setMediaItem(MediaItem.fromUri(activeStreamUrl))
                         player.prepare()
                         if (!isLiveStream && resumePositionMs > 0L) player.seekTo(resumePositionMs)
                         player.play()
@@ -734,6 +924,11 @@ private fun CenterControls(
     pauseLabel: String,
     rewindLabel: String,
     forwardLabel: String,
+    previousLabel: String,
+    nextLabel: String,
+    hint: String?,
+    onPrevious: (() -> Unit)?,
+    onNext: (() -> Unit)?,
     onRewind: () -> Unit,
     onTogglePlay: () -> Unit,
     onForward: () -> Unit,
@@ -745,49 +940,153 @@ private fun CenterControls(
         label = "playPulse",
     )
 
-    Row(
+    Column(
         modifier = modifier,
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(28.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        if (seekable) {
-            GlassIconButton(
-                icon = { tint ->
-                    Icon(Icons.Rounded.Replay10, contentDescription = rewindLabel, tint = tint)
-                },
-                size = 52,
-                onClick = onRewind,
-            )
-        }
-
-        Box(
-            modifier = Modifier
-                .scale(pulse)
-                .size(76.dp)
-                .background(Color.White.copy(alpha = 0.16f), CircleShape),
-            contentAlignment = Alignment.Center,
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(22.dp),
         ) {
-            IconButton(
-                onClick = onTogglePlay,
-                modifier = Modifier.size(76.dp),
+            if (onPrevious != null) {
+                GlassIconButton(
+                    icon = { tint ->
+                        Icon(
+                            Icons.Rounded.SkipPrevious,
+                            contentDescription = previousLabel,
+                            tint = tint,
+                        )
+                    },
+                    size = 52,
+                    onClick = onPrevious,
+                )
+            }
+
+            if (seekable) {
+                GlassIconButton(
+                    icon = { tint ->
+                        Icon(Icons.Rounded.Replay10, contentDescription = rewindLabel, tint = tint)
+                    },
+                    size = 52,
+                    onClick = onRewind,
+                )
+            }
+
+            Box(
+                modifier = Modifier
+                    .scale(pulse)
+                    .size(76.dp)
+                    .background(Color.White.copy(alpha = 0.16f), CircleShape),
+                contentAlignment = Alignment.Center,
             ) {
-                Icon(
-                    imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                    contentDescription = if (isPlaying) pauseLabel else playLabel,
-                    tint = Color.White,
-                    modifier = Modifier.size(40.dp),
+                IconButton(
+                    onClick = onTogglePlay,
+                    modifier = Modifier.size(76.dp),
+                ) {
+                    Icon(
+                        imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                        contentDescription = if (isPlaying) pauseLabel else playLabel,
+                        tint = Color.White,
+                        modifier = Modifier.size(40.dp),
+                    )
+                }
+            }
+
+            if (seekable) {
+                GlassIconButton(
+                    icon = { tint ->
+                        Icon(Icons.Rounded.Forward10, contentDescription = forwardLabel, tint = tint)
+                    },
+                    size = 52,
+                    onClick = onForward,
+                )
+            }
+
+            if (onNext != null) {
+                GlassIconButton(
+                    icon = { tint ->
+                        Icon(Icons.Rounded.SkipNext, contentDescription = nextLabel, tint = tint)
+                    },
+                    size = 52,
+                    onClick = onNext,
                 )
             }
         }
 
-        if (seekable) {
-            GlassIconButton(
-                icon = { tint ->
-                    Icon(Icons.Rounded.Forward10, contentDescription = forwardLabel, tint = tint)
-                },
-                size = 52,
-                onClick = onForward,
+        // Remotes cannot reach these buttons with the D-pad, so the two keys
+        // that do the same job are spelled out right underneath them.
+        if (hint != null) {
+            Spacer(Modifier.height(14.dp))
+            Text(
+                text = hint,
+                color = Color.White.copy(alpha = 0.68f),
+                style = MaterialTheme.typography.labelMedium,
+                textAlign = TextAlign.Center,
             )
+        }
+    }
+}
+
+/**
+ * End-of-episode card: names what comes next, counts down the delay chosen in
+ * Settings and leaves the viewer in charge of both outcomes.
+ */
+@Composable
+private fun UpNextCard(
+    title: String,
+    episodeLabel: String,
+    countdownLabel: String?,
+    progress: Float,
+    playNowLabel: String,
+    cancelLabel: String,
+    onPlayNow: () -> Unit,
+    onCancel: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .padding(24.dp)
+            .background(Color.Black.copy(alpha = 0.82f), RoundedCornerShape(20.dp))
+            .padding(horizontal = 22.dp, vertical = 18.dp),
+    ) {
+        Text(
+            text = title,
+            color = Color.White.copy(alpha = 0.68f),
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = episodeLabel,
+            color = Color.White,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.width(300.dp),
+        )
+        if (countdownLabel != null) {
+            Spacer(Modifier.height(12.dp))
+            LinearProgressIndicator(
+                progress = { progress },
+                modifier = Modifier
+                    .width(300.dp)
+                    .height(4.dp),
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = Color.White.copy(alpha = 0.22f),
+                drawStopIndicator = {},
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = countdownLabel,
+                color = Color.White.copy(alpha = 0.78f),
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        Spacer(Modifier.height(14.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Button(onClick = onPlayNow) { Text(playNowLabel) }
+            OutlinedButton(onClick = onCancel) { Text(cancelLabel) }
         }
     }
 }

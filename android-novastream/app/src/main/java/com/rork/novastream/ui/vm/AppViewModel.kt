@@ -331,6 +331,28 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * The channel [delta] steps away from [entryId] in the live list as the user
+     * sees it, wrapping around at both ends so zapping never dead-ends. Returns
+     * null when the channel is not part of the current live list.
+     */
+    fun channelNeighbour(entryId: String, delta: Int): MediaEntry? {
+        val list = filteredEntries(MediaKind.LIVE, _liveQuery.value)
+        if (list.size < 2) return null
+        val index = list.indexOfFirst { it.id == entryId }
+        if (index < 0) return null
+        val target = ((index + delta) % list.size + list.size) % list.size
+        return list.getOrNull(target)
+    }
+
+    /** The episode [delta] steps away from the one playing at [streamUrl]. */
+    fun episodeNeighbour(streamUrl: String, delta: Int): Episode? {
+        val list = _episodes.value
+        val index = list.indexOfFirst { it.streamUrl == streamUrl }
+        if (index < 0) return null
+        return list.getOrNull(index + delta)
+    }
+
     fun saveProgress(entry: MediaEntry, streamUrl: String, positionMs: Long, durationMs: Long) {
         repository.saveProgress(entry, streamUrl, positionMs, durationMs)
     }

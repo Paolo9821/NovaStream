@@ -53,6 +53,8 @@ data class AppSettings(
     val bufferSeconds: Int = 30,
     val hardwareDecoding: Boolean = true,
     val autoplayNextEpisode: Boolean = true,
+    /** Seconds of warning before the next episode starts on its own. */
+    val nextEpisodeDelaySeconds: Int = 10,
     val catalogUpdateInterval: CatalogUpdateInterval = CatalogUpdateInterval.DAILY,
     val autoUpdateGuide: Boolean = true,
     val parentalEnabled: Boolean = false,
@@ -85,6 +87,7 @@ class SettingsStore(context: Context) {
         bufferSeconds = prefs.getInt(KEY_BUFFER, 30),
         hardwareDecoding = prefs.getBoolean(KEY_HW, true),
         autoplayNextEpisode = prefs.getBoolean(KEY_AUTOPLAY, true),
+        nextEpisodeDelaySeconds = prefs.getInt(KEY_AUTOPLAY_DELAY, 10).coerceIn(3, 60),
         catalogUpdateInterval = runCatching {
             CatalogUpdateInterval.valueOf(prefs.getString(KEY_AUTO_UPDATE, null) ?: "DAILY")
         }.getOrDefault(CatalogUpdateInterval.DAILY),
@@ -106,6 +109,7 @@ class SettingsStore(context: Context) {
             .putInt(KEY_BUFFER, settings.bufferSeconds)
             .putBoolean(KEY_HW, settings.hardwareDecoding)
             .putBoolean(KEY_AUTOPLAY, settings.autoplayNextEpisode)
+            .putInt(KEY_AUTOPLAY_DELAY, settings.nextEpisodeDelaySeconds)
             .putString(KEY_AUTO_UPDATE, settings.catalogUpdateInterval.name)
             .putBoolean(KEY_AUTO_UPDATE_EPG, settings.autoUpdateGuide)
             .putBoolean(KEY_PARENTAL, settings.parentalEnabled)
@@ -158,6 +162,7 @@ class SettingsStore(context: Context) {
         const val KEY_BUFFER = "buffer_seconds"
         const val KEY_HW = "hardware_decoding"
         const val KEY_AUTOPLAY = "autoplay_next"
+        const val KEY_AUTOPLAY_DELAY = "autoplay_next_delay"
         const val KEY_AUTO_UPDATE = "catalog_auto_update"
         const val KEY_AUTO_UPDATE_EPG = "catalog_auto_update_epg"
         const val KEY_PARENTAL = "parental_enabled"

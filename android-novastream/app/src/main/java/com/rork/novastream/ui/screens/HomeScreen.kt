@@ -177,12 +177,14 @@ fun HomeScreen(
             item("favorites-row") {
                 LazyRow(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
                     items(favoriteEntries, key = { it.id }) { entry ->
+                        // No heart here on purpose: on this row every card is
+                        // already a favourite, and the small button kept
+                        // stealing taps meant to open the title. Removing one
+                        // is done from the title's own page.
                         PosterCard(
                             entry = entry,
                             onClick = { onOpenDetail(entry.id) },
                             modifier = Modifier.width(118.dp),
-                            isFavorite = true,
-                            onToggleFavorite = { viewModel.toggleFavorite(entry.id) },
                         )
                     }
                 }
