@@ -1,11 +1,14 @@
-Prima versione pubblica di NovaStream.
+La lista ora resta sul dispositivo e le serie ripartono da dove le avevi lasciate.
 
-• Aggiungi i tuoi account IPTV M3U o Xtream Codes
-• Live TV con guida programmi, film e serie con locandine
-• Continua a guardare e preferiti salvati sul dispositivo
-• Ricerca rapida di canali, film e serie
-• Player HLS con riconnessione automatica se la rete è instabile
-• Ottimizzata per telefono, tablet e Android TV con telecomando
-• Credenziali cifrate sul dispositivo con AES-256
+• Pulsante Riprendi nella pagina di ogni serie: indica l'episodio esatto che ti aspetta e lo avvia con un clic
+• I film ripartono dal minuto preciso in cui li avevi interrotti
+• Pulsanti delle stagioni nella pagina di una serie: basta scorrere all'infinito
+• Preferiti e cronologia restano salvati sul dispositivo e sopravvivono a ogni aggiornamento della lista
+• La lista scaricata viene salvata davvero e si riapre in un secondo, invece di essere riscaricata a ogni avvio
+• La fine di un episodio viene annunciata con il conto alla rovescia e il nome del prossimo, con il ritardo che scegli tu
+• Pulsanti selezionabili nel player per cambiare canale o episodio: niente più cambi per sbaglio
+• Risolto: dopo il cambio canale l'immagine restava nera e si sentiva solo l'audio
+• Lo schermo non si spegne più da solo mentre stai guardando
+• Salvataggio di catalogo e guida TV più veloce e leggero
 
-Grazie per aver provato NovaStream.
+Grazie per usare NovaStream.

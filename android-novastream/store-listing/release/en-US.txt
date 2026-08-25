@@ -1,11 +1,14 @@
-First public version of NovaStream.
+Your list now stays on the device, and series pick up where you left off.
 
-• Add your own IPTV accounts in M3U or Xtream Codes format
-• Live TV with programme guide, movies and series with posters
-• Continue watching and favourites saved on your device
-• Fast search across channels, movies and series
-• HLS player that reconnects automatically on unstable networks
-• Optimised for phone, tablet and Android TV with a remote
-• Credentials encrypted on device with AES-256
+• Resume button on every series page: it names the exact episode waiting for you and plays it in one click
+• Films resume from the exact minute you stopped
+• Season buttons on a series page, so a long-running show is no longer an endless scroll
+• Favourites and watch history are kept safely on the device and survive any list update
+• The downloaded channel list is saved properly and reopens in a second, instead of being downloaded at every launch
+• End of an episode is announced with a countdown and the name of the next one, with a delay you choose
+• Selectable buttons in the player to change channel or episode, so nothing changes by accident
+• Fixed: after changing channel the picture stayed black with sound only
+• The screen no longer switches itself off while you are watching
+• Faster, lighter storage of the catalogue and programme guide
 
-Thanks for trying NovaStream.
+Thanks for using NovaStream.
