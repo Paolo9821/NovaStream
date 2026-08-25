@@ -100,6 +100,13 @@ class IptvRepository(context: Context) {
     /** True while a freshly downloaded catalog is still being written to disk. */
     val saving: StateFlow<Boolean> = _saving.asStateFlow()
 
+    private val _recovering = MutableStateFlow(false)
+    /**
+     * True while a saved catalog that could not be read back is being downloaded
+     * again on its own, so the app never settles on an empty list.
+     */
+    val recovering: StateFlow<Boolean> = _recovering.asStateFlow()
+
     /** Background worker for disk work that must never run on the UI thread. */
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -137,21 +144,45 @@ class IptvRepository(context: Context) {
         val activeId = _activeAccountId.value ?: return
         _restoring.value = true
         ioScope.launch {
+            var needsFreshCopy = false
             try {
                 vaultMutex.withLock {
                     val stored = readVault<Catalog>(catalogFile(activeId))
                     if (stored != null && stored.entries.isNotEmpty()) {
                         _catalog.value = stored
-                    } else if (secureStore.hasVault(catalogFile(activeId))) {
-                        // The file is there but cannot be read: it is damaged and
+                    } else {
+                        // Missing, damaged, or written by an older build: the file
                         // would keep failing, so it goes and a fresh copy is fetched.
-                        Log.w(TAG, "Catalogo salvato illeggibile: verrà riscaricato")
-                        secureStore.deleteVault(catalogFile(activeId))
+                        if (secureStore.hasVault(catalogFile(activeId))) {
+                            Log.w(TAG, "Catalogo salvato illeggibile: verrà riscaricato")
+                            secureStore.deleteVault(catalogFile(activeId))
+                        }
+                        needsFreshCopy = true
                     }
-                    readVault<EpgGuide>(epgFile(activeId))?.let { _epg.value = it }
+                    val guide = readVault<EpgGuide>(epgFile(activeId))
+                    if (guide != null) {
+                        _epg.value = guide
+                    } else if (secureStore.hasVault(epgFile(activeId))) {
+                        secureStore.deleteVault(epgFile(activeId))
+                    }
                 }
             } finally {
                 _restoring.value = false
+            }
+
+            // Nothing usable came back from the device: rather than showing an
+            // empty app, the list is downloaded again straight away.
+            if (!needsFreshCopy) return@launch
+            val account = _accounts.value.firstOrNull { it.id == activeId } ?: return@launch
+            if (_syncState.value is SyncState.Running) return@launch
+            _recovering.value = true
+            try {
+                sync(account)
+                if (settingsStore.settings.value.autoUpdateGuide && _epg.value.isEmpty) {
+                    refreshEpg()
+                }
+            } finally {
+                _recovering.value = false
             }
         }
     }

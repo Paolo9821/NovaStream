@@ -64,6 +64,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -170,11 +171,25 @@ fun PlayerScreen(
             .build()
             .apply {
                 setMediaItem(MediaItem.fromUri(streamUrl))
+                // Keeps the box awake while a stream is running: without it a TV
+                // suspends the CPU and the picture dies mid-programme.
+                setWakeMode(C.WAKE_MODE_NETWORK)
                 // Picks the film back up where it was left instead of restarting it.
                 if (resumeFromMs > 0L) seekTo(resumeFromMs)
                 playWhenReady = true
                 prepare()
             }
+    }
+
+    // A television turns itself off after its own idle timeout, and watching a
+    // channel counts as idle because nothing is being pressed. While a stream is
+    // running the screen is held on, exactly as any other TV app does; the
+    // moment playback stops the timeout goes back to normal.
+    val hostView = LocalView.current
+    val screenBusy = isPlaying || buffering || reconnecting
+    DisposableEffect(hostView, screenBusy) {
+        hostView.keepScreenOn = screenBusy
+        onDispose { hostView.keepScreenOn = false }
     }
 
     fun showControls() {

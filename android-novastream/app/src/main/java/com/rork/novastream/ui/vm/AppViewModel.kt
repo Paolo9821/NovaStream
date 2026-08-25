@@ -61,6 +61,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     /** True while a freshly downloaded catalog is still being written to disk. */
     val catalogSaving: StateFlow<Boolean> = repository.saving
 
+    /** True while an unreadable saved catalog is being downloaded again on its own. */
+    val catalogRecovering: StateFlow<Boolean> = repository.recovering
+
     val settingsStore: SettingsStore get() = repository.settingsStore
     val encryptionLabel: String get() = repository.secureStore.algorithmLabel
 

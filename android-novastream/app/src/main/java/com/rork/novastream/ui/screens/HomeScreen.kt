@@ -83,6 +83,8 @@ fun HomeScreen(
     val favorites by viewModel.favorites.collectAsStateWithLifecycle()
     val license by viewModel.license.collectAsStateWithLifecycle()
     val storeUrl by viewModel.storeUrl.collectAsStateWithLifecycle()
+    val restoring by viewModel.catalogRestoring.collectAsStateWithLifecycle()
+    val recovering by viewModel.catalogRecovering.collectAsStateWithLifecycle()
     val context = LocalContext.current
 
     val active = remember(accounts, activeId) { accounts.firstOrNull { it.id == activeId } }
@@ -152,9 +154,13 @@ fun HomeScreen(
             }
         } else {
             items(MediaKind.entries.toList(), key = { it.name }) { kind ->
+                val count = counts[kind] ?: 0
                 CategoryCard(
                     kind = kind,
-                    count = counts[kind] ?: 0,
+                    count = count,
+                    // An empty row while the saved list is still opening would
+                    // read as "you have nothing": it waits instead.
+                    loading = count == 0 && (restoring || recovering),
                     strings = strings,
                     onClick = { onOpenCategory(kind) },
                 )
@@ -306,6 +312,7 @@ private fun PlaylistStatusChip(playlistLabel: String, connected: Boolean) {
 private fun CategoryCard(
     kind: MediaKind,
     count: Int,
+    loading: Boolean,
     strings: Strings,
     onClick: () -> Unit,
 ) {
@@ -330,11 +337,19 @@ private fun CategoryCard(
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.weight(1f),
             )
-            Text(
-                text = "${formatCount(count)} ${unitOf(kind, strings)}",
-                style = MaterialTheme.typography.titleSmall,
-                color = accentFor(kind),
-            )
+            if (loading) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    strokeWidth = 2.dp,
+                    color = accentFor(kind),
+                )
+            } else {
+                Text(
+                    text = "${formatCount(count)} ${unitOf(kind, strings)}",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = accentFor(kind),
+                )
+            }
             Spacer(Modifier.width(6.dp))
             Icon(
                 imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
