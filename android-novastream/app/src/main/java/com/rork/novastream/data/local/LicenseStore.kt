@@ -15,6 +15,14 @@ const val TRIAL_DAYS: Int = 7
 /** How long a paid device keeps working without reaching the licence server. */
 const val ONLINE_GRACE_DAYS: Int = 14
 
+/**
+ * How long a brand-new installation may run before its free window has to be
+ * confirmed by the server. Without this a reinstalled device could dodge the
+ * server-side anchor simply by staying offline — and streaming needs a
+ * connection anyway, so nothing legitimate is lost.
+ */
+const val TRIAL_ANCHOR_GRACE_DAYS: Int = 3
+
 /** Why a paid device was locked again. */
 enum class BlockReason {
     /** The owner revoked this licence for good. */
@@ -69,6 +77,14 @@ class LicenseStore(context: Context, private val secureStore: SecureStore) {
 
     val identity: DeviceIdentity = DeviceIdentityResolver.resolve(context)
 
+    /**
+     * True when this copy of the app found no trial record of its own, which is
+     * what a first install and a reinstall look like from here. Read before the
+     * record is created below, and reported to the server so it can tell the two
+     * apart by the anchor it already holds.
+     */
+    val isFreshInstall: Boolean = secureStore.getString(KEY_TRIAL) == null
+
     private var verifying: Boolean = false
     private var lastAttemptMs: Long = 0L
 
@@ -109,6 +125,9 @@ class LicenseStore(context: Context, private val secureStore: SecureStore) {
     /** Stores a fresh server answer and re-evaluates the gate. */
     fun applyRemote(record: RemoteLicense) {
         val safeNote = record.note.replace('|', ' ').take(120)
+        // The server owns the trial clock, so a reinstall picks the count back up
+        // where it was instead of handing out another free week.
+        record.trialStartedAtMs?.let { anchorTrial(it, record.serverTimeMs) }
         secureStore.putString(
             KEY_REMOTE,
             listOf(
@@ -178,6 +197,14 @@ class LicenseStore(context: Context, private val secureStore: SecureStore) {
         val expiresAt = record.startedAtMs + TimeUnit.DAYS.toMillis(TRIAL_DAYS.toLong())
         val now = record.effectiveNowMs
 
+        // A trial the server has never confirmed cannot run forever: that is the
+        // only way an offline reinstall could keep restarting the free window.
+        if (!record.anchored &&
+            now - record.startedAtMs > TimeUnit.DAYS.toMillis(TRIAL_ANCHOR_GRACE_DAYS.toLong())
+        ) {
+            return LicenseStatus.Blocked(BlockReason.UNVERIFIED)
+        }
+
         if (now >= expiresAt) return LicenseStatus.Expired(expiresAt)
 
         val remainingMs = expiresAt - now
@@ -196,23 +223,64 @@ class LicenseStore(context: Context, private val secureStore: SecureStore) {
      */
     private fun startTrialIfNeeded(): TrialRecord {
         val now = System.currentTimeMillis()
-        val stored = secureStore.getString(KEY_TRIAL)?.split("|")
+        val stored = trialRecord()
 
-        if (stored != null && stored.size == 3 && stored[0] == identity.deviceId) {
-            val startedAt = stored[1].toLongOrNull()
-            val lastSeen = stored[2].toLongOrNull()
-            if (startedAt != null && lastSeen != null) {
-                val effectiveNow = maxOf(now, lastSeen)
-                secureStore.putString(KEY_TRIAL, "${identity.deviceId}|$startedAt|$effectiveNow")
-                return TrialRecord(startedAt, effectiveNow)
-            }
+        if (stored != null) {
+            val effectiveNow = maxOf(now, stored.effectiveNowMs)
+            val record = stored.copy(effectiveNowMs = effectiveNow)
+            writeTrial(record)
+            return record
         }
 
-        secureStore.putString(KEY_TRIAL, "${identity.deviceId}|$now|$now")
-        return TrialRecord(now, now)
+        val record = TrialRecord(startedAtMs = now, effectiveNowMs = now, anchored = false)
+        writeTrial(record)
+        return record
     }
 
-    private data class TrialRecord(val startedAtMs: Long, val effectiveNowMs: Long)
+    /**
+     * Adopts the start date the server holds for this device. The earlier of the
+     * two dates wins, so a device that ran offline for its first days keeps that
+     * head start, while a reinstall inherits the original date.
+     */
+    private fun anchorTrial(serverStartedAtMs: Long, serverTimeMs: Long) {
+        if (serverStartedAtMs <= 0L) return
+        val current = trialRecord()
+        val startedAt = minOf(current?.startedAtMs ?: serverStartedAtMs, serverStartedAtMs)
+        val effectiveNow = maxOf(
+            System.currentTimeMillis(),
+            current?.effectiveNowMs ?: 0L,
+            serverTimeMs,
+        )
+        writeTrial(TrialRecord(startedAt, effectiveNow, anchored = true))
+    }
+
+    /** Records written before the server anchor existed have no fourth field. */
+    private fun trialRecord(): TrialRecord? {
+        val parts = secureStore.getString(KEY_TRIAL)?.split("|") ?: return null
+        if (parts.size < 3 || parts[0] != identity.deviceId) return null
+        val startedAt = parts[1].toLongOrNull() ?: return null
+        val lastSeen = parts[2].toLongOrNull() ?: return null
+        return TrialRecord(
+            startedAtMs = startedAt,
+            effectiveNowMs = lastSeen,
+            anchored = parts.getOrNull(3) == ANCHORED_FLAG,
+        )
+    }
+
+    private fun writeTrial(record: TrialRecord) {
+        val flag = if (record.anchored) ANCHORED_FLAG else "0"
+        secureStore.putString(
+            KEY_TRIAL,
+            "${identity.deviceId}|${record.startedAtMs}|${record.effectiveNowMs}|$flag",
+        )
+    }
+
+    private data class TrialRecord(
+        val startedAtMs: Long,
+        val effectiveNowMs: Long,
+        /** True once the licence server confirmed when this device first appeared. */
+        val anchored: Boolean,
+    )
 
     private data class RemoteRecord(
         val status: RemoteStatus,
@@ -226,6 +294,7 @@ class LicenseStore(context: Context, private val secureStore: SecureStore) {
         const val KEY_TERMS = "is_terms_accepted"
         const val KEY_TRIAL = "trial_record"
         const val KEY_REMOTE = "remote_license"
+        const val ANCHORED_FLAG = "1"
 
         /** Paid devices re-check twice a day. */
         val CHECK_INTERVAL_MS: Long = TimeUnit.HOURS.toMillis(12)

@@ -53,6 +53,13 @@ data class RemoteLicense(
     val plan: String = "",
     val expiresAtMs: Long? = null,
     val note: String = "",
+    /**
+     * When the server first saw this device. It survives uninstalls, so the free
+     * window keeps running from the original date instead of starting over.
+     */
+    val trialStartedAtMs: Long? = null,
+    /** Server clock, used so a device cannot rewind its own trial. */
+    val serverTimeMs: Long = 0L,
 )
 
 /** Outcome of asking the server. Silence is never treated as a verdict. */
@@ -88,8 +95,15 @@ class LicenseApi(private val baseUrl: String = LICENSE_BACKEND_URL) {
      * Both names of the device travel together: customers usually type the MAC
      * shown on screen when they buy, while the app identifies itself with its
      * device id. The server honours whichever one the purchase was made against.
+     *
+     * [freshInstall] tells the server this copy of the app holds no trial record
+     * of its own, so a reinstall is counted rather than rewarded with a new week.
      */
-    suspend fun check(deviceId: String, mac: String = ""): LicenseCheck = withContext(Dispatchers.IO) {
+    suspend fun check(
+        deviceId: String,
+        mac: String = "",
+        freshInstall: Boolean = false,
+    ): LicenseCheck = withContext(Dispatchers.IO) {
         runCatching {
             val response = http.post("$baseUrl/api/license/status") {
                 contentType(ContentType.Application.Json)
@@ -97,6 +111,7 @@ class LicenseApi(private val baseUrl: String = LICENSE_BACKEND_URL) {
                     buildJsonObject {
                         put("deviceId", deviceId)
                         if (mac.isNotBlank()) put("mac", mac)
+                        if (freshInstall) put("fresh", true)
                     }.toString(),
                 )
             }
@@ -123,6 +138,8 @@ class LicenseApi(private val baseUrl: String = LICENSE_BACKEND_URL) {
                     plan = body["plan"]?.jsonPrimitive?.contentOrNull.orEmpty(),
                     expiresAtMs = body["expiresAt"]?.jsonPrimitive?.longOrNull,
                     note = body["note"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+                    trialStartedAtMs = body["trialStartedAt"]?.jsonPrimitive?.longOrNull,
+                    serverTimeMs = body["serverTime"]?.jsonPrimitive?.longOrNull ?: 0L,
                 ),
             )
         }.getOrElse { error ->

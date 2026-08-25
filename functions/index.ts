@@ -144,9 +144,13 @@ export default {
         // on the store. Either identifier must open the licence they paid for.
         const mac = normalizeDeviceId(String(body.mac ?? ""));
         if (!deviceId && !mac) return fail("deviceId required");
+        // Set when the app holds no local trace of its trial, i.e. a fresh
+        // install. The server keeps the original start date either way.
+        const fresh = body.fresh === true;
         const result = await registryJson<Record<string, unknown>>(env, "/status", {
           deviceId: deviceId || mac,
           identifiers: [deviceId, mac],
+          fresh,
         });
         return json(result);
       }

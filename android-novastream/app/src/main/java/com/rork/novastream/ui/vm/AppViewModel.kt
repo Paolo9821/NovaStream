@@ -145,7 +145,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         licenseStore.setVerifying(true)
         try {
             val identity = licenseStore.identity
-            when (val check = licenseApi.check(identity.deviceId, identity.macAddress)) {
+            val check = licenseApi.check(
+                deviceId = identity.deviceId,
+                mac = identity.macAddress,
+                freshInstall = licenseStore.isFreshInstall,
+            )
+            when (check) {
                 is LicenseCheck.Answered -> licenseStore.applyRemote(check.record)
                 // Offline or server down: keep the last answer, grace window ticks.
                 is LicenseCheck.Unavailable -> Unit

@@ -20,6 +20,17 @@ type LicenseRow = {
   source: string;
 };
 
+/**
+ * First contact of a device, kept server-side so the free window cannot be
+ * restarted by wiping the app's data or reinstalling it.
+ */
+type TrialRow = {
+  trial_id: string;
+  started_at: number;
+  last_seen_at: number;
+  installs: number;
+};
+
 /** Lifecycle of a support request as seen in the dashboard. */
 export type TicketStatus = "new" | "open" | "closed";
 
@@ -162,6 +173,27 @@ export class Registry extends DurableObject {
     this.ctx.storage.sql.exec(
       "CREATE INDEX IF NOT EXISTS idx_device_aliases_device ON device_aliases (device_id)",
     );
+    // The free window is anchored here rather than on the device: local storage
+    // disappears with an uninstall, and a customer who reinstalls would
+    // otherwise be handed a brand-new trial every time.
+    this.ctx.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS trials (
+        trial_id TEXT PRIMARY KEY,
+        started_at INTEGER NOT NULL,
+        last_seen_at INTEGER NOT NULL,
+        installs INTEGER NOT NULL DEFAULT 1
+      )
+    `);
+    this.ctx.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS trial_aliases (
+        alias TEXT PRIMARY KEY,
+        trial_id TEXT NOT NULL,
+        created_at INTEGER NOT NULL
+      )
+    `);
+    this.ctx.storage.sql.exec(
+      "CREATE INDEX IF NOT EXISTS idx_trial_aliases_trial ON trial_aliases (trial_id)",
+    );
     this.ctx.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS settings (
         key TEXT PRIMARY KEY,
@@ -201,7 +233,7 @@ export class Registry extends DurableObject {
 
     switch (url.pathname) {
       case "/status":
-        return Response.json(this.status(identifiersOf(body)));
+        return Response.json(this.status(identifiersOf(body), body.fresh === true));
       case "/issue":
         return Response.json(this.issue(body));
       case "/order-seen":
@@ -459,8 +491,83 @@ export class Registry extends DurableObject {
     }
   }
 
+  private findTrial(identifiers: string[]): TrialRow | null {
+    const ids = unique(identifiers);
+    for (const id of ids) {
+      const row = this.ctx.storage.sql
+        .exec<TrialRow>("SELECT * FROM trials WHERE trial_id = ?", id)
+        .toArray()[0];
+      if (row) return row;
+    }
+    for (const id of ids) {
+      const target = this.ctx.storage.sql
+        .exec<{ trial_id: string }>("SELECT trial_id FROM trial_aliases WHERE alias = ?", id)
+        .toArray()[0]?.trial_id;
+      if (!target) continue;
+      const row = this.ctx.storage.sql
+        .exec<TrialRow>("SELECT * FROM trials WHERE trial_id = ?", target)
+        .toArray()[0];
+      if (row) return row;
+    }
+    return null;
+  }
+
+  /** Records the other names of a device so any of them finds the same trial. */
+  private linkTrial(trialId: string, identifiers: string[]): void {
+    const now = Date.now();
+    for (const id of unique(identifiers)) {
+      if (id === trialId) continue;
+      this.ctx.storage.sql.exec(
+        `INSERT INTO trial_aliases (alias, trial_id, created_at) VALUES (?, ?, ?)
+         ON CONFLICT(alias) DO NOTHING`,
+        id,
+        trialId,
+        now,
+      );
+    }
+  }
+
+  /**
+   * Start of the free window for this device, created on first contact and never
+   * moved afterwards. [fresh] is set by the app when it has no local record of
+   * its own — a reinstall — and only bumps a counter, so the clock keeps running
+   * from the original date instead of starting over.
+   */
+  private trial(identifiers: string[], fresh: boolean): { startedAt: number; installs: number } | null {
+    const ids = unique(identifiers);
+    if (ids.length === 0) return null;
+    const now = Date.now();
+    const existing = this.findTrial(ids);
+
+    if (existing) {
+      this.linkTrial(existing.trial_id, ids);
+      const installs = existing.installs + (fresh ? 1 : 0);
+      this.ctx.storage.sql.exec(
+        "UPDATE trials SET last_seen_at = ?, installs = ? WHERE trial_id = ?",
+        now,
+        installs,
+        existing.trial_id,
+      );
+      return { startedAt: existing.started_at, installs };
+    }
+
+    const trialId = ids[0];
+    this.ctx.storage.sql.exec(
+      `INSERT INTO trials (trial_id, started_at, last_seen_at, installs) VALUES (?, ?, ?, 1)
+       ON CONFLICT(trial_id) DO NOTHING`,
+      trialId,
+      now,
+      now,
+    );
+    this.linkTrial(trialId, ids);
+    return { startedAt: now, installs: 1 };
+  }
+
   /** Read used by the Android app on every launch; also records the heartbeat. */
-  private status(identifiers: string[]): {
+  private status(
+    identifiers: string[],
+    fresh = false,
+  ): {
     found: boolean;
     status: "active" | "suspended" | "revoked" | "expired" | "none";
     plan: string;
@@ -468,9 +575,14 @@ export class Registry extends DurableObject {
     note: string;
     deviceId: string;
     serverTime: number;
+    trialStartedAt: number | null;
+    trialInstalls: number;
   } {
     const row = this.resolve(identifiers);
     const serverTime = Date.now();
+    // Recorded for paid devices too: the anchor must still be there if the
+    // licence later expires, so nobody falls back into a second free week.
+    const trial = this.trial(identifiers, fresh);
     if (!row) {
       return {
         found: false,
@@ -480,6 +592,8 @@ export class Registry extends DurableObject {
         note: "",
         deviceId: unique(identifiers)[0] ?? "",
         serverTime,
+        trialStartedAt: trial?.startedAt ?? null,
+        trialInstalls: trial?.installs ?? 0,
       };
     }
     this.link(row.device_id, identifiers);
@@ -499,6 +613,8 @@ export class Registry extends DurableObject {
       note: view.note,
       deviceId: row.device_id,
       serverTime,
+      trialStartedAt: trial?.startedAt ?? null,
+      trialInstalls: trial?.installs ?? 0,
     };
   }
 
