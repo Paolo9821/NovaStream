@@ -19,12 +19,15 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -37,7 +40,9 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -58,10 +63,12 @@ import com.rork.novastream.ui.components.RequestInitialFocus
 import com.rork.novastream.ui.components.contentFocusZone
 import com.rork.novastream.ui.components.dpadDownTo
 import com.rork.novastream.ui.components.rememberFocusRequester
+import com.rork.novastream.ui.components.tvFocusFrame
 import com.rork.novastream.ui.components.accentFor
 import com.rork.novastream.ui.components.containerFor
 import com.rork.novastream.ui.components.iconFor
 import com.rork.novastream.ui.i18n.LocalStrings
+import com.rork.novastream.ui.i18n.Strings
 import com.rork.novastream.ui.theme.LocalNovaAccents
 import com.rork.novastream.ui.vm.AppViewModel
 
@@ -92,6 +99,15 @@ fun DetailScreen(
 
     LaunchedEffect(entryId) {
         entry?.let { if (it.kind == MediaKind.SERIES) viewModel.loadEpisodes(it) }
+    }
+
+    // Providers hand over every episode of every season in one flat list. Split
+    // it by season so a long-running series is not an endless scroll.
+    val seasons = remember(episodes) { episodes.map { it.season }.distinct().sorted() }
+    var chosenSeason by remember(entryId) { mutableStateOf<Int?>(null) }
+    val activeSeason = chosenSeason?.takeIf { seasons.contains(it) } ?: seasons.firstOrNull()
+    val seasonEpisodes = remember(episodes, activeSeason) {
+        if (activeSeason == null) episodes else episodes.filter { it.season == activeSeason }
     }
 
     val contentFocus = rememberFocusRequester()
@@ -253,8 +269,32 @@ fun DetailScreen(
                 item("episodes-header") {
                     Column(Modifier.padding(horizontal = 20.dp)) {
                         Spacer(Modifier.height(20.dp))
-                        Text(strings.episodes, style = MaterialTheme.typography.titleLarge)
-                        Spacer(Modifier.height(8.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                text = strings.episodes,
+                                style = MaterialTheme.typography.titleLarge,
+                                modifier = Modifier.weight(1f),
+                            )
+                            if (seasonEpisodes.isNotEmpty()) {
+                                Text(
+                                    text = strings.episodesInSeason.format(seasonEpisodes.size),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        Spacer(Modifier.height(14.dp))
+                    }
+                }
+
+                if (seasons.size > 1) {
+                    item("seasons") {
+                        SeasonPicker(
+                            seasons = seasons,
+                            selected = activeSeason,
+                            strings = strings,
+                            onSelect = { season -> chosenSeason = season },
+                        )
                     }
                 }
                 if (episodesLoading) {
@@ -283,7 +323,7 @@ fun DetailScreen(
                         )
                     }
                 } else {
-                    items(episodes, key = { it.id }) { episode ->
+                    items(seasonEpisodes, key = { it.id }) { episode ->
                         EpisodeRow(
                             episode = episode,
                             onClick = { onPlay(entry.id, episode.streamUrl) },
@@ -319,6 +359,64 @@ fun DetailScreen(
                 }
             }
         }
+    }
+}
+
+/**
+ * Row of season buttons. It scrolls sideways so a series with thirty seasons
+ * behaves like one with two, and the season being browsed stays highlighted.
+ */
+@Composable
+private fun SeasonPicker(
+    seasons: List<Int>,
+    selected: Int?,
+    strings: Strings,
+    onSelect: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier) {
+        Text(
+            text = strings.seasonPickerTitle,
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 20.dp, bottom = 8.dp),
+        )
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 20.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            items(seasons, key = { it }) { season ->
+                val isSelected = season == selected
+                FilterChip(
+                    selected = isSelected,
+                    onClick = { onSelect(season) },
+                    label = {
+                        Text(
+                            // Specials and unnumbered extras land in season 0.
+                            text = if (season <= 0) strings.seasonOther
+                            else strings.seasonChip.format(season),
+                            style = MaterialTheme.typography.titleSmall,
+                        )
+                    },
+                    leadingIcon = if (isSelected) {
+                        {
+                            Icon(
+                                imageVector = Icons.Rounded.Check,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
+                    } else null,
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.primary,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimary,
+                        selectedLeadingIconColor = MaterialTheme.colorScheme.onPrimary,
+                    ),
+                    modifier = Modifier.tvFocusFrame(cornerRadius = 20.dp),
+                )
+            }
+        }
+        Spacer(Modifier.height(14.dp))
     }
 }
 
