@@ -23,6 +23,19 @@ const repoRoot = resolve(here, "../..");
 const outDir = resolve(here, "out");
 const fontDir = resolve(here, ".fonts");
 
+/**
+ * Brand artwork comes from the shipped app resources, never from a copy: the
+ * listing icon has to be the very icon people see on their home screen.
+ */
+const appRes = resolve(repoRoot, "android-novastream/app/src/main/res");
+/** Adaptive icon foreground (432x432, artwork fills the 288x288 mask area). */
+const launcherForeground = resolve(appRes, "drawable-xxxhdpi/ic_launcher_foreground.png");
+/** Adaptive icon background, from values/ic_launcher_background.xml. */
+const launcherBackground = "#000615";
+/** Full logo lockup used as the Android TV banner (960x540). */
+const bannerArtwork = resolve(appRes, "drawable-xxhdpi/tv_banner.png");
+const featureTagline = "Playlist m3u e Xtream su telefono, tablet e Android TV";
+
 const FONTS = [
   {
     file: "roboto.ttf",
@@ -48,11 +61,6 @@ const HI_DPI_SLIDES = [
   { id: "tv-3", size: [1920, 1080] },
   { id: "tv-4", size: [1920, 1080] },
   { id: "tv-5", size: [1920, 1080] },
-];
-
-const ONE_X_SLIDES = [
-  { id: "feature-graphic", size: [1024, 500] },
-  { id: "tv-banner", size: [1280, 720] },
 ];
 
 function ensureFonts() {
@@ -101,6 +109,48 @@ function flatten(file) {
   execFileSync("magick", [file, "-background", "white", "-alpha", "remove", "-alpha", "off", "-define", "png:color-type=2", file]);
 }
 
+/**
+ * Listing icon, feature graphic and TV banner, all rebuilt from the artwork the
+ * app itself ships so the store never shows a logo the app no longer uses.
+ */
+function renderBrandAssets() {
+  // The launcher shows the middle 288x288 of the foreground over the flat
+  // background colour: same crop here, so the store icon matches the home screen.
+  const iconOut = resolve(outDir, "icon-512.png");
+  execFileSync("magick", [
+    "-size", "512x512", `xc:${launcherBackground}`,
+    "(", launcherForeground, "-crop", "288x288+72+72", "+repage", "-resize", "512x512", ")",
+    "-composite",
+    "-alpha", "remove", "-alpha", "off", "-define", "png:color-type=2",
+    iconOut,
+  ]);
+  console.log("icon-512.png  512x512");
+
+  // Feature graphic: the lockup sits slightly high, tagline underneath.
+  const featureOut = resolve(outDir, "feature-graphic.png");
+  execFileSync("magick", [
+    bannerArtwork,
+    "-filter", "Lanczos", "-resize", "1024x576!",
+    "-gravity", "south", "-extent", "1024x500",
+    "-gravity", "south",
+    "-font", resolve(fontDir, "roboto.ttf"), "-pointsize", "29",
+    "-fill", "#C7D2E4", "-annotate", "+0+52", featureTagline,
+    "-alpha", "remove", "-alpha", "off", "-define", "png:color-type=2",
+    featureOut,
+  ]);
+  console.log("feature-graphic.png  1024x500");
+
+  // TV banner: same lockup at the size Play asks for.
+  const bannerOut = resolve(outDir, "tv-banner.png");
+  execFileSync("magick", [
+    bannerArtwork,
+    "-filter", "Lanczos", "-resize", "1280x720!",
+    "-alpha", "remove", "-alpha", "off", "-define", "png:color-type=2",
+    bannerOut,
+  ]);
+  console.log("tv-banner.png  1280x720");
+}
+
 async function main() {
   ensureFonts();
   mkdirSync(outDir, { recursive: true });
@@ -108,46 +158,35 @@ async function main() {
   const { chromium } = await import(pathToFileURL(resolve(repoRoot, "web-novastream/node_modules/playwright/index.mjs")).href);
 
   const html = readFileSync(resolve(here, "generator.html"), "utf8")
-    .replaceAll("__FONTS__", "/android-novastream/store-listing/.fonts")
-    .replaceAll("__ICON__", "/web-novastream/public/icon.png");
+    .replaceAll("__FONTS__", "/android-novastream/store-listing/.fonts");
 
   const { server, port } = await serve(html);
   const pageUrl = `http://127.0.0.1:${port}/generator.html`;
   const browser = await chromium.launch();
 
-  for (const [scale, slides] of [[2, HI_DPI_SLIDES], [1, ONE_X_SLIDES]]) {
-    const context = await browser.newContext({
-      viewport: { width: 1400, height: 1100 },
-      deviceScaleFactor: scale,
-    });
-    const page = await context.newPage();
-    await page.goto(pageUrl, { waitUntil: "load" });
-    await page.evaluate(() => document.fonts.ready);
-    const iconFontReady = await page.evaluate(() => document.fonts.check("24px MaterialSymbolsRoundedLocal"));
-    if (!iconFontReady) throw new Error("Material Symbols font did not load");
-    await page.waitForTimeout(400);
+  const context = await browser.newContext({
+    viewport: { width: 1400, height: 1100 },
+    deviceScaleFactor: 2,
+  });
+  const page = await context.newPage();
+  await page.goto(pageUrl, { waitUntil: "load" });
+  await page.evaluate(() => document.fonts.ready);
+  const iconFontReady = await page.evaluate(() => document.fonts.check("24px MaterialSymbolsRoundedLocal"));
+  if (!iconFontReady) throw new Error("Material Symbols font did not load");
+  await page.waitForTimeout(400);
 
-    for (const slide of slides) {
-      const file = resolve(outDir, `${slide.id}.png`);
-      await page.locator(`#${slide.id}`).screenshot({ path: file });
-      flatten(file);
-      console.log(`${slide.id}.png  ${slide.size[0]}x${slide.size[1]}`);
-    }
-    await context.close();
+  for (const slide of HI_DPI_SLIDES) {
+    const file = resolve(outDir, `${slide.id}.png`);
+    await page.locator(`#${slide.id}`).screenshot({ path: file });
+    flatten(file);
+    console.log(`${slide.id}.png  ${slide.size[0]}x${slide.size[1]}`);
   }
+  await context.close();
 
   await browser.close();
   server.close();
 
-  // 512x512 listing icon straight from the app icon artwork.
-  const iconOut = resolve(outDir, "icon-512.png");
-  execFileSync("magick", [
-    resolve(repoRoot, "web-novastream/public/icon.png"),
-    "-resize", "512x512",
-    "-background", "white", "-alpha", "remove", "-alpha", "off",
-    "PNG32:" + iconOut,
-  ]);
-  console.log("icon-512.png  512x512");
+  renderBrandAssets();
 
   writeFileSync(
     resolve(outDir, "README.txt"),

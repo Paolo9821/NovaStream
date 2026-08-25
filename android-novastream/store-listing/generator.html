@@ -237,31 +237,11 @@
   .screen { width: 340px; height: 736px; border-radius: 38px; overflow: hidden; background: var(--canvas); }
   .screen .ui { transform: scale(0.8252427); transform-origin: top left; }
 
-  /* graphics */
-  .feature {
-    width: 1024px; height: 500px; display: flex; align-items: center; gap: 54px; padding: 0 68px;
-    background:
-      radial-gradient(620px 420px at 82% 18%, rgba(37,99,235,0.42) 0%, rgba(13,17,23,0) 68%),
-      radial-gradient(520px 420px at 12% 92%, rgba(124,108,224,0.34) 0%, rgba(13,17,23,0) 66%),
-      linear-gradient(135deg, #0D1117 0%, #131B2B 55%, #0D1117 100%);
-    color: #F3F4F6;
-  }
-  .banner {
-    width: 1280px; height: 720px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 34px;
-    background:
-      radial-gradient(720px 520px at 50% 20%, rgba(37,99,235,0.40) 0%, rgba(13,17,23,0) 70%),
-      linear-gradient(150deg, #0D1117 0%, #16203A 60%, #0D1117 100%);
-    color: #F3F4F6;
-  }
-  .appicon { border-radius: 26%; background: #F7F8FA; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-  .appicon img { width: 100%; height: 100%; object-fit: contain; }
 </style>
 </head>
 <body>
 <div id="root"></div>
 <script>
-const ICON_URL = '__ICON__';
-
 function ms(name, size, color, fill, extra) {
   const f = fill ? 1 : 0;
   return '<span class="ms" style="font-size:' + size + 'px;color:' + color + ";font-variation-settings:'FILL' " + f + ",'wght' 400,'GRAD' 0,'opsz' 24;" + (extra || '') + '">' + name + '</span>';
@@ -752,29 +732,9 @@ function tvSlide(id, ui, black) {
   return '<section class="slide" id="' + id + '"><div class="ui tv' + (black ? ' black' : '') + '">' + ui + '</div></section>';
 }
 
-function featureGraphic() {
-  return '<section class="slide feature" id="feature-graphic">' +
-      '<div class="appicon" style="width:168px;height:168px;flex:none"><img src="' + ICON_URL + '" alt="" /></div>' +
-      '<div style="display:flex;flex-direction:column;gap:16px">' +
-        '<div style="font-size:64px;font-weight:800;letter-spacing:-2px;line-height:1">NovaStream</div>' +
-        '<div style="font-size:27px;font-weight:400;color:#C7D2E4;line-height:1.3;max-width:560px">Il player per le tue playlist m3u e Xtream.<br/>Telefono, tablet e Android TV.</div>' +
-        '<div style="display:flex;gap:12px;margin-top:8px">' +
-          '<div style="display:flex;align-items:center;gap:8px;padding:10px 18px;border-radius:999px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.14);font-size:19px">' +
-            ms('save', 20, '#3DDCA4', 1) + 'Lista salvata sul dispositivo</div>' +
-          '<div style="display:flex;align-items:center;gap:8px;padding:10px 18px;border-radius:999px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.14);font-size:19px">' +
-            ms('play_arrow', 20, '#F5C518', 1) + 'Riprende dove avevi lasciato</div>' +
-        '</div>' +
-      '</div>' +
-    '</section>';
-}
-
-function tvBanner() {
-  return '<section class="slide banner" id="tv-banner">' +
-      '<div class="appicon" style="width:200px;height:200px"><img src="' + ICON_URL + '" alt="" /></div>' +
-      '<div style="font-size:86px;font-weight:800;letter-spacing:-2.6px;line-height:1">NovaStream</div>' +
-      '<div style="font-size:30px;color:#C7D2E4">Playlist m3u e Xtream sulla tua TV</div>' +
-    '</section>';
-}
+// The icon, feature graphic and TV banner are not drawn here: they are built by
+// build.mjs straight from the artwork the app ships, so the store can never end
+// up showing a logo the app has stopped using.
 
 document.getElementById('root').innerHTML = [
   phoneSlide('phone-1', '#DCE7FF', 'Tutta la tua playlist<br/>in una schermata', 'Live, film e serie contati e pronti: la lista resta salvata sul dispositivo.', homeScreen()),
@@ -788,9 +748,7 @@ document.getElementById('root').innerHTML = [
   tvSlide('tv-2', tvLive()),
   tvSlide('tv-3', tvMovies()),
   tvSlide('tv-4', tvSeries()),
-  tvSlide('tv-5', tvPlayer(), true),
-  featureGraphic(),
-  tvBanner()
+  tvSlide('tv-5', tvPlayer(), true)
 ].join('');
 </script>
 </body>
