@@ -71,6 +71,7 @@
   .bodySmall      { font-weight: 400; font-size: 12px; line-height: 16px; }
   .labelLarge     { font-weight: 600; font-size: 14px; line-height: 20px; }
   .labelMedium    { font-weight: 500; font-size: 12px; line-height: 16px; }
+  .labelSmall     { font-weight: 500; font-size: 11px; line-height: 15px; }
   .ink2 { color: var(--ink2); }
   .ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -122,8 +123,8 @@
   .grow { flex: 1; min-width: 0; }
 
   /* home */
-  .chip-privacy {
-    background: var(--amberSoft); border-radius: 14px; padding: 10px 12px;
+  .chip-playlist {
+    background: var(--surface); border-radius: 14px; padding: 9px 12px;
     display: flex; align-items: center; gap: 8px; align-self: flex-start;
   }
   .catcard { display: flex; align-items: center; padding: 16px; }
@@ -143,6 +144,11 @@
     height: 56px; border-radius: 28px; background: var(--blue); color: #fff;
     display: flex; align-items: center; justify-content: center; gap: 10px;
   }
+  /* resume button: title + episode + hint stacked next to the play icon */
+  .btn-resume {
+    background: var(--blue); color: #fff; border-radius: 22px; display: flex; align-items: center;
+    gap: 12px; padding: 14px 20px;
+  }
 
   /* search + chips */
   .searchrow { display: flex; align-items: center; gap: 12px; padding: 8px 20px; }
@@ -159,6 +165,9 @@
   }
   .chip.sel { background: var(--greenSoft); color: var(--onGreenSoft); border-color: transparent; }
   .chip.selblue { background: var(--blueSoft); color: var(--onBlueSoft); border-color: transparent; }
+  /* season picker: the browsed season is a filled primary chip */
+  .chip.season { border-radius: 20px; height: 36px; font-weight: 600; }
+  .chip.season.on { background: var(--blue); color: #fff; border-color: transparent; box-shadow: 0 6px 14px rgba(37,99,235,0.28); }
 
   /* channel rows */
   .chrow { padding: 12px 8px 12px 12px; }
@@ -167,6 +176,10 @@
   .heart { width: 36px; height: 36px; border-radius: 18px; background: var(--surfVar); display: flex; align-items: center; justify-content: center; flex: none; }
   .heart.on { background: rgba(220,38,38,0.16); }
   .guidebtn { border-radius: 10px; background: var(--surfVar); display: flex; align-items: center; gap: 6px; padding: 6px 10px; flex: none; }
+
+  /* episodes */
+  .eprow { background: var(--surface); border-radius: 16px; display: flex; align-items: center; padding: 14px; gap: 12px; }
+  .epbadge { background: var(--surfVar); border-radius: 10px; padding: 8px 10px; color: var(--ink2); flex: none; }
 
   /* posters */
   .grid { display: grid; gap: 18px 14px; }
@@ -179,9 +192,27 @@
 
   /* player */
   .playerTop { position: absolute; top: 0; left: 0; right: 0; height: 72px; display: flex; align-items: center; gap: 14px; padding: 0 14px; }
-  .playerCenter { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 34px; }
+  .playerCenter { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
   .playerBottom { position: absolute; left: 0; right: 0; bottom: 0; padding: 0 18px 26px; }
   .circleBtn { width: 76px; height: 76px; border-radius: 38px; background: rgba(255,255,255,0.16); display: flex; align-items: center; justify-content: center; }
+  /* glass button + the caption naming where it leads */
+  .glassBtn { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  .glassBtn .dot { width: 52px; height: 52px; border-radius: 26px; background: rgba(255,255,255,0.10); display: flex; align-items: center; justify-content: center; }
+  .glassBtn.focused .dot { box-shadow: 0 0 0 2px #fff, 0 0 22px rgba(255,255,255,0.45); background: rgba(255,255,255,0.22); }
+  .glassBtn .cap { font-size: 11px; font-weight: 500; color: rgba(255,255,255,0.78); max-width: 96px; text-align: center; }
+  .upnext {
+    position: absolute; right: 24px; bottom: 24px; background: rgba(0,0,0,0.82); border-radius: 20px;
+    padding: 18px 22px; display: flex; flex-direction: column; color: #fff;
+  }
+  .btn-sm { height: 40px; border-radius: 20px; display: flex; align-items: center; justify-content: center; padding: 0 20px; font-size: 14px; font-weight: 600; }
+
+  /* settings rows */
+  .switch { width: 52px; height: 32px; border-radius: 16px; background: var(--blue); display: flex; align-items: center; padding: 4px; flex: none; }
+  .switch > i { width: 24px; height: 24px; border-radius: 12px; background: #fff; display: block; margin-left: auto; }
+  .switch.off { background: var(--surfVar); }
+  .switch.off > i { margin-left: 0; background: var(--outline); }
+  .radio { width: 22px; height: 22px; border-radius: 11px; border: 2px solid var(--outline); flex: none; }
+  .radio.on { border-color: var(--blue); background: radial-gradient(circle at center, var(--blue) 0 6px, transparent 6px); }
 
   /* ---------- marketing slides ---------- */
   .slide { position: relative; overflow: hidden; }
@@ -262,27 +293,13 @@ function rail(active) {
   }).join('') + '</div>';
 }
 
-function privacyChip() {
-  return '<div class="chip-privacy">' + ms('lock', 18, 'var(--amber)', 1) +
-    '<div><div class="titleSmall" style="color:var(--amber)">Playlist: Casa</div>' +
-    '<div class="bodySmall ink2">Dati crittografati localmente · AES-256-GCM</div></div></div>';
+/** Which playlist is on air — matches PlaylistStatusChip. */
+function playlistChip() {
+  return '<div class="chip-playlist">' + ms('playlist_play', 18, 'var(--green)', 1) +
+    '<div class="titleSmall" style="color:var(--green)">Playlist: Casa</div></div>';
 }
 
-function trialBanner() {
-  return '<div class="card" style="display:flex;overflow:hidden">' +
-    '<div style="width:4px;background:var(--amber);flex:none"></div>' +
-    '<div class="row" style="padding:14px;gap:12px;flex:1">' +
-    ms('timer', 24, 'var(--amber)') +
-    '<div class="grow stack">' +
-      '<div class="titleSmall">Periodo di prova: 5 giorni rimanenti</div>' +
-      '<div class="bodySmall ink2">Prova gratuita attiva fino al 29 agosto 2026</div>' +
-      '<div class="trackbar" style="height:6px;background:var(--hair);margin-top:10px"><div style="width:28%;background:var(--amber)"></div></div>' +
-    '</div>' +
-    '<div class="labelLarge" style="color:var(--blue);padding-left:8px">Attiva</div>' +
-    '</div></div>';
-}
-
-function categoryCard(icon, title, count, accent, container) {
+function categoryCard(icon, title, count, accent) {
   return '<div class="card catcard">' +
     '<div class="badge" style="width:52px;height:52px;background:' + accent + '">' + ms(icon, 27, '#fff', 1) + '</div>' +
     '<div class="titleLarge grow" style="margin-left:16px;white-space:nowrap">' + title + '</div>' +
@@ -330,7 +347,7 @@ const CHANNELS = [
   ['Cinema Classic HD', 'Cinema', '20:15 Serata d’autore', 0.30, false]
 ];
 
-function channelRow(ch, wide) {
+function channelRow(ch) {
   return '<div class="card">' +
     '<div class="row chrow">' +
       '<div class="row grow" style="gap:14px;padding:4px">' +
@@ -365,15 +382,55 @@ const MOVIES = [
   ['Coffee Run', '2020', false], ['Hero', '2018', false]
 ];
 
-function posterCard(item, w, focused) {
+function posterCard(item, w, focused, icon) {
   const h = Math.round(w * 1.5);
   return '<div class="stack">' +
     '<div class="poster' + (focused ? ' focus' : '') + '" style="width:' + w + 'px;height:' + h + 'px">' +
-      ms('movie', 34, 'var(--blue)', 1) +
+      ms(icon || 'movie', 34, 'var(--blue)', 1) +
       '<div class="postheart">' + ms('favorite', 17, item[2] ? 'var(--err)' : '#fff', item[2]) + '</div>' +
     '</div>' +
     '<div class="titleSmall ellipsis" style="margin-top:8px;width:' + w + 'px">' + item[0] + '</div>' +
     '<div class="bodySmall ink2 ellipsis" style="width:' + w + 'px">' + item[1] + '</div>' +
+    '</div>';
+}
+
+/* ---------------- series page building blocks ---------------- */
+
+const SERIES_EPISODES = [
+  ['S2E1', 'Il segnale dal nord'],
+  ['S2E2', 'Acque profonde'],
+  ['S2E3', 'La lunga notte'],
+  ['S2E4', 'Rotta di collisione'],
+  ['S2E5', 'Il ritorno']
+];
+
+function resumeButton() {
+  return '<div class="btn-resume">' + ms('play_arrow', 24, '#fff', 1) +
+    '<div class="stack grow">' +
+      '<div class="titleMedium">Riprendi</div>' +
+      '<div class="labelLarge ellipsis">S2E4 · Rotta di collisione</div>' +
+      '<div class="labelSmall" style="color:rgba(255,255,255,0.72)">Riparti da dove avevi lasciato</div>' +
+    '</div></div>';
+}
+
+function seasonPicker(count, selected) {
+  const chips = [];
+  for (let i = 1; i <= count; i += 1) {
+    const on = i === selected;
+    chips.push('<div class="chip season' + (on ? ' on' : '') + '">' +
+      (on ? ms('check', 16, 'currentColor') : '') + '<span>Stagione ' + i + '</span></div>');
+  }
+  return '<div class="stack">' +
+    '<div class="labelLarge ink2" style="padding-left:20px;padding-bottom:8px">Stagione</div>' +
+    '<div class="row" style="gap:10px;padding:0 20px;overflow:hidden">' + chips.join('') + '</div>' +
+    '</div>';
+}
+
+function episodeRow(ep) {
+  return '<div class="eprow">' +
+    '<div class="epbadge labelMedium">' + ep[0] + '</div>' +
+    '<div class="bodyLarge grow ellipsis">' + ep[1] + '</div>' +
+    ms('play_arrow', 24, 'var(--blue)', 1) +
     '</div>';
 }
 
@@ -384,9 +441,8 @@ function homeScreen() {
     '<div class="scroll" style="padding:12px 20px 0;gap:16px">' +
       '<div class="stack">' +
         '<div class="headlineMedium">Buonasera</div>' +
-        '<div style="height:10px"></div>' + privacyChip() +
+        '<div style="height:10px"></div>' + playlistChip() +
       '</div>' +
-      trialBanner() +
       categoryCard('live_tv', 'Live TV', '1.284 canali', 'var(--green)') +
       categoryCard('movie', 'Film', '612 titoli', 'var(--blue)') +
       categoryCard('tv', 'Serie TV', '148 serie', 'var(--purple)') +
@@ -395,13 +451,15 @@ function homeScreen() {
         '<span class="labelLarge" style="color:var(--blue)">Svuota</span>' +
       '</div>' +
       '<div class="row" style="gap:14px;align-items:flex-start">' +
-        continueCard('Sintel', '42 min rimanenti', 0.58) +
+        continueCard('Onde del nord', 'S2E4 · 18 min rimanenti', 0.62) +
         continueCard('Cosmos Laundromat', '11 min rimanenti', 0.82) +
       '</div>' +
-      '<div class="row" style="gap:12px;padding-top:8px">' +
+      '<div class="row" style="gap:12px;padding-top:4px">' +
         '<div class="btn-tonal">' + ms('person', 20, 'currentColor', 1) + '<span class="labelLarge">Account</span></div>' +
         '<div class="btn-outline">' + ms('settings', 20, 'currentColor') + '<span class="labelLarge">Impostazioni</span></div>' +
       '</div>' +
+      '<div class="btn-outline" style="height:48px;flex:none;color:var(--ink2)">' +
+        ms('refresh', 20, 'currentColor') + '<span class="labelLarge">Aggiorna la lista dal provider</span></div>' +
     '</div>' + bottomNav(0);
 }
 
@@ -425,111 +483,142 @@ function moviesScreen() {
     '</div>' + bottomNav(2);
 }
 
-function detailScreen() {
+/** Series page: resume, seasons and the episodes of the season being browsed. */
+function seriesScreen() {
   return statusBar() +
     '<div class="appbar">' + ms('arrow_back', 24, 'var(--ink)') +
-      '<span class="titleLarge grow">Dettaglio film</span>' +
+      '<span class="titleLarge grow">Dettaglio serie</span>' +
       '<div class="heart on">' + ms('favorite', 19, 'var(--err)', 1) + '</div></div>' +
     '<div class="scroll">' +
-      '<div style="height:260px;background:var(--blueSoft);display:flex;align-items:center;justify-content:center;position:relative;flex:none">' +
-        ms('movie', 56, 'var(--blue)', 1) +
+      '<div style="height:190px;background:var(--purpleSoft);display:flex;align-items:center;justify-content:center;position:relative;flex:none">' +
+        ms('tv', 56, 'var(--purple)', 1) +
         '<div style="position:absolute;inset:0;background:linear-gradient(180deg, rgba(247,248,250,0) 55%, var(--canvas) 100%)"></div>' +
       '</div>' +
-      '<div class="stack pad20" style="padding-top:18px">' +
-        '<div class="headlineMedium">Sintel</div>' +
-        '<div class="bodyMedium ink2" style="margin-top:6px">2010  •  FHD  •  Animazione</div>' +
+      '<div class="stack pad20" style="padding-top:14px">' +
+        '<div class="headlineMedium">Onde del nord</div>' +
+        '<div class="bodyMedium ink2" style="margin-top:6px">2024  •  FHD  •  Documentari</div>' +
         '<div class="row" style="gap:8px;margin-top:12px">' +
+          '<div class="chip selblue" style="border:none">Natura</div>' +
           '<div class="chip selblue" style="border:none">Avventura</div>' +
-          '<div class="chip selblue" style="border:none">Fantasy</div>' +
         '</div>' +
-        '<div class="bodyLarge ink2" style="margin-top:14px">Trama, anno e locandina arrivano dai metadati del tuo provider.</div>' +
-        '<div class="btn-filled" style="margin:20px 0">' + ms('play_arrow', 24, '#fff', 1) +
-          '<span class="titleMedium">Riproduci ora</span></div>' +
-        '<div class="titleLarge">Nella stessa categoria</div>' +
-        '<div class="row" style="gap:14px;margin-top:12px;align-items:flex-start">' +
-          MOVIES.slice(1, 4).map(function (m) { return posterCard(m, 118, false); }).join('') +
+        '<div class="row" style="margin-top:20px">' +
+          '<span class="titleLarge grow">Episodi</span>' +
+          '<span class="labelLarge ink2">5 episodi</span>' +
         '</div>' +
+      '</div>' +
+      '<div style="height:14px"></div>' +
+      '<div class="pad20">' + resumeButton() + '</div>' +
+      '<div style="height:16px"></div>' +
+      seasonPicker(4, 2) +
+      '<div style="height:14px"></div>' +
+      '<div class="stack pad20" style="gap:10px">' +
+        SERIES_EPISODES.slice(0, 4).map(episodeRow).join('') +
       '</div>' +
     '</div>';
 }
 
-function playerScreen() {
+function playerScreen(upNext) {
+  const glass = function (icon, cap, focused) {
+    return '<div class="glassBtn' + (focused ? ' focused' : '') + '">' +
+      '<div class="dot">' + ms(icon, 26, '#fff', 1) + '</div>' +
+      (cap ? '<div class="cap ellipsis">' + cap + '</div>' : '') +
+      '</div>';
+  };
   return '<div style="position:absolute;inset:0;background:radial-gradient(120% 90% at 50% 45%, #10151F 0%, #000 78%)"></div>' +
     '<div style="position:absolute;inset:0;background:linear-gradient(180deg, rgba(0,0,0,0.62) 0%, rgba(0,0,0,0.12) 32%, rgba(0,0,0,0.18) 68%, rgba(0,0,0,0.78) 100%)"></div>' +
     statusBar(true) +
-    '<div class="playerTop" style="top:28px">' + ms('arrow_back', 26, '#fff') +
-      '<span class="titleMedium grow ellipsis">Sintel</span>' +
-      ms('closed_caption', 24, 'rgba(255,255,255,0.85)') +
-      ms('settings', 24, 'rgba(255,255,255,0.85)') +
+    '<div class="playerTop" style="top:28px">' + ms('close', 26, '#fff') +
+      '<div class="stack grow">' +
+        '<span class="titleMedium ellipsis">Onde del nord</span>' +
+        '<span class="labelMedium" style="color:rgba(255,255,255,0.76)">S2E4 · Rotta di collisione</span>' +
+      '</div>' +
     '</div>' +
-    '<div class="playerCenter">' +
-      '<div class="circleBtn" style="width:60px;height:60px">' + ms('replay_10', 30, '#fff') + '</div>' +
-      '<div class="circleBtn" style="background:rgba(255,255,255,0.92)">' + ms('pause', 40, '#0F172A', 1) + '</div>' +
-      '<div class="circleBtn" style="width:60px;height:60px">' + ms('forward_10', 30, '#fff') + '</div>' +
-    '</div>' +
+    (upNext ? '' :
+      '<div class="playerCenter">' +
+        '<div class="row" style="gap:22px;align-items:flex-start">' +
+          glass('skip_previous', 'S2E3', false) +
+          glass('replay_10', null, false) +
+          '<div class="circleBtn" style="box-shadow:0 0 0 2px #fff,0 0 26px rgba(255,255,255,0.4)">' + ms('pause', 40, '#fff', 1) + '</div>' +
+          glass('forward_10', null, false) +
+          glass('skip_next', 'S2E5', true) +
+        '</div>' +
+        '<div class="labelMedium" style="margin-top:14px;color:rgba(255,255,255,0.68)">Frecce per scegliere il pulsante, OK per confermare.</div>' +
+      '</div>') +
     '<div class="playerBottom">' +
       '<div class="row" style="justify-content:space-between;margin-bottom:10px">' +
         '<span class="labelMedium" style="color:#E5E7EB">00:42:18</span>' +
-        '<span class="labelMedium" style="color:#E5E7EB">01:12:04</span>' +
+        '<span class="labelMedium" style="color:#E5E7EB">00:44:02</span>' +
       '</div>' +
-      '<div class="trackbar" style="height:4px;background:rgba(255,255,255,0.28)"><div style="width:58%;background:var(--blue);position:relative"><div style="position:absolute;right:-6px;top:-4px;width:12px;height:12px;border-radius:6px;background:#fff"></div></div></div>' +
-      '<div class="row" style="gap:14px;margin-top:18px">' +
-        '<div class="chip" style="background:rgba(255,255,255,0.12);border-color:rgba(255,255,255,0.22);color:#fff">' +
-          ms('hd', 18, '#fff', 1) + '<span>1080p</span></div>' +
-        '<div class="chip" style="background:rgba(255,255,255,0.12);border-color:rgba(255,255,255,0.22);color:#fff">' +
-          ms('memory', 18, '#fff') + '<span>Decodifica hardware</span></div>' +
-        '<div class="grow"></div>' +
-        ms('fullscreen', 26, '#fff') +
-      '</div>' +
-    '</div>';
+      '<div class="trackbar" style="height:4px;background:rgba(255,255,255,0.28)"><div style="width:' + (upNext ? 99 : 58) + '%;background:var(--blue);position:relative"><div style="position:absolute;right:-6px;top:-4px;width:12px;height:12px;border-radius:6px;background:#fff"></div></div></div>' +
+    '</div>' +
+    (upNext ?
+      '<div class="upnext">' +
+        '<div class="labelMedium" style="color:rgba(255,255,255,0.68)">Prossimo episodio</div>' +
+        '<div class="titleMedium" style="margin-top:6px;width:300px">S2E5 · Il ritorno</div>' +
+        '<div class="trackbar" style="height:4px;width:300px;background:rgba(255,255,255,0.22);margin-top:12px"><div style="width:62%;background:var(--blue)"></div></div>' +
+        '<div class="bodySmall" style="color:rgba(255,255,255,0.78);margin-top:8px">Inizia tra 8 s</div>' +
+        '<div class="row" style="gap:10px;margin-top:14px">' +
+          '<div class="btn-sm" style="background:var(--blue);color:#fff">Guarda ora</div>' +
+          '<div class="btn-sm" style="border:1px solid rgba(255,255,255,0.5);color:#fff">Annulla</div>' +
+        '</div>' +
+      '</div>' : '');
 }
 
-function accountsScreen() {
+/** Settings: the list lives on the device and refreshes on its own schedule. */
+function settingsScreen() {
+  const radio = function (label, on) {
+    return '<div class="row" style="gap:12px;padding:9px 0">' +
+      '<div class="radio' + (on ? ' on' : '') + '"></div>' +
+      '<div class="bodyLarge">' + label + '</div></div>';
+  };
   return statusBar() +
     '<div class="appbar">' + ms('arrow_back', 24, 'var(--ink)') +
-      '<span class="titleLarge grow">Gestione account</span></div>' +
+      '<span class="titleLarge grow">Impostazioni</span></div>' +
     '<div class="scroll" style="padding:4px 20px 0;gap:14px">' +
-      '<div class="bodyMedium ink2">Cambia playlist quando vuoi: la lista precedente viene cancellata dal dispositivo e riscaricata dal nuovo server.</div>' +
       '<div class="card" style="padding:16px">' +
         '<div class="row" style="gap:12px">' +
-          '<div class="badge" style="width:44px;height:44px;border-radius:14px;background:var(--blueSoft)">' + ms('playlist_play', 24, 'var(--blue)', 1) + '</div>' +
+          '<div class="badge" style="width:44px;height:44px;border-radius:14px;background:var(--greenSoft)">' + ms('save', 24, 'var(--green)', 1) + '</div>' +
           '<div class="grow stack">' +
-            '<div class="titleMedium">Casa</div>' +
-            '<div class="bodySmall ink2">Xtream · Aggiornato 2 ore fa</div>' +
+            '<div class="titleMedium">Lista salvata</div>' +
+            '<div class="bodySmall ink2">2.044 contenuti su questo dispositivo</div>' +
+            '<div class="bodySmall ink2">Ultimo aggiornamento: oggi 20:12</div>' +
           '</div>' +
-          '<div class="chip sel" style="border:none;height:28px">Attivo</div>' +
         '</div>' +
+        '<div class="btn-filled" style="height:48px;margin-top:14px">' + ms('refresh', 20, '#fff') +
+          '<span class="labelLarge">Aggiorna la lista adesso</span></div>' +
       '</div>' +
       '<div class="card" style="padding:16px">' +
-        '<div class="row" style="gap:12px">' +
-          '<div class="badge" style="width:44px;height:44px;border-radius:14px;background:var(--surfVar)">' + ms('playlist_play', 24, 'var(--ink2)', 1) + '</div>' +
-          '<div class="grow stack">' +
-            '<div class="titleMedium">Ufficio</div>' +
-            '<div class="bodySmall ink2">m3u · Aggiornato ieri</div>' +
-          '</div>' +
-          '<div class="chip" style="height:28px">Cambia</div>' +
-        '</div>' +
+        '<div class="titleMedium">Aggiornamento automatico della lista</div>' +
+        '<div class="bodySmall ink2" style="margin-top:4px">Canali, film e serie restano salvati sul dispositivo. Scegli ogni quanto NovaStream li riscarica da solo.</div>' +
+        '<div style="height:6px"></div>' +
+        radio('Solo manuale', false) +
+        radio('Una volta al giorno', true) +
+        radio('Ogni 3 giorni', false) +
       '</div>' +
-      '<div class="card" style="padding:16px;gap:12px;display:flex;flex-direction:column">' +
-        '<div class="row" style="gap:8px">' +
-          '<div class="chip selblue" style="border:none;flex:1;justify-content:center">URL m3u</div>' +
-          '<div class="chip" style="flex:1;justify-content:center">Codici Xtream</div>' +
+      '<div class="card" style="padding:16px">' +
+        '<div class="titleMedium">Player</div>' +
+        '<div class="row" style="gap:12px;padding-top:12px">' +
+          '<div class="grow stack">' +
+            '<div class="bodyLarge">Episodio successivo automatico</div>' +
+            '<div class="bodySmall ink2">Nelle serie passa al prossimo episodio a fine riproduzione.</div>' +
+          '</div>' +
+          '<div class="switch"><i></i></div>' +
         '</div>' +
-        '<div class="textfield" style="border-radius:14px;border:1px solid var(--hair);background:var(--surfHigh);height:56px">' +
-          '<div class="stack grow"><div class="bodySmall ink2">Nome playlist</div><div class="bodyMedium">Casa</div></div></div>' +
-        '<div class="textfield" style="border-radius:14px;border:1px solid var(--hair);background:var(--surfHigh);height:56px">' +
-          '<div class="stack grow"><div class="bodySmall ink2">URL della playlist m3u</div><div class="bodyMedium ellipsis">https://provider.tv/get.php?…</div></div></div>' +
-        '<div class="btn-filled">' + ms('lock', 22, '#fff', 1) + '<span class="titleMedium">Importa e crittografa</span></div>' +
+        '<div class="row" style="gap:12px;padding-top:14px">' +
+          '<div class="grow stack">' +
+            '<div class="bodyLarge">Decodifica hardware</div>' +
+            '<div class="bodySmall ink2">Più fluida e leggera; disattivala se vedi artefatti video.</div>' +
+          '</div>' +
+          '<div class="switch"><i></i></div>' +
+        '</div>' +
       '</div>' +
       '<div style="background:var(--amberSoft);border-radius:16px;padding:14px;display:flex;gap:12px">' +
         '<div class="badge" style="width:38px;height:38px;border-radius:12px;background:rgba(138,109,0,0.22)">' + ms('lock', 20, 'var(--amber)', 1) + '</div>' +
         '<div class="stack grow">' +
           '<div class="titleSmall" style="color:var(--amber)">Privacy totale</div>' +
-          '<div class="bodySmall ink2" style="margin-top:2px">Credenziali di tutti gli account cifrate sul dispositivo con AES-256-GCM · Android Keystore, mai condivise.</div>' +
+          '<div class="bodySmall ink2" style="margin-top:2px">Account e password cifrati con AES-256-GCM · Android Keystore. Nessun dato inviato a servizi esterni.</div>' +
         '</div>' +
       '</div>' +
-      '<div class="btn-outline" style="flex:none">' + ms('close', 20, 'currentColor') + '<span class="labelLarge">Chiudi il modulo</span></div>' +
-      '<div class="bodySmall ink2" style="text-align:center;padding-bottom:20px">La licenza è valida solo su questo dispositivo e non è trasferibile.</div>' +
     '</div>';
 }
 
@@ -540,7 +629,7 @@ function tvHome() {
     '<div class="scroll" style="padding:20px 24px 0;gap:16px">' +
       '<div class="stack">' +
         '<div class="headlineMedium">Buonasera</div>' +
-        '<div style="height:10px"></div>' + privacyChip() +
+        '<div style="height:10px"></div>' + playlistChip() +
       '</div>' +
       categoryCard('live_tv', 'Live TV', '1.284 canali', 'var(--green)') +
       categoryCard('movie', 'Film', '612 titoli', 'var(--blue)') +
@@ -550,10 +639,10 @@ function tvHome() {
         '<span class="labelLarge" style="color:var(--blue)">Svuota</span>' +
       '</div>' +
       '<div class="row" style="gap:16px;align-items:flex-start">' +
-        continueCard('Sintel', '42 min rimanenti', 0.58, 212) +
-        continueCard('Cosmos Laundromat', '11 min rimanenti', 0.82, 212) +
-        continueCard('Tears of Steel', '26 min rimanenti', 0.35, 212) +
-        continueCard('Caminandes', 'Quasi finito', 0.94, 212) +
+        continueCard('Onde del nord', 'S2E4 · 18 min rimanenti', 0.62) +
+        continueCard('Cosmos Laundromat', '11 min rimanenti', 0.82) +
+        continueCard('Tears of Steel', '26 min rimanenti', 0.35) +
+        continueCard('Caminandes', 'Quasi finito', 0.94) +
       '</div>' +
     '</div>';
 }
@@ -564,7 +653,7 @@ function tvLive() {
       searchRow('Cerca tra 1.284 canali…', false) +
       chipRow([['Solo preferiti', false], ['Tutti i canali', true], ['Generalisti', false], ['Sport', false], ['News', false], ['Documentari', false]], 'sel') +
       '<div class="scroll" style="padding:8px 20px 0;gap:10px">' +
-        CHANNELS.slice(0, 4).map(function (c) { return channelRow(c, true); }).join('') +
+        CHANNELS.slice(0, 4).map(function (c) { return channelRow(c); }).join('') +
       '</div>' +
     '</div>';
 }
@@ -582,41 +671,80 @@ function tvMovies() {
     '</div>';
 }
 
-function tvDetail() {
+function tvSeries() {
   return '<div class="scroll" style="flex-direction:row">' +
-      '<div style="width:420px;flex:none;background:var(--blueSoft);display:flex;align-items:center;justify-content:center;position:relative">' +
-        ms('movie', 76, 'var(--blue)', 1) +
+      '<div style="width:360px;flex:none;background:var(--purpleSoft);display:flex;align-items:center;justify-content:center;position:relative">' +
+        ms('tv', 76, 'var(--purple)', 1) +
         '<div style="position:absolute;inset:0;background:linear-gradient(90deg, rgba(247,248,250,0) 55%, var(--canvas) 100%)"></div>' +
       '</div>' +
-      '<div class="stack" style="flex:1;padding:44px 44px 0 24px">' +
+      '<div class="stack" style="flex:1;padding:34px 40px 0 24px">' +
         '<div class="row" style="gap:12px">' + ms('arrow_back', 24, 'var(--ink2)') +
-          '<span class="titleMedium ink2">Dettaglio film</span></div>' +
-        '<div class="headlineMedium" style="font-size:34px;line-height:40px;margin-top:16px">Sintel</div>' +
-        '<div class="bodyMedium ink2" style="margin-top:8px">2010  •  FHD  •  Animazione</div>' +
-        '<div class="row" style="gap:8px;margin-top:14px">' +
-          '<div class="chip selblue" style="border:none">Avventura</div>' +
-          '<div class="chip selblue" style="border:none">Fantasy</div>' +
+          '<span class="titleMedium ink2">Dettaglio serie</span></div>' +
+        '<div class="headlineMedium" style="font-size:34px;line-height:40px;margin-top:14px">Onde del nord</div>' +
+        '<div class="bodyMedium ink2" style="margin-top:6px">2024  •  FHD  •  Documentari</div>' +
+        '<div class="row" style="margin-top:18px">' +
+          '<span class="titleLarge grow">Episodi</span>' +
+          '<span class="labelLarge ink2">5 episodi</span>' +
         '</div>' +
-        '<div class="bodyLarge ink2" style="margin-top:16px;max-width:420px">Una giovane donna attraversa terre desolate per ritrovare il piccolo drago che ha cresciuto.</div>' +
-        '<div class="row" style="gap:14px;margin-top:24px">' +
-          '<div class="btn-filled" style="width:230px;box-shadow:0 0 0 2px rgba(37,99,235,0.35)">' + ms('play_arrow', 24, '#fff', 1) +
-            '<span class="titleMedium">Riproduci ora</span></div>' +
-          '<div class="btn-outline" style="width:150px;flex:none">' + ms('favorite', 20, 'var(--err)', 1) + '<span class="labelLarge" style="color:var(--ink)">Preferiti</span></div>' +
+        '<div style="height:14px"></div>' +
+        '<div style="box-shadow:0 0 0 2px rgba(37,99,235,0.45);border-radius:22px">' + resumeButton() + '</div>' +
+        '<div style="height:16px"></div>' +
+        '<div class="labelLarge ink2" style="padding-bottom:8px">Stagione</div>' +
+        '<div class="row" style="gap:10px">' +
+          [1, 2, 3, 4, 5].map(function (i) {
+            const on = i === 2;
+            return '<div class="chip season' + (on ? ' on' : '') + '">' +
+              (on ? ms('check', 16, 'currentColor') : '') + '<span>Stagione ' + i + '</span></div>';
+          }).join('') +
         '</div>' +
-        '<div class="titleLarge" style="margin-top:30px">Nella stessa categoria</div>' +
-        '<div class="row" style="gap:14px;margin-top:12px;align-items:flex-start">' +
-          MOVIES.slice(1, 6).map(function (m) { return posterCard(m, 96, false); }).join('') +
+        '<div style="height:14px"></div>' +
+        '<div class="stack" style="gap:10px">' +
+          SERIES_EPISODES.slice(2, 4).map(episodeRow).join('') +
         '</div>' +
       '</div>' +
     '</div>';
 }
 
+function tvPlayer() {
+  const glass = function (icon, cap, focused) {
+    return '<div class="glassBtn' + (focused ? ' focused' : '') + '">' +
+      '<div class="dot" style="width:60px;height:60px;border-radius:30px">' + ms(icon, 30, '#fff', 1) + '</div>' +
+      (cap ? '<div class="cap ellipsis">' + cap + '</div>' : '') +
+      '</div>';
+  };
+  return '<div style="position:absolute;inset:0;background:radial-gradient(120% 100% at 50% 42%, #101722 0%, #000 78%)"></div>' +
+    '<div style="position:absolute;inset:0;background:linear-gradient(180deg, rgba(0,0,0,0.66) 0%, rgba(0,0,0,0.08) 34%, rgba(0,0,0,0.2) 66%, rgba(0,0,0,0.8) 100%)"></div>' +
+    '<div class="playerTop" style="top:10px;padding:0 30px">' + ms('close', 28, '#fff') +
+      '<div class="stack grow">' +
+        '<span class="titleLarge ellipsis">Onde del nord</span>' +
+        '<span class="labelMedium" style="color:rgba(255,255,255,0.76)">S2E4 · Rotta di collisione</span>' +
+      '</div>' +
+    '</div>' +
+    '<div class="playerCenter">' +
+      '<div class="row" style="gap:26px;align-items:flex-start">' +
+        glass('skip_previous', 'S2E3', false) +
+        glass('replay_10', null, false) +
+        '<div class="circleBtn" style="width:84px;height:84px;border-radius:42px;box-shadow:0 0 0 2px #fff,0 0 30px rgba(255,255,255,0.45)">' + ms('pause', 44, '#fff', 1) + '</div>' +
+        glass('forward_10', null, false) +
+        glass('skip_next', 'S2E5', true) +
+      '</div>' +
+      '<div class="labelMedium" style="margin-top:16px;color:rgba(255,255,255,0.7)">Frecce per scegliere il pulsante, OK per confermare.</div>' +
+    '</div>' +
+    '<div class="playerBottom" style="padding:0 40px 30px">' +
+      '<div class="row" style="justify-content:space-between;margin-bottom:10px">' +
+        '<span class="labelMedium" style="color:#E5E7EB">00:42:18</span>' +
+        '<span class="labelMedium" style="color:#E5E7EB">00:44:02</span>' +
+      '</div>' +
+      '<div class="trackbar" style="height:5px;background:rgba(255,255,255,0.28)"><div style="width:58%;background:var(--blue);position:relative"><div style="position:absolute;right:-7px;top:-5px;width:15px;height:15px;border-radius:8px;background:#fff"></div></div></div>' +
+    '</div>';
+}
+
 /* ---------------- slide assembly ---------------- */
 
-function phoneSlide(id, tint, headline, sub, ui) {
+function phoneSlide(id, tint, headline, sub, ui, black) {
   return '<section class="slide phone" id="' + id + '" style="--tint:' + tint + '">' +
       '<div class="caption"><h2>' + headline + '</h2><p>' + sub + '</p></div>' +
-      '<div class="device"><div class="screen"><div class="ui phone">' + ui + '</div></div></div>' +
+      '<div class="device"><div class="screen"><div class="ui phone' + (black ? ' black' : '') + '">' + ui + '</div></div></div>' +
     '</section>';
 }
 
@@ -632,9 +760,9 @@ function featureGraphic() {
         '<div style="font-size:27px;font-weight:400;color:#C7D2E4;line-height:1.3;max-width:560px">Il player per le tue playlist m3u e Xtream.<br/>Telefono, tablet e Android TV.</div>' +
         '<div style="display:flex;gap:12px;margin-top:8px">' +
           '<div style="display:flex;align-items:center;gap:8px;padding:10px 18px;border-radius:999px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.14);font-size:19px">' +
-            ms('lock', 20, '#F5C518', 1) + 'Dati cifrati sul dispositivo</div>' +
+            ms('save', 20, '#3DDCA4', 1) + 'Lista salvata sul dispositivo</div>' +
           '<div style="display:flex;align-items:center;gap:8px;padding:10px 18px;border-radius:999px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.14);font-size:19px">' +
-            ms('calendar_month', 20, '#3DDCA4') + 'Guida TV XMLTV</div>' +
+            ms('play_arrow', 20, '#F5C518', 1) + 'Riprende dove avevi lasciato</div>' +
         '</div>' +
       '</div>' +
     '</section>';
@@ -649,16 +777,18 @@ function tvBanner() {
 }
 
 document.getElementById('root').innerHTML = [
-  phoneSlide('phone-1', '#DCE7FF', 'Tutta la tua playlist<br/>in una schermata', 'Live, film e serie contati e pronti, con ripresa da dove avevi lasciato.', homeScreen()),
+  phoneSlide('phone-1', '#DCE7FF', 'Tutta la tua playlist<br/>in una schermata', 'Live, film e serie contati e pronti: la lista resta salvata sul dispositivo.', homeScreen()),
   phoneSlide('phone-2', '#D5F5E8', 'Canali live<br/>con guida TV', 'Vedi cosa è in onda ora e la programmazione della giornata, canale per canale.', liveScreen()),
   phoneSlide('phone-3', '#DCE7FF', 'Trova un titolo<br/>in due secondi', 'Ricerca istantanea, categorie del provider, ordinamento per anno o nome.', moviesScreen()),
-  phoneSlide('phone-4', '#E6E2FB', 'Schede complete<br/>di ogni contenuto', 'Trama, qualità, categoria, episodi delle serie e titoli correlati.', detailScreen()),
-  phoneSlide('phone-5', '#DCE7FF', 'Player stabile,<br/>anche in mobilità', 'Decodifica hardware, salto di 10 secondi e riconnessione automatica se la rete cala.', playerScreen()),
-  phoneSlide('phone-6', '#FDF3D3', 'Le tue credenziali<br/>restano sul telefono', 'Account m3u e Xtream cifrati con AES-256-GCM nell’Android Keystore.', accountsScreen()),
+  phoneSlide('phone-4', '#E6E2FB', 'Riprendi la serie<br/>dall’episodio giusto', 'Un pulsante ti dice quale episodio ti aspetta, e le stagioni si scelgono al volo.', seriesScreen()),
+  phoneSlide('phone-5', '#0F172A', 'Il telecomando<br/>non sbaglia più', 'Ogni pulsante dice dove porta: cambi episodio o canale solo quando confermi.', playerScreen(false), true),
+  phoneSlide('phone-6', '#0F172A', 'L’episodio dopo<br/>parte da solo', 'Alla fine di una puntata NovaStream annuncia la prossima e ti lascia decidere.', playerScreen(true), true),
+  phoneSlide('phone-7', '#FDF3D3', 'La lista è tua<br/>e resta sul telefono', 'Si riapre in un secondo, si aggiorna quando vuoi, credenziali cifrate con AES-256.', settingsScreen()),
   tvSlide('tv-1', tvHome()),
   tvSlide('tv-2', tvLive()),
   tvSlide('tv-3', tvMovies()),
-  tvSlide('tv-4', tvDetail()),
+  tvSlide('tv-4', tvSeries()),
+  tvSlide('tv-5', tvPlayer(), true),
   featureGraphic(),
   tvBanner()
 ].join('');
