@@ -54,6 +54,30 @@ export type LicenseRecord = {
   expired: boolean;
 };
 
+/** A device inside (or just out of) its free week. */
+export type TrialRecord = {
+  deviceId: string;
+  aliases: string[];
+  startedAt: number;
+  lastSeenAt: number;
+  /** Times the app was installed again on the same device. */
+  installs: number;
+  expiresAt: number;
+  expired: boolean;
+  converted: boolean;
+};
+
+/** One settled purchase, the raw material of the revenue chart. */
+export type OrderRecord = {
+  orderId: string;
+  deviceId: string;
+  plan: string;
+  amountCents: number;
+  currency: string;
+  email: string;
+  createdAt: number;
+};
+
 export type SecurityInfo = {
   username: string;
   usernameConfigured: boolean;
@@ -87,6 +111,13 @@ export type RegistryStats = {
   suspended: number;
   revoked: number;
   expired: number;
+  /** Live licences with no expiry date. */
+  lifetime: number;
+  /** Live licences that will need renewing. */
+  subscription: number;
+  trialsActive: number;
+  trialsExpired: number;
+  reinstalls: number;
   revenueCents: number;
   revenueCents30d: number;
 };
@@ -200,4 +231,18 @@ export function formatDateTime(ms: number | null, locale = "it-IT"): string {
 
 export function formatMoney(cents: number): string {
   return `€ ${(cents / 100).toFixed(2).replace(".", ",")}`;
+}
+
+/** Calendar key used to bucket purchases, e.g. `2026-08`. */
+export function monthKey(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
+export function formatMonth(year: number, month: number, locale = "it-IT"): string {
+  return new Date(year, month, 1).toLocaleDateString(locale, { month: "long", year: "numeric" });
+}
+
+/** Days left before a date, never negative. */
+export function daysUntil(ms: number): number {
+  return Math.max(0, Math.ceil((ms - Date.now()) / 86_400_000));
 }

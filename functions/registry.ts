@@ -31,6 +31,36 @@ type TrialRow = {
   installs: number;
 };
 
+/** Length of the free window, mirroring the constant compiled into the app. */
+const TRIAL_DAYS = 7;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** A device inside (or just out of) its free window, as listed in the dashboard. */
+export type TrialView = {
+  deviceId: string;
+  aliases: string[];
+  startedAt: number;
+  lastSeenAt: number;
+  /** How many times the app was installed again on this same device. */
+  installs: number;
+  expiresAt: number;
+  expired: boolean;
+  /** True once the device bought a licence, so it is no longer a prospect. */
+  converted: boolean;
+};
+
+/** One settled purchase, kept so the revenue history survives everything else. */
+export type OrderView = {
+  orderId: string;
+  deviceId: string;
+  plan: string;
+  amountCents: number;
+  currency: string;
+  email: string;
+  createdAt: number;
+};
+
 /** Lifecycle of a support request as seen in the dashboard. */
 export type TicketStatus = "new" | "open" | "closed";
 
@@ -239,7 +269,12 @@ export class Registry extends DurableObject {
       case "/order-seen":
         return Response.json({ known: this.orderKnown(String(body.orderId ?? "")) });
       case "/list":
-        return Response.json({ licenses: this.list(), stats: this.stats() });
+        return Response.json({
+          licenses: this.list(),
+          stats: this.stats(),
+          trials: this.trialList(),
+          orders: this.orderHistory(),
+        });
       case "/set-status":
         return Response.json(
           this.setStatus(String(body.deviceId ?? ""), String(body.status ?? "") as StoredStatus, String(body.note ?? "")),
@@ -563,6 +598,66 @@ export class Registry extends DurableObject {
     return { startedAt: now, installs: 1 };
   }
 
+  private trialAliasesOf(trialId: string): string[] {
+    return this.ctx.storage.sql
+      .exec<{ alias: string }>(
+        "SELECT alias FROM trial_aliases WHERE trial_id = ? ORDER BY created_at",
+        trialId,
+      )
+      .toArray()
+      .map((row) => row.alias);
+  }
+
+  /** Newest first, each row already told apart from the paying customers. */
+  private trialList(): TrialView[] {
+    const now = Date.now();
+    return this.ctx.storage.sql
+      .exec<TrialRow>("SELECT * FROM trials ORDER BY started_at DESC LIMIT 2000")
+      .toArray()
+      .map((row) => {
+        const aliases = this.trialAliasesOf(row.trial_id);
+        const expiresAt = row.started_at + TRIAL_DAYS * DAY_MS;
+        return {
+          deviceId: row.trial_id,
+          aliases,
+          startedAt: row.started_at,
+          lastSeenAt: row.last_seen_at,
+          installs: row.installs,
+          expiresAt,
+          expired: expiresAt < now,
+          converted: this.resolve([row.trial_id, ...aliases]) !== null,
+        };
+      });
+  }
+
+  /**
+   * Every purchase ever settled, oldest first. This is the source the revenue
+   * chart reads, which is why nothing here is ever pruned: the history has to
+   * stay browsable months and years later.
+   */
+  private orderHistory(): OrderView[] {
+    return this.ctx.storage.sql
+      .exec<{
+        order_id: string;
+        device_id: string;
+        plan: string;
+        amount_cents: number;
+        currency: string;
+        email: string;
+        created_at: number;
+      }>("SELECT * FROM orders ORDER BY created_at")
+      .toArray()
+      .map((row) => ({
+        orderId: row.order_id,
+        deviceId: row.device_id,
+        plan: row.plan,
+        amountCents: row.amount_cents,
+        currency: row.currency,
+        email: row.email,
+        createdAt: row.created_at,
+      }));
+  }
+
   /** Read used by the Android app on every launch; also records the heartbeat. */
   private status(
     identifiers: string[],
@@ -751,20 +846,34 @@ export class Registry extends DurableObject {
     suspended: number;
     revoked: number;
     expired: number;
+    lifetime: number;
+    subscription: number;
+    trialsActive: number;
+    trialsExpired: number;
+    reinstalls: number;
     revenueCents: number;
     revenueCents30d: number;
   } {
     const licenses = this.list();
+    const live = licenses.filter((l) => l.status === "active" && !l.expired);
+    const trials = this.trialList().filter((t) => !t.converted);
     const orders = this.ctx.storage.sql
       .exec<{ amount_cents: number; created_at: number }>("SELECT amount_cents, created_at FROM orders")
       .toArray();
-    const monthAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    const monthAgo = Date.now() - 30 * DAY_MS;
     return {
       total: licenses.length,
-      active: licenses.filter((l) => l.status === "active" && !l.expired).length,
+      active: live.length,
       suspended: licenses.filter((l) => l.status === "suspended").length,
       revoked: licenses.filter((l) => l.status === "revoked").length,
       expired: licenses.filter((l) => l.status === "active" && l.expired).length,
+      lifetime: live.filter((l) => l.plan === "lifetime").length,
+      subscription: live.filter((l) => l.plan !== "lifetime").length,
+      trialsActive: trials.filter((t) => !t.expired).length,
+      trialsExpired: trials.filter((t) => t.expired).length,
+      // Every extra install beyond the first, across all devices: a rough
+      // measure of how often the free window is being probed.
+      reinstalls: trials.reduce((sum, t) => sum + Math.max(0, t.installs - 1), 0),
       revenueCents: orders.reduce((sum, o) => sum + o.amount_cents, 0),
       revenueCents30d: orders
         .filter((o) => o.created_at >= monthAgo)

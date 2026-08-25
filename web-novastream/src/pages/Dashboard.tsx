@@ -3,10 +3,17 @@ import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Ban,
+  CalendarClock,
   CalendarPlus,
   CheckCircle2,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   CircleDollarSign,
   Copy,
+  Crown,
+  History,
+  Hourglass,
   Inbox,
   Loader2,
   LockKeyhole,
@@ -15,17 +22,30 @@ import {
   PlayCircle,
   Plus,
   RefreshCw,
+  RotateCcw,
   Search,
   ShieldAlert,
   ShieldCheck,
   Smartphone,
   Mail,
   Trash2,
+  TrendingUp,
   Undo2,
   User,
   Users,
   Zap,
 } from "lucide-react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+  type TooltipProps,
+} from "recharts";
 import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
 
@@ -34,19 +54,23 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
   ApiError,
+  daysUntil,
   formatDate,
   formatDateTime,
   formatMac,
+  formatMonth,
   formatMoney,
   isValidDeviceId,
   normalizeDeviceId,
   post,
   type LicenseRecord,
+  type OrderRecord,
   type PlanId,
   type RegistryStats,
   type SecurityInfo,
   type SupportTicket,
   type TicketStatus,
+  type TrialRecord,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -56,9 +80,13 @@ const USER_KEY = "novastream_dashboard_user";
 /** Only digits, at most six: what every authenticator app produces. */
 const cleanCode = (raw: string): string => raw.replace(/\D/g, "").slice(0, 6);
 
-type LicensesPayload = { licenses: LicenseRecord[]; stats: RegistryStats };
+type LicensesPayload = {
+  licenses: LicenseRecord[];
+  stats: RegistryStats;
+  trials: TrialRecord[];
+  orders: OrderRecord[];
+};
 type TicketsPayload = { tickets: SupportTicket[]; openCount: number };
-type StatusFilter = "all" | "active" | "expired" | "suspended" | "revoked";
 
 /** Labels for the topic chosen in the contact form on the store. */
 const TOPIC_LABELS: Record<string, string> = {
@@ -213,7 +241,6 @@ function LoginScreen({ onAuthenticated }: { onAuthenticated: (token: string) => 
 function Console({ token, onSignOut }: { token: string; onSignOut: () => void }) {
   const queryClient = useQueryClient();
   const [search, setSearch] = useState<string>("");
-  const [filter, setFilter] = useState<StatusFilter>("all");
 
   const licenses = useQuery({
     queryKey: ["licenses"],
@@ -240,36 +267,53 @@ function Console({ token, onSignOut }: { token: string; onSignOut: () => void })
       toast.error(error instanceof Error ? error.message : "Operazione non riuscita"),
   });
 
-  const rows = useMemo(() => {
+  const matching = useMemo(() => {
     const all = licenses.data?.licenses ?? [];
     const needle = normalizeDeviceId(search);
     const plain = search.trim().toLowerCase();
-    return all.filter((row) => {
-      const matchesSearch =
-        !search.trim() ||
+    if (!search.trim()) return all;
+    return all.filter(
+      (row) =>
         row.deviceId.includes(needle) ||
         // A customer quoting their MAC must find their licence even when the
         // purchase was recorded against the app's device id.
         (row.aliases ?? []).some((alias) => alias.includes(needle)) ||
         row.email.toLowerCase().includes(plain) ||
-        row.label.toLowerCase().includes(plain);
-      if (!matchesSearch) return false;
-      switch (filter) {
-        case "active":
-          return row.status === "active" && !row.expired;
-        case "expired":
-          return row.status === "active" && row.expired;
-        case "suspended":
-          return row.status === "suspended";
-        case "revoked":
-          return row.status === "revoked";
-        default:
-          return true;
-      }
-    });
-  }, [licenses.data, search, filter]);
+        row.label.toLowerCase().includes(plain),
+    );
+  }, [licenses.data, search]);
+
+  /** One list per kind of customer, so each group can be read on its own. */
+  const groups = useMemo(() => {
+    const live = matching.filter((row) => row.status === "active" && !row.expired);
+    return {
+      lifetime: live.filter((row) => row.plan === "lifetime"),
+      subscription: live.filter((row) => row.plan !== "lifetime"),
+      expired: matching.filter((row) => row.status === "active" && row.expired),
+      halted: matching.filter((row) => row.status === "suspended" || row.status === "revoked"),
+    };
+  }, [matching]);
+
+  /** Devices still on the free week. Whoever bought a licence leaves this list. */
+  const trials = useMemo(() => {
+    const all = licenses.data?.trials ?? [];
+    const needle = normalizeDeviceId(search);
+    const found = search.trim()
+      ? all.filter(
+          (trial) =>
+            trial.deviceId.includes(needle) ||
+            trial.aliases.some((alias) => alias.includes(needle)),
+        )
+      : all;
+    return found.filter((trial) => !trial.converted);
+  }, [licenses.data, search]);
 
   const stats = licenses.data?.stats;
+  const orders = licenses.data?.orders ?? [];
+  const runAction = useCallback(
+    (path: string, body: Record<string, unknown>): void => action.mutate({ path, body }),
+    [action],
+  );
 
   return (
     <div className="relative min-h-screen">
@@ -307,30 +351,37 @@ function Console({ token, onSignOut }: { token: string; onSignOut: () => void })
       <main className="relative mx-auto max-w-6xl px-5 py-8">
         <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <StatCard
-            icon={Users}
-            label="Licenze attive"
-            value={String(stats?.active ?? 0)}
-            tone="text-accent"
-          />
-          <StatCard
-            icon={PauseCircle}
-            label="Sospese o scadute"
-            value={String((stats?.suspended ?? 0) + (stats?.expired ?? 0))}
+            icon={Crown}
+            label="Utenti a vita"
+            value={String(stats?.lifetime ?? 0)}
             tone="text-warning"
           />
           <StatCard
-            icon={CircleDollarSign}
-            label="Incasso ultimi 30 giorni"
-            value={formatMoney(stats?.revenueCents30d ?? 0)}
+            icon={Users}
+            label="Abbonamenti attivi"
+            value={String(stats?.subscription ?? 0)}
+            tone="text-accent"
+          />
+          <StatCard
+            icon={Hourglass}
+            label="Utenti in prova"
+            value={String(stats?.trialsActive ?? 0)}
             tone="text-primary"
           />
           <StatCard
-            icon={CircleDollarSign}
-            label="Incasso totale"
-            value={formatMoney(stats?.revenueCents ?? 0)}
-            tone="text-foreground"
+            icon={PauseCircle}
+            label="Da rinnovare o bloccate"
+            value={String((stats?.suspended ?? 0) + (stats?.expired ?? 0) + (stats?.revoked ?? 0))}
+            tone="text-muted-foreground"
           />
         </section>
+
+        <RevenuePanel
+          orders={orders}
+          totalCents={stats?.revenueCents ?? 0}
+          last30Cents={stats?.revenueCents30d ?? 0}
+          loading={licenses.isLoading}
+        />
 
         <ManualGrant token={token} onDone={invalidate} />
 
@@ -338,70 +389,82 @@ function Console({ token, onSignOut }: { token: string; onSignOut: () => void })
 
         <SecurityPanel token={token} />
 
-        <section className="mt-8">
+        <section className="mt-10">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-lg font-bold">Clienti</h2>
-            <div className="flex flex-1 items-center gap-2 sm:max-w-md">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Cerca MAC, email o nome"
-                  className="h-10 border-border/80 bg-secondary/60 pl-9"
-                />
-              </div>
+            <div>
+              <h2 className="text-lg font-bold">Utenti</h2>
+              <p className="text-xs text-muted-foreground">
+                Divisi per tipo. La ricerca filtra tutti i gruppi insieme.
+              </p>
+            </div>
+            <div className="relative flex-1 sm:max-w-md">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Cerca MAC, email o nome"
+                className="h-10 border-border/80 bg-secondary/60 pl-9"
+              />
             </div>
           </div>
 
-          <div className="mt-4 flex flex-wrap gap-2">
-            {(
-              [
-                ["all", "Tutte"],
-                ["active", "Attive"],
-                ["expired", "Scadute"],
-                ["suspended", "Sospese"],
-                ["revoked", "Revocate"],
-              ] as [StatusFilter, string][]
-            ).map(([value, label]) => (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setFilter(value)}
-                className={cn(
-                  "rounded-full border px-3.5 py-1.5 text-xs font-medium transition",
-                  filter === value
-                    ? "border-primary/60 bg-primary/15 text-foreground"
-                    : "border-border/70 text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+          {licenses.isLoading && (
+            <div className="panel mt-4 flex items-center gap-2 p-6 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Carico gli utenti…
+            </div>
+          )}
 
-          <div className="mt-4 space-y-2.5">
-            {licenses.isLoading && (
-              <div className="panel flex items-center gap-2 p-6 text-sm text-muted-foreground">
-                <Loader2 className="h-4 w-4 animate-spin" /> Carico le licenze…
-              </div>
-            )}
-            {!licenses.isLoading && rows.length === 0 && (
-              <div className="panel p-10 text-center">
-                <p className="text-sm text-muted-foreground">
-                  Nessuna licenza da mostrare. Appariranno qui appena arriva il primo acquisto.
-                </p>
-              </div>
-            )}
-            {rows.map((row) => (
-              <LicenseRow
-                key={row.deviceId}
-                row={row}
+          {!licenses.isLoading && (
+            <div className="mt-4 space-y-4">
+              <TrialSection trials={trials} reinstalls={stats?.reinstalls ?? 0} />
+
+              <UserGroup
+                icon={Crown}
+                tone="text-warning"
+                title="Utenti a vita"
+                hint="Licenza senza scadenza, pagata una volta sola."
+                empty="Nessuna licenza a vita."
+                rows={groups.lifetime}
                 busy={action.isPending}
-                onAction={(path, body) => action.mutate({ path, body })}
+                onAction={runAction}
               />
-            ))}
-          </div>
+
+              <UserGroup
+                icon={CalendarClock}
+                tone="text-accent"
+                title="Abbonamenti attivi"
+                hint="Licenze annuali in corso, con data di rinnovo."
+                empty="Nessun abbonamento attivo."
+                rows={groups.subscription}
+                busy={action.isPending}
+                onAction={runAction}
+              />
+
+              <UserGroup
+                icon={RotateCcw}
+                tone="text-warning"
+                title="Abbonamenti scaduti"
+                hint="Hanno pagato in passato: sono i rinnovi da recuperare."
+                empty="Nessun abbonamento scaduto."
+                rows={groups.expired}
+                busy={action.isPending}
+                onAction={runAction}
+                collapsed
+              />
+
+              <UserGroup
+                icon={Ban}
+                tone="text-destructive"
+                title="Sospesi e revocati"
+                hint="Bloccati a mano da questa dashboard."
+                empty="Nessun utente bloccato."
+                rows={groups.halted}
+                busy={action.isPending}
+                onAction={runAction}
+                collapsed
+              />
+            </div>
+          )}
         </section>
       </main>
     </div>
@@ -890,6 +953,506 @@ function StatCard({
       <Icon className={cn("h-4.5 w-4.5", tone)} />
       <div className="mt-3 text-2xl font-bold tracking-tight">{value}</div>
       <div className="mt-0.5 text-xs text-muted-foreground">{label}</div>
+    </div>
+  );
+}
+
+type RevenueView = "month" | "year";
+
+type Cursor = { year: number; month: number };
+
+type ChartBucket = { key: string; label: string; caption: string; cents: number; count: number };
+
+const MONTHS_SHORT: string[] = [
+  "gen",
+  "feb",
+  "mar",
+  "apr",
+  "mag",
+  "giu",
+  "lug",
+  "ago",
+  "set",
+  "ott",
+  "nov",
+  "dic",
+];
+
+function inPeriod(ms: number, view: RevenueView, cursor: Cursor): boolean {
+  const date = new Date(ms);
+  if (date.getFullYear() !== cursor.year) return false;
+  return view === "year" || date.getMonth() === cursor.month;
+}
+
+function stepCursor(cursor: Cursor, delta: number, view: RevenueView): Cursor {
+  if (view === "year") return { year: cursor.year + delta, month: cursor.month };
+  const index = cursor.year * 12 + cursor.month + delta;
+  return { year: Math.floor(index / 12), month: ((index % 12) + 12) % 12 };
+}
+
+function sumIn(orders: OrderRecord[], view: RevenueView, cursor: Cursor): number {
+  return orders
+    .filter((order) => inPeriod(order.createdAt, view, cursor))
+    .reduce((sum, order) => sum + order.amountCents, 0);
+}
+
+function ChartTip({ active, payload }: TooltipProps<number, string>) {
+  const bucket = payload?.[0]?.payload as ChartBucket | undefined;
+  if (active !== true || !bucket) return null;
+  return (
+    <div className="rounded-xl border border-border/80 bg-popover/95 px-3 py-2 shadow-lg backdrop-blur">
+      <div className="text-xs text-muted-foreground">{bucket.caption}</div>
+      <div className="mt-0.5 text-sm font-bold">{formatMoney(bucket.cents)}</div>
+      <div className="text-[11px] text-muted-foreground">
+        {bucket.count === 0
+          ? "nessun acquisto"
+          : bucket.count === 1
+            ? "1 acquisto"
+            : `${bucket.count} acquisti`}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Earnings over time. Every settled purchase stays in the registry, so the month
+ * and year views can be browsed backwards indefinitely and keep filling in as new
+ * orders arrive.
+ */
+function RevenuePanel({
+  orders,
+  totalCents,
+  last30Cents,
+  loading,
+}: {
+  orders: OrderRecord[];
+  totalCents: number;
+  last30Cents: number;
+  loading: boolean;
+}) {
+  const [view, setView] = useState<RevenueView>("month");
+  const [cursor, setCursor] = useState<Cursor>(() => {
+    const now = new Date();
+    return { year: now.getFullYear(), month: now.getMonth() };
+  });
+
+  // Orders arrive oldest first, so the first one marks how far back one can go.
+  const bounds = useMemo(() => {
+    const now = new Date();
+    const first = orders.length > 0 ? new Date(orders[0].createdAt) : now;
+    return {
+      minIndex: first.getFullYear() * 12 + first.getMonth(),
+      maxIndex: now.getFullYear() * 12 + now.getMonth(),
+      minYear: first.getFullYear(),
+      maxYear: now.getFullYear(),
+    };
+  }, [orders]);
+
+  const index = cursor.year * 12 + cursor.month;
+  const canPrev = view === "year" ? cursor.year > bounds.minYear : index > bounds.minIndex;
+  const canNext = view === "year" ? cursor.year < bounds.maxYear : index < bounds.maxIndex;
+
+  const shift = useCallback(
+    (delta: number): void => setCursor((prev) => stepCursor(prev, delta, view)),
+    [view],
+  );
+
+  const buckets = useMemo<ChartBucket[]>(() => {
+    if (view === "year") {
+      const list: ChartBucket[] = MONTHS_SHORT.map((label, month) => ({
+        key: `${cursor.year}-${month}`,
+        label,
+        caption: formatMonth(cursor.year, month),
+        cents: 0,
+        count: 0,
+      }));
+      for (const order of orders) {
+        const date = new Date(order.createdAt);
+        if (date.getFullYear() !== cursor.year) continue;
+        const slot = list[date.getMonth()];
+        slot.cents += order.amountCents;
+        slot.count += 1;
+      }
+      return list;
+    }
+
+    const days = new Date(cursor.year, cursor.month + 1, 0).getDate();
+    const list: ChartBucket[] = Array.from({ length: days }, (_, offset) => ({
+      key: `${cursor.year}-${cursor.month}-${offset + 1}`,
+      label: String(offset + 1),
+      caption: formatDate(new Date(cursor.year, cursor.month, offset + 1).getTime()),
+      cents: 0,
+      count: 0,
+    }));
+    for (const order of orders) {
+      const date = new Date(order.createdAt);
+      if (date.getFullYear() !== cursor.year || date.getMonth() !== cursor.month) continue;
+      const slot = list[date.getDate() - 1];
+      slot.cents += order.amountCents;
+      slot.count += 1;
+    }
+    return list;
+  }, [orders, view, cursor]);
+
+  const periodOrders = useMemo(
+    () => orders.filter((order) => inPeriod(order.createdAt, view, cursor)).reverse(),
+    [orders, view, cursor],
+  );
+
+  const periodCents = buckets.reduce((sum, bucket) => sum + bucket.cents, 0);
+  const peakCents = buckets.reduce((max, bucket) => Math.max(max, bucket.cents), 0);
+  const previousCents = sumIn(orders, view, stepCursor(cursor, -1, view));
+  const delta = previousCents === 0 ? null : Math.round(((periodCents - previousCents) / previousCents) * 100);
+  const periodLabel = view === "year" ? String(cursor.year) : formatMonth(cursor.year, cursor.month);
+
+  return (
+    <section className="panel mt-6 overflow-hidden">
+      <div className="flex flex-wrap items-start justify-between gap-4 p-5">
+        <div>
+          <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            <CircleDollarSign className="h-4 w-4 text-primary" />
+            Incassi
+          </div>
+          <div className="mt-2 flex flex-wrap items-baseline gap-3">
+            <span className="text-3xl font-bold tracking-tight">{formatMoney(periodCents)}</span>
+            <span className="text-sm capitalize text-muted-foreground">{periodLabel}</span>
+            {delta !== null && (
+              <span
+                className={cn(
+                  "flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-bold",
+                  delta >= 0 ? "bg-accent/15 text-accent" : "bg-destructive/15 text-destructive",
+                )}
+              >
+                <TrendingUp className={cn("h-3 w-3", delta < 0 && "rotate-180")} />
+                {delta >= 0 ? "+" : ""}
+                {delta}%
+              </span>
+            )}
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {periodOrders.length === 0
+              ? "Nessun acquisto in questo periodo"
+              : `${periodOrders.length} ${periodOrders.length === 1 ? "acquisto" : "acquisti"} · confronto con il periodo precedente: ${formatMoney(previousCents)}`}
+          </p>
+        </div>
+
+        <div className="flex flex-col items-end gap-3">
+          <div className="flex rounded-full border border-border/70 p-0.5">
+            {(
+              [
+                ["month", "Mese"],
+                ["year", "Anno"],
+              ] as [RevenueView, string][]
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setView(value)}
+                className={cn(
+                  "rounded-full px-3.5 py-1 text-xs font-medium transition",
+                  view === value
+                    ? "bg-primary/15 text-foreground"
+                    : "text-muted-foreground hover:text-foreground",
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => shift(-1)}
+              disabled={!canPrev}
+              aria-label="Periodo precedente"
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-border/70 text-muted-foreground transition enabled:hover:border-primary/50 enabled:hover:text-foreground disabled:opacity-30"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+            <button
+              type="button"
+              onClick={() => shift(1)}
+              disabled={!canNext}
+              aria-label="Periodo successivo"
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-border/70 text-muted-foreground transition enabled:hover:border-primary/50 enabled:hover:text-foreground disabled:opacity-30"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className="px-2 pb-2">
+        <div className="h-56 w-full">
+          {loading ? (
+            <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Carico lo storico…
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={buckets} margin={{ top: 12, right: 12, left: -16, bottom: 0 }}>
+                <CartesianGrid vertical={false} stroke="hsl(var(--border))" strokeDasharray="3 4" />
+                <XAxis
+                  dataKey="label"
+                  tickLine={false}
+                  axisLine={false}
+                  interval={view === "month" ? 3 : 0}
+                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
+                />
+                <YAxis
+                  tickLine={false}
+                  axisLine={false}
+                  width={44}
+                  tickFormatter={(value: number) => `€${Math.round(value / 100)}`}
+                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
+                />
+                <Tooltip content={<ChartTip />} cursor={{ fill: "hsl(var(--secondary))", opacity: 0.45 }} />
+                <Bar dataKey="cents" radius={[5, 5, 2, 2]} maxBarSize={38} animationDuration={450}>
+                  {buckets.map((bucket) => (
+                    <Cell
+                      key={bucket.key}
+                      fill={
+                        bucket.cents === 0
+                          ? "hsl(var(--secondary))"
+                          : bucket.cents === peakCents
+                            ? "hsl(var(--accent))"
+                            : "hsl(var(--primary))"
+                      }
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </div>
+      </div>
+
+      <div className="grid gap-px border-t border-border/60 bg-border/60 sm:grid-cols-3">
+        <MiniStat label="Incasso totale" value={formatMoney(totalCents)} />
+        <MiniStat label="Ultimi 30 giorni" value={formatMoney(last30Cents)} />
+        <MiniStat label="Acquisti registrati" value={String(orders.length)} />
+      </div>
+
+      <div className="border-t border-border/60 p-4">
+        <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          <History className="h-3.5 w-3.5" />
+          Acquisti di {periodLabel}
+        </div>
+        {periodOrders.length === 0 ? (
+          <p className="mt-3 text-sm text-muted-foreground">
+            {orders.length === 0
+              ? "Nessun acquisto ancora registrato. Il primo comparirà qui e nel grafico."
+              : "Nessun acquisto in questo periodo. Usa le frecce per spostarti."}
+          </p>
+        ) : (
+          <div className="mt-3 max-h-64 space-y-1.5 overflow-y-auto pr-1">
+            {periodOrders.map((order) => (
+              <div
+                key={order.orderId}
+                className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-border/60 px-3 py-2 text-xs"
+              >
+                <span className="text-muted-foreground">{formatDateTime(order.createdAt)}</span>
+                <span
+                  className={cn(
+                    "rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider",
+                    order.plan === "lifetime"
+                      ? "border-warning/40 bg-warning/10 text-warning"
+                      : "border-accent/40 bg-accent/10 text-accent",
+                  )}
+                >
+                  {order.plan === "lifetime" ? "A vita" : "12 mesi"}
+                </span>
+                <span className="mono text-muted-foreground">{formatMac(order.deviceId)}</span>
+                {order.email && <span className="truncate text-muted-foreground">{order.email}</span>}
+                <span className="ml-auto font-bold">{formatMoney(order.amountCents)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function MiniStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="bg-card px-5 py-4">
+      <div className="text-[11px] uppercase tracking-wider text-muted-foreground">{label}</div>
+      <div className="mt-1 text-lg font-bold tracking-tight">{value}</div>
+    </div>
+  );
+}
+
+/** Devices on the free week, with how often the app was installed again. */
+function TrialSection({ trials, reinstalls }: { trials: TrialRecord[]; reinstalls: number }) {
+  const [open, setOpen] = useState<boolean>(true);
+  const [showExpired, setShowExpired] = useState<boolean>(false);
+  const running = trials.filter((trial) => !trial.expired);
+  const expired = trials.filter((trial) => trial.expired);
+  const visible = showExpired ? [...running, ...expired] : running;
+
+  return (
+    <div className="panel overflow-hidden">
+      <div className="flex flex-wrap items-center gap-3 p-4">
+        <button
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+          className="flex min-w-0 flex-1 items-center gap-3 text-left"
+        >
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
+            <Hourglass className="h-4.5 w-4.5" />
+          </div>
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-sm font-bold">
+              Utenti in prova
+              <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-bold text-muted-foreground">
+                {running.length}
+              </span>
+            </div>
+            <p className="truncate text-xs text-muted-foreground">
+              {expired.length} prove scadute · {reinstalls}{" "}
+              {reinstalls === 1 ? "reinstallazione" : "reinstallazioni"} in totale
+            </p>
+          </div>
+          <ChevronDown
+            className={cn(
+              "ml-auto h-4 w-4 shrink-0 text-muted-foreground transition",
+              open && "rotate-180",
+            )}
+          />
+        </button>
+        {open && expired.length > 0 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowExpired((value) => !value)}
+            className="text-xs text-muted-foreground"
+          >
+            {showExpired ? "Nascondi scadute" : "Mostra scadute"}
+          </Button>
+        )}
+      </div>
+
+      {open && (
+        <div className="space-y-2 border-t border-border/60 p-3">
+          {visible.length === 0 ? (
+            <p className="p-4 text-center text-sm text-muted-foreground">
+              Nessuna prova in corso. I nuovi dispositivi compaiono qui al primo avvio.
+            </p>
+          ) : (
+            visible.map((trial) => <TrialRow key={trial.deviceId} trial={trial} />)
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TrialRow({ trial }: { trial: TrialRecord }) {
+  const left = daysUntil(trial.expiresAt);
+  const reinstalls = Math.max(0, trial.installs - 1);
+
+  return (
+    <div className="rounded-xl border border-border/60 p-3.5 transition hover:border-border">
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            void navigator.clipboard.writeText(trial.deviceId);
+            toast.success("ID copiato");
+          }}
+          className="mono group flex items-center gap-1.5 text-sm font-semibold tracking-wide"
+        >
+          {formatMac(trial.deviceId)}
+          <Copy className="h-3 w-3 text-muted-foreground opacity-0 transition group-hover:opacity-100" />
+        </button>
+        <span
+          className={cn(
+            "rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider",
+            trial.expired
+              ? "border-border/70 bg-secondary/60 text-muted-foreground"
+              : "border-primary/50 bg-primary/15 text-primary",
+          )}
+        >
+          {trial.expired ? "Prova scaduta" : left === 0 ? "Ultimo giorno" : `${left} giorni rimasti`}
+        </span>
+        {reinstalls > 0 && (
+          <span className="flex items-center gap-1 rounded-full border border-warning/40 bg-warning/10 px-2.5 py-0.5 text-[10px] font-bold text-warning">
+            <RotateCcw className="h-3 w-3" />
+            Reinstallato {reinstalls} {reinstalls === 1 ? "volta" : "volte"}
+          </span>
+        )}
+      </div>
+      <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+        {trial.aliases.length > 0 && (
+          <span className="mono">Anche: {trial.aliases.map(formatMac).join(" · ")}</span>
+        )}
+        <span>Prima apertura: {formatDate(trial.startedAt)}</span>
+        <span>Fine prova: {formatDate(trial.expiresAt)}</span>
+        <span>Ultimo accesso: {formatDateTime(trial.lastSeenAt)}</span>
+      </div>
+    </div>
+  );
+}
+
+/** One collapsible block of licences, all sharing the same kind of plan or state. */
+function UserGroup({
+  icon: Icon,
+  tone,
+  title,
+  hint,
+  empty,
+  rows,
+  busy,
+  onAction,
+  collapsed,
+}: {
+  icon: typeof Users;
+  tone: string;
+  title: string;
+  hint: string;
+  empty: string;
+  rows: LicenseRecord[];
+  busy: boolean;
+  onAction: (path: string, body: Record<string, unknown>) => void;
+  collapsed?: boolean;
+}) {
+  const [open, setOpen] = useState<boolean>(collapsed !== true);
+
+  return (
+    <div className="panel overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="flex w-full items-center gap-3 p-4 text-left transition hover:bg-secondary/30"
+      >
+        <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-secondary", tone)}>
+          <Icon className="h-4.5 w-4.5" />
+        </div>
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-sm font-bold">
+            {title}
+            <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-bold text-muted-foreground">
+              {rows.length}
+            </span>
+          </div>
+          <p className="truncate text-xs text-muted-foreground">{hint}</p>
+        </div>
+        <ChevronDown
+          className={cn("ml-auto h-4 w-4 shrink-0 text-muted-foreground transition", open && "rotate-180")}
+        />
+      </button>
+      {open && (
+        <div className="space-y-2.5 border-t border-border/60 p-3">
+          {rows.length === 0 ? (
+            <p className="p-4 text-center text-sm text-muted-foreground">{empty}</p>
+          ) : (
+            rows.map((row) => (
+              <LicenseRow key={row.deviceId} row={row} busy={busy} onAction={onAction} />
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
 }
