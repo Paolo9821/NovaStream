@@ -2,6 +2,7 @@ package com.rork.novastream.data.repo
 
 import android.content.Context
 import android.util.Log
+import com.rork.novastream.data.local.CatalogCache
 import com.rork.novastream.data.local.CatalogUpdateInterval
 import com.rork.novastream.data.local.SecureStore
 import com.rork.novastream.data.local.SettingsStore
@@ -44,8 +45,11 @@ import java.util.UUID
 
 /**
  * Single source of truth for accounts, catalog, EPG, favorites and playback progress.
- * Everything written to disk goes through [SecureStore], so credentials, guide and
- * catalog stay encrypted on the device.
+ *
+ * Credentials, favorites and playback positions are sealed by [SecureStore]. The
+ * catalog and the guide are large public listings and live in [CatalogCache] as
+ * plain compressed files, so they survive reboots and are ready in a second
+ * instead of being downloaded again at every launch.
  */
 class IptvRepository(context: Context) {
 
@@ -62,6 +66,7 @@ class IptvRepository(context: Context) {
     }
 
     val secureStore = SecureStore(appContext)
+    private val catalogCache = CatalogCache(appContext)
     val settingsStore = SettingsStore(appContext)
     private val downloadDir: File = File(appContext.cacheDir, "downloads").apply { mkdirs() }
     private val xtream = XtreamClient(http, downloadDir)
@@ -123,7 +128,11 @@ class IptvRepository(context: Context) {
     private fun restore() {
         // A save that never finished leaves a scratch file behind; it is dropped
         // here so it can never be mistaken for the real catalog.
+        catalogCache.sweepUnfinishedWrites()
         secureStore.sweepUnfinishedWrites()
+        // Catalogs written by the old encrypted format can no longer be read;
+        // they are cleared once so they stop taking up space on the device.
+        if (secureStore.vaultSizeBytes() > 0L) secureStore.clearVault()
 
         // Accounts, favorites and progress are a few kilobytes: reading them
         // inline keeps the first frame correct.
@@ -149,21 +158,22 @@ class IptvRepository(context: Context) {
                 vaultMutex.withLock {
                     val stored = readVault<Catalog>(catalogFile(activeId))
                     if (stored != null && stored.entries.isNotEmpty()) {
+                        Log.i(TAG, "Catalogo ripreso dal dispositivo (${stored.entries.size} voci)")
                         _catalog.value = stored
                     } else {
                         // Missing, damaged, or written by an older build: the file
                         // would keep failing, so it goes and a fresh copy is fetched.
-                        if (secureStore.hasVault(catalogFile(activeId))) {
+                        if (catalogCache.has(catalogFile(activeId))) {
                             Log.w(TAG, "Catalogo salvato illeggibile: verrà riscaricato")
-                            secureStore.deleteVault(catalogFile(activeId))
+                            catalogCache.delete(catalogFile(activeId))
                         }
                         needsFreshCopy = true
                     }
                     val guide = readVault<EpgGuide>(epgFile(activeId))
                     if (guide != null) {
                         _epg.value = guide
-                    } else if (secureStore.hasVault(epgFile(activeId))) {
-                        secureStore.deleteVault(epgFile(activeId))
+                    } else if (catalogCache.has(epgFile(activeId))) {
+                        catalogCache.delete(epgFile(activeId))
                     }
                 }
             } finally {
@@ -216,10 +226,10 @@ class IptvRepository(context: Context) {
         if (settingsStore.settings.value.autoUpdateGuide) refreshEpg()
     }
 
-    /** Decodes an encrypted cache file without ever holding its text in memory. */
+    /** Decodes a saved cache file without ever holding its text in memory. */
     @OptIn(ExperimentalSerializationApi::class)
     private inline fun <reified T> readVault(name: String): T? =
-        secureStore.readVaultStream(name)?.use { stream ->
+        catalogCache.read(name)?.use { stream ->
             runCatching { json.decodeFromStream<T>(stream) }.getOrNull()
         }
 
@@ -258,8 +268,8 @@ class IptvRepository(context: Context) {
     suspend fun switchAccount(accountId: String) {
         val target = _accounts.value.firstOrNull { it.id == accountId } ?: return
         _activeAccountId.value?.let {
-            secureStore.deleteVault(catalogFile(it))
-            secureStore.deleteVault(epgFile(it))
+            catalogCache.delete(catalogFile(it))
+            catalogCache.delete(epgFile(it))
         }
         _catalog.value = Catalog()
         _epg.value = EpgGuide()
@@ -270,8 +280,8 @@ class IptvRepository(context: Context) {
     }
 
     suspend fun removeAccount(accountId: String) {
-        secureStore.deleteVault(catalogFile(accountId))
-        secureStore.deleteVault(epgFile(accountId))
+        catalogCache.delete(catalogFile(accountId))
+        catalogCache.delete(epgFile(accountId))
         _accounts.value = _accounts.value.filterNot { it.id == accountId }
         if (_activeAccountId.value == accountId) {
             val next = _accounts.value.firstOrNull()
@@ -355,11 +365,13 @@ class IptvRepository(context: Context) {
             }
 
             _catalog.value = catalog
+            // Written down before anything else, so the saved copy always names
+            // the account whose catalog is on disk.
             _accounts.value = _accounts.value.map {
                 if (it.id == account.id) it.copy(lastSyncEpochMs = catalog.syncedAtEpochMs) else it
             }
             persistAccounts()
-            // The catalog is already usable at this point. Writing the encrypted
+            // The catalog is already usable at this point. Writing the compressed
             // copy of a huge provider can take a while, so it happens in the
             // background: the loading screen must never wait for the disk.
             _saving.value = true
@@ -505,6 +517,7 @@ class IptvRepository(context: Context) {
     fun clearCatalogCache() {
         _catalog.value = Catalog()
         _epg.value = EpgGuide()
+        catalogCache.clear()
         secureStore.clearVault()
     }
 
@@ -519,26 +532,27 @@ class IptvRepository(context: Context) {
         secureStore.remove(KEY_ACTIVE)
         secureStore.remove(KEY_PROGRESS)
         secureStore.remove(KEY_FAVORITES)
+        catalogCache.clear()
         secureStore.clearVault()
         settingsStore.clearParental()
     }
 
-    fun vaultSizeBytes(): Long = secureStore.vaultSizeBytes()
+    fun vaultSizeBytes(): Long = catalogCache.sizeBytes()
 
     suspend fun checkDns(host: String): DnsCheck =
         resolver.resolve(host, settingsStore.settings.value)
 
     suspend fun runSpeedTest() = speedTester.run()
 
-    /** Encrypts a cache file straight to disk, without building the whole string. */
+    /** Compresses a cache file straight to disk, without building the whole string. */
     @OptIn(ExperimentalSerializationApi::class)
     private inline fun <reified T> writeVault(name: String, value: T) {
-        secureStore.writeVaultStream(name) { stream -> json.encodeToStream(value, stream) }
+        catalogCache.write(name) { stream -> json.encodeToStream(value, stream) }
     }
 
-    private fun catalogFile(accountId: String) = "catalog_$accountId.bin"
+    private fun catalogFile(accountId: String) = "catalog_$accountId.json.gz"
 
-    private fun epgFile(accountId: String) = "epg_$accountId.bin"
+    private fun epgFile(accountId: String) = "epg_$accountId.json.gz"
 
     companion object {
         private const val KEY_ACCOUNTS = "accounts"

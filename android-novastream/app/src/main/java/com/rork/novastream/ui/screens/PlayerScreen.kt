@@ -53,9 +53,11 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -94,6 +96,7 @@ import com.rork.novastream.data.model.Episode
 import com.rork.novastream.data.model.MediaEntry
 import com.rork.novastream.data.model.MediaKind
 import com.rork.novastream.ui.components.rememberFocusRequester
+import com.rork.novastream.ui.components.tvFocusFrame
 import com.rork.novastream.ui.i18n.LocalStrings
 import com.rork.novastream.ui.vm.AppViewModel
 import kotlinx.coroutines.delay
@@ -165,7 +168,10 @@ fun PlayerScreen(
     }
     var resumeNoticeVisible by remember(activeStreamUrl) { mutableStateOf(resumeFromMs > 0L) }
 
-    val player = remember(activeStreamUrl) {
+    // One player for the whole session. Rebuilding it on every channel change
+    // detached the video surface, which is why a zap used to leave the sound
+    // playing over a black picture; only a settings change rebuilds it now.
+    val player = remember(settings.bufferSeconds, settings.hardwareDecoding) {
         val bufferMs = settings.bufferSeconds * 1000
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
@@ -185,15 +191,23 @@ fun PlayerScreen(
             .setLoadControl(loadControl)
             .build()
             .apply {
-                setMediaItem(MediaItem.fromUri(activeStreamUrl))
                 // Keeps the box awake while a stream is running: without it a TV
                 // suspends the CPU and the picture dies mid-programme.
                 setWakeMode(C.WAKE_MODE_NETWORK)
-                // Picks the film back up where it was left instead of restarting it.
-                if (resumeFromMs > 0L) seekTo(resumeFromMs)
                 playWhenReady = true
-                prepare()
             }
+    }
+
+    // Loads whatever should be on screen into the running player, so switching
+    // channel or episode swaps the source and keeps the same video surface.
+    LaunchedEffect(player, activeStreamUrl) {
+        buffering = true
+        player.stop()
+        player.setMediaItem(MediaItem.fromUri(activeStreamUrl))
+        player.prepare()
+        // Picks the film back up where it was left instead of restarting it.
+        if (resumeFromMs > 0L) player.seekTo(resumeFromMs)
+        player.playWhenReady = true
     }
 
     /** Set when the stream reaches its natural end, to offer what comes next. */
@@ -466,8 +480,16 @@ fun PlayerScreen(
     // button, so left/right scrub, OK pauses and resumes, and any other key
     // simply brings the controls back on screen.
     val keyFocus = rememberFocusRequester()
-    LaunchedEffect(activeStreamUrl) {
-        runCatching { keyFocus.requestFocus() }
+    /** Where the highlight lands when the controls come up. */
+    val controlsFocus = rememberFocusRequester()
+    LaunchedEffect(controlsVisible, activeStreamUrl, error) {
+        if (controlsVisible && error == null) {
+            // The control row is only laid out once the overlay has faded in.
+            repeat(3) { withFrameNanos { } }
+            runCatching { controlsFocus.requestFocus() }
+        } else {
+            runCatching { keyFocus.requestFocus() }
+        }
     }
 
     /** What the up/down keys and the side buttons do on this stream. */
@@ -511,6 +533,50 @@ fun PlayerScreen(
                         else -> Unit
                     }
                 }
+                // Keys that exist only on a remote's media block are never hit by
+                // accident, so they keep acting straight away.
+                when (event.key) {
+                    Key.ChannelUp, Key.MediaNext -> {
+                        goNext?.invoke() ?: showControls()
+                        return@onPreviewKeyEvent true
+                    }
+                    Key.ChannelDown, Key.MediaPrevious -> {
+                        goPrevious?.invoke() ?: showControls()
+                        return@onPreviewKeyEvent true
+                    }
+                    Key.MediaPlay -> {
+                        player.play()
+                        showControls()
+                        return@onPreviewKeyEvent true
+                    }
+                    Key.MediaPause -> {
+                        player.pause()
+                        showControls()
+                        return@onPreviewKeyEvent true
+                    }
+                    Key.MediaPlayPause -> {
+                        togglePlayback()
+                        return@onPreviewKeyEvent true
+                    }
+                    Key.MediaStop -> {
+                        onBack()
+                        return@onPreviewKeyEvent true
+                    }
+                    Key.Menu, Key.Info -> {
+                        showControls()
+                        return@onPreviewKeyEvent true
+                    }
+                    else -> Unit
+                }
+
+                // With the controls on screen the D-pad belongs to the buttons:
+                // the viewer walks the highlight and presses OK, so a stray press
+                // can no longer change channel on its own.
+                if (controlsVisible && error == null) {
+                    interactionTick += 1
+                    return@onPreviewKeyEvent false
+                }
+
                 when (event.key) {
                     Key.DirectionLeft, Key.MediaRewind -> {
                         nudgeSeek(-SEEK_STEP_MS)
@@ -520,47 +586,11 @@ fun PlayerScreen(
                         nudgeSeek(SEEK_STEP_MS)
                         true
                     }
-                    Key.DirectionCenter, Key.Enter, Key.NumPadEnter, Key.Spacebar,
-                    Key.MediaPlayPause -> {
+                    Key.DirectionCenter, Key.Enter, Key.NumPadEnter, Key.Spacebar -> {
                         togglePlayback()
                         true
                     }
-                    Key.MediaPlay -> {
-                        player.play()
-                        showControls()
-                        true
-                    }
-                    Key.MediaPause -> {
-                        player.pause()
-                        showControls()
-                        true
-                    }
-                    Key.MediaStop -> {
-                        onBack()
-                        true
-                    }
-                    Key.ChannelUp, Key.MediaNext -> {
-                        goNext?.invoke() ?: showControls()
-                        true
-                    }
-                    Key.ChannelDown, Key.MediaPrevious -> {
-                        goPrevious?.invoke() ?: showControls()
-                        true
-                    }
-                    // Zapping with up/down is second nature on a live channel.
-                    // On a series it only works once the controls are up, so a
-                    // stray press never skips an episode by accident.
-                    Key.DirectionUp -> {
-                        if (isLiveStream || controlsVisible) goNext?.invoke() ?: showControls()
-                        else showControls()
-                        true
-                    }
-                    Key.DirectionDown -> {
-                        if (isLiveStream || controlsVisible) goPrevious?.invoke() ?: showControls()
-                        else showControls()
-                        true
-                    }
-                    Key.Menu, Key.Info -> {
+                    Key.DirectionUp, Key.DirectionDown -> {
                         showControls()
                         true
                     }
@@ -584,6 +614,11 @@ fun PlayerScreen(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                     )
                 }
+            },
+            update = { view ->
+                // Re-attaches the surface whenever the player instance changes,
+                // otherwise the picture would be lost while the audio carries on.
+                if (view.player !== player) view.player = player
             },
             modifier = Modifier.fillMaxSize(),
         )
@@ -667,9 +702,12 @@ fun PlayerScreen(
                     forwardLabel = strings.forwardTen,
                     previousLabel = previousLabel,
                     nextLabel = nextLabel,
-                    hint = if (goNext != null || goPrevious != null) {
-                        "▲ $nextLabel   ▼ $previousLabel"
-                    } else null,
+                    previousCaption = if (isLiveStream) previousChannel?.title else previousEpisode
+                        ?.let { "S${it.season}E${it.number}" },
+                    nextCaption = if (isLiveStream) nextChannel?.title else nextEpisode
+                        ?.let { "S${it.season}E${it.number}" },
+                    focusRequester = controlsFocus,
+                    hint = if (goNext != null || goPrevious != null) strings.playerPickerHint else null,
                     onPrevious = goPrevious?.let { action ->
                         {
                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -926,6 +964,9 @@ private fun CenterControls(
     forwardLabel: String,
     previousLabel: String,
     nextLabel: String,
+    previousCaption: String?,
+    nextCaption: String?,
+    focusRequester: FocusRequester,
     hint: String?,
     onPrevious: (() -> Unit)?,
     onNext: (() -> Unit)?,
@@ -958,6 +999,7 @@ private fun CenterControls(
                         )
                     },
                     size = 52,
+                    caption = previousCaption,
                     onClick = onPrevious,
                 )
             }
@@ -976,12 +1018,15 @@ private fun CenterControls(
                 modifier = Modifier
                     .scale(pulse)
                     .size(76.dp)
-                    .background(Color.White.copy(alpha = 0.16f), CircleShape),
+                    .background(Color.White.copy(alpha = 0.16f), CircleShape)
+                    .tvFocusFrame(cornerRadius = 38.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 IconButton(
                     onClick = onTogglePlay,
-                    modifier = Modifier.size(76.dp),
+                    modifier = Modifier
+                        .size(76.dp)
+                        .focusRequester(focusRequester),
                 ) {
                     Icon(
                         imageVector = if (isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
@@ -1008,13 +1053,14 @@ private fun CenterControls(
                         Icon(Icons.Rounded.SkipNext, contentDescription = nextLabel, tint = tint)
                     },
                     size = 52,
+                    caption = nextCaption,
                     onClick = onNext,
                 )
             }
         }
 
-        // Remotes cannot reach these buttons with the D-pad, so the two keys
-        // that do the same job are spelled out right underneath them.
+        // Spells out how the remote drives this row, since nothing here moves
+        // until the viewer confirms a button.
         if (hint != null) {
             Spacer(Modifier.height(14.dp))
             Text(
@@ -1097,15 +1143,35 @@ private fun GlassIconButton(
     size: Int,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    caption: String? = null,
 ) {
-    Box(
-        modifier = modifier
-            .size(size.dp)
-            .background(Color.White.copy(alpha = 0.10f), CircleShape),
-        contentAlignment = Alignment.Center,
+    Column(
+        modifier = modifier.width((size + 44).dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        IconButton(onClick = onClick, modifier = Modifier.size(size.dp)) {
-            icon(Color.White)
+        Box(
+            modifier = Modifier
+                .size(size.dp)
+                .background(Color.White.copy(alpha = 0.10f), CircleShape)
+                .tvFocusFrame(cornerRadius = (size / 2).dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            IconButton(onClick = onClick, modifier = Modifier.size(size.dp)) {
+                icon(Color.White)
+            }
+        }
+        // Names where the button leads, so zapping is a decision rather than a
+        // surprise.
+        if (caption != null) {
+            Spacer(Modifier.height(6.dp))
+            Text(
+                text = caption,
+                color = Color.White.copy(alpha = 0.76f),
+                style = MaterialTheme.typography.labelSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = TextAlign.Center,
+            )
         }
     }
 }
