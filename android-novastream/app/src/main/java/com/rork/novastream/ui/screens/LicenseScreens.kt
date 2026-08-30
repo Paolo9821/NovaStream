@@ -31,6 +31,7 @@ import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.PauseCircle
+import androidx.compose.material.icons.rounded.QrCode2
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material3.Button
@@ -67,7 +68,9 @@ import com.rork.novastream.data.local.DeviceIdentity
 import com.rork.novastream.data.local.LicenseStatus
 import com.rork.novastream.data.local.ONLINE_GRACE_DAYS
 import com.rork.novastream.ui.components.BrandMark
+import com.rork.novastream.ui.components.LocalIsTv
 import com.rork.novastream.ui.components.QrCodePanel
+import com.rork.novastream.ui.components.tvFocusFrame
 import com.rork.novastream.ui.i18n.Language
 import com.rork.novastream.ui.i18n.LocalStrings
 import com.rork.novastream.ui.theme.LocalNovaAccents
@@ -412,7 +415,12 @@ private fun RecheckButton(verifying: Boolean, onRetry: () -> Unit, primary: Bool
     }
 }
 
-/** Purchase entry point shown in Settings while no purchase covers this device. */
+/**
+ * Purchase entry point shown in Settings while no purchase covers this device.
+ *
+ * The button opens the storefront on a phone and shows a scannable QR code on a
+ * television, where forcing a link onto a box without a browser leads nowhere.
+ */
 @Composable
 fun BuyLicenseCard(
     identity: DeviceIdentity,
@@ -420,7 +428,7 @@ fun BuyLicenseCard(
     modifier: Modifier = Modifier,
 ) {
     val strings = LocalStrings.current
-    val context = LocalContext.current
+    val isTv = LocalIsTv.current
 
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -435,22 +443,29 @@ fun BuyLicenseCard(
             )
             Spacer(Modifier.height(6.dp))
             Text(
-                text = strings.storeSteps,
+                text = if (isTv) strings.storeStepsTv else strings.storeSteps,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Spacer(Modifier.height(14.dp))
-            Button(
-                onClick = { openStore(context, storeUrl, identity.deviceId) },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.OpenInNew,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp),
-                )
-                Spacer(Modifier.width(10.dp))
-                Text(strings.activateOnline, fontWeight = FontWeight.SemiBold)
+            StorePurchase(storeUrl = storeUrl, deviceId = identity.deviceId) { onBuy ->
+                Button(
+                    onClick = onBuy,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .tvFocusFrame(cornerRadius = 20.dp),
+                ) {
+                    Icon(
+                        imageVector = if (isTv) Icons.Rounded.QrCode2 else Icons.Rounded.OpenInNew,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        text = if (isTv) strings.showPurchaseQr else strings.activateOnline,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
             }
         }
     }

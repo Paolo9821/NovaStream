@@ -115,7 +115,9 @@ class SettingsStore(context: Context) {
             .putBoolean(KEY_PARENTAL, settings.parentalEnabled)
             .putString(KEY_PIN, settings.pinHash)
             .putStringSet(KEY_BLOCKED, settings.blockedGroups)
-            .apply()
+            // commit(), not apply(): these are tiny writes, and a TV box pulled
+            // from the socket seconds later must still find them there.
+            .commit()
         _settings.value = settings
     }
 

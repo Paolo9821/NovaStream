@@ -97,7 +97,8 @@ class LicenseStore(context: Context, private val secureStore: SecureStore) {
     }
 
     fun acceptTerms() {
-        prefs.edit().putBoolean(KEY_TERMS, true).apply()
+        // commit(), not apply(): a box unplugged right after this must not ask again.
+        prefs.edit().putBoolean(KEY_TERMS, true).commit()
         // Accepting is the first real launch: this is when the trial clock starts.
         startTrialIfNeeded()
         refresh()
@@ -128,13 +129,17 @@ class LicenseStore(context: Context, private val secureStore: SecureStore) {
         // The server owns the trial clock, so a reinstall picks the count back up
         // where it was instead of handing out another free week.
         record.trialStartedAtMs?.let { anchorTrial(it, record.serverTimeMs) }
+        // Stamped with the server clock when there is one. A box whose own clock
+        // has not been set yet would otherwise file this answer in 1970 and look
+        // unverified for decades the moment the real time arrives.
+        val checkedAt = maxOf(record.serverTimeMs, effectiveNow())
         secureStore.putString(
             KEY_REMOTE,
             listOf(
                 identity.deviceId,
                 record.status.name,
                 record.expiresAtMs?.toString() ?: "",
-                System.currentTimeMillis().toString(),
+                checkedAt.toString(),
                 safeNote,
             ).joinToString("|"),
         )
@@ -159,7 +164,7 @@ class LicenseStore(context: Context, private val secureStore: SecureStore) {
 
     private fun statusOf(record: RemoteRecord?): LicenseStatus {
         if (record == null || record.status == RemoteStatus.NONE) return trialStatus()
-        val now = System.currentTimeMillis()
+        val now = effectiveNow()
         return when (record.status) {
             RemoteStatus.REVOKED -> LicenseStatus.Blocked(BlockReason.REVOKED, record.note)
             RemoteStatus.SUSPENDED -> LicenseStatus.Blocked(BlockReason.SUSPENDED, record.note)
@@ -216,6 +221,18 @@ class LicenseStore(context: Context, private val secureStore: SecureStore) {
             usedFraction = ((total - remainingMs) / total).coerceIn(0f, 1f),
         )
     }
+
+    /**
+     * The latest moment this installation has ever seen.
+     *
+     * A TV box has no battery-backed clock: unplugged and switched on again it
+     * can report a date years in the past until the network sets the time. Every
+     * licence decision uses this value instead of the raw system clock, so a
+     * rewind can neither revive a finished trial nor make a paid device look
+     * like it has not checked in for weeks.
+     */
+    private fun effectiveNow(): Long =
+        maxOf(System.currentTimeMillis(), trialRecord()?.effectiveNowMs ?: 0L)
 
     /**
      * Reads (or creates) the sealed trial record. [TrialRecord.effectiveNowMs] never

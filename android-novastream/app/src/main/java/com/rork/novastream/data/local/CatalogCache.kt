@@ -44,8 +44,13 @@ class CatalogCache(context: Context) {
             runCatching { fileStream.fd.sync() }
         }
         if (temp.length() <= MAGIC.size) throw IllegalStateException("empty catalog write")
-        target.delete()
-        if (!temp.renameTo(target)) throw IllegalStateException("catalog swap failed")
+        if (!temp.renameTo(target)) {
+            target.delete()
+            if (!temp.renameTo(target)) throw IllegalStateException("catalog swap failed")
+        }
+        // Until the directory itself is flushed the swap only exists in the OS
+        // cache, and a box pulled from the socket comes back without the file.
+        DurableIo.syncDir(dir)
         Log.i(TAG, "Catalogo salvato ($name, ${target.length() / 1024} KB)")
         true
     }.onFailure {
@@ -86,11 +91,7 @@ class CatalogCache(context: Context) {
 
     /** Drops leftovers of a save that never finished, e.g. after the app was killed. */
     fun sweepUnfinishedWrites() {
-        runCatching {
-            dir.listFiles()?.forEach { file ->
-                if (file.name.endsWith(TEMP_SUFFIX)) file.delete()
-            }
-        }
+        DurableIo.sweep(dir)
     }
 
     private companion object {

@@ -3,6 +3,7 @@ package com.rork.novastream.data.local
 import android.content.Context
 import android.provider.Settings
 import android.util.Log
+import java.io.File
 import java.net.NetworkInterface
 import java.security.MessageDigest
 import java.util.UUID
@@ -28,13 +29,14 @@ object DeviceIdentityResolver {
 
     private const val PREFS = "novastream_device"
     private const val KEY_FALLBACK_ID = "fallback_device_id"
+    private const val ID_FILE = "device_id"
     private const val ANONYMISED_MAC = "02:00:00:00:00:00"
     private const val KNOWN_BAD_ANDROID_ID = "9774d56d682e549c"
     private const val TAG = "DeviceIdentity"
 
     fun resolve(context: Context): DeviceIdentity {
-        val deviceId = resolveDeviceId(context)
         val hardwareMac = readHardwareMac()
+        val deviceId = resolveDeviceId(context, hardwareMac)
         return DeviceIdentity(
             macAddress = hardwareMac ?: deriveMac(deviceId),
             deviceId = deviceId,
@@ -42,21 +44,46 @@ object DeviceIdentityResolver {
         )
     }
 
-    private fun resolveDeviceId(context: Context): String {
+    /**
+     * The licence is tied to this value, so it must come back identical after a
+     * reboot, a power cut, or even a reinstall. The sources are tried from the
+     * most specific to the most general:
+     *
+     * 1. the durable copy written the last time the app ran;
+     * 2. the identifier an older build kept in preferences;
+     * 3. the Android identifier, when the platform provides a usable one;
+     * 4. a value derived from the network card, which is the same after a wipe;
+     * 5. a random value, only when this device offers nothing stable at all.
+     *
+     * The order never demotes an identity that already existed, so devices
+     * updating from an earlier version keep the licence they paid for.
+     */
+    private fun resolveDeviceId(context: Context, hardwareMac: String?): String {
         val appContext = context.applicationContext
-        val androidId = runCatching {
-            Settings.Secure.getString(appContext.contentResolver, Settings.Secure.ANDROID_ID)
-        }.getOrNull()
-
-        if (!androidId.isNullOrBlank() && androidId != KNOWN_BAD_ANDROID_ID) return androidId
+        val file = idFile(appContext)
+        DurableIo.readText(file)?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
 
         val prefs = appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-        prefs.getString(KEY_FALLBACK_ID, null)?.let { return it }
+        val stored = prefs.getString(KEY_FALLBACK_ID, null)?.takeIf { it.isNotBlank() }
 
-        val generated = UUID.randomUUID().toString().replace("-", "").take(16)
-        prefs.edit().putString(KEY_FALLBACK_ID, generated).apply()
-        return generated
+        val androidId = runCatching {
+            Settings.Secure.getString(appContext.contentResolver, Settings.Secure.ANDROID_ID)
+        }.getOrNull()?.takeIf { it.isNotBlank() && it != KNOWN_BAD_ANDROID_ID }
+
+        val resolved = stored
+            ?: androidId
+            ?: hardwareMac?.let { hashOf("novastream-id::$it") }
+            ?: UUID.randomUUID().toString().replace("-", "").take(16)
+
+        // Both copies are kept: the file is the one that survives, preferences
+        // stay in step so an older build could still read the same identity.
+        DurableIo.writeText(file, resolved)
+        prefs.edit().putString(KEY_FALLBACK_ID, resolved).commit()
+        return resolved
     }
+
+    private fun idFile(context: Context): File =
+        File(File(context.filesDir, "keys").apply { mkdirs() }, ID_FILE)
 
     /** Returns the real interface address, or null when the platform anonymises it. */
     private fun readHardwareMac(): String? = runCatching {
@@ -81,4 +108,9 @@ object DeviceIdentityResolver {
         bytes[0] = ((bytes[0].toInt() and 0xFE) or 0x02).toByte()
         return bytes.joinToString(":") { "%02X".format(it) }
     }
+
+    private fun hashOf(value: String): String = MessageDigest.getInstance("SHA-256")
+        .digest(value.toByteArray(Charsets.UTF_8))
+        .joinToString("") { "%02x".format(it) }
+        .take(16)
 }

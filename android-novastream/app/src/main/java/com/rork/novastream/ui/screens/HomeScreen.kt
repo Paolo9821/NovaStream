@@ -37,7 +37,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -85,7 +84,6 @@ fun HomeScreen(
     val storeUrl by viewModel.storeUrl.collectAsStateWithLifecycle()
     val restoring by viewModel.catalogRestoring.collectAsStateWithLifecycle()
     val recovering by viewModel.catalogRecovering.collectAsStateWithLifecycle()
-    val context = LocalContext.current
 
     val active = remember(accounts, activeId) { accounts.firstOrNull { it.id == activeId } }
     val counts = remember(catalog, settings, unlocked) {
@@ -122,11 +120,17 @@ fun HomeScreen(
 
         (license.status as? LicenseStatus.Trial)?.let { trial ->
             item("trial") {
-                TrialBanner(
-                    trial = trial,
-                    language = settings.language,
-                    onActivate = { openStore(context, storeUrl, license.identity.deviceId) },
-                )
+                // Same rule as Settings: a link on a phone, a QR code on a TV.
+                StorePurchase(
+                    storeUrl = storeUrl,
+                    deviceId = license.identity.deviceId,
+                ) { onBuy ->
+                    TrialBanner(
+                        trial = trial,
+                        language = settings.language,
+                        onActivate = onBuy,
+                    )
+                }
             }
         }
 
