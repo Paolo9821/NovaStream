@@ -223,6 +223,29 @@ fun PlayerScreen(
     val isLiveStream = entry?.kind == MediaKind.LIVE
     val isSeries = entry?.kind == MediaKind.SERIES
 
+    // What is on this channel right now, so pausing or zapping always answers
+    // "what am I watching?" without leaving the picture.
+    val epg by viewModel.epg.collectAsStateWithLifecycle()
+    var guideNowMs by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(isLiveStream) {
+        if (!isLiveStream) return@LaunchedEffect
+        while (true) {
+            guideNowMs = System.currentTimeMillis()
+            delay(30_000)
+        }
+    }
+    val guideNow = remember(entry, epg, guideNowMs, isLiveStream) {
+        if (isLiveStream && entry != null && !epg.isEmpty) {
+            viewModel.currentProgramme(entry, guideNowMs)
+        } else null
+    }
+    val guideNext = remember(entry, epg, guideNowMs, isLiveStream) {
+        if (isLiveStream && entry != null && !epg.isEmpty) {
+            viewModel.upcomingProgrammes(entry, guideNowMs)
+                .firstOrNull { it.startEpochMs > guideNowMs }
+        } else null
+    }
+
     // Episodes of the series being watched, so the player can move on by itself
     // and offer previous/next without going back to the series page.
     val episodes by viewModel.episodes.collectAsStateWithLifecycle()
@@ -767,6 +790,17 @@ fun PlayerScreen(
                     seekable = seekable,
                     liveBadge = strings.liveBadge,
                     seekBarLabel = strings.seekBarLabel,
+                    guideTitle = guideNow?.title,
+                    guideTimes = guideNow?.let {
+                        "${clockLabel(it.startEpochMs)} – ${clockLabel(it.stopEpochMs)}"
+                    },
+                    guideProgress = guideNow?.progressAt(guideNowMs),
+                    guideNext = guideNext?.let {
+                        strings.nextProgramme.format("${clockLabel(it.startEpochMs)} ${it.title}")
+                    },
+                    guideNotice = if (isLiveStream && guideNow == null) {
+                        strings.noProgrammeInfo
+                    } else null,
                     positionMs = if (scrubbing) scrubValue.toLong() else positionMs,
                     durationMs = durationMs,
                     onScrub = { value ->
@@ -834,7 +868,9 @@ fun PlayerScreen(
             PlayerTopBar(
                 title = entry?.title.orEmpty(),
                 subtitle = when {
-                    !isPlaying && !buffering && !reconnecting -> strings.playerPausedBadge
+                    !isPlaying && !buffering && !reconnecting -> guideNow?.let {
+                        "${strings.playerPausedBadge} · ${it.title}"
+                    } ?: strings.playerPausedBadge
                     resumeNoticeVisible && resumeFromMs > 0L ->
                         strings.playerResumedFrom.format(formatTime(resumeFromMs))
                     seekable -> "${formatTime(positionMs)} / ${formatTime(durationMs)}"
@@ -1204,6 +1240,11 @@ private fun BottomBar(
     seekBarLabel: String,
     positionMs: Long,
     durationMs: Long,
+    guideTitle: String?,
+    guideTimes: String?,
+    guideProgress: Float?,
+    guideNext: String?,
+    guideNotice: String?,
     onScrub: (Float) -> Unit,
     onScrubFinished: () -> Unit,
     modifier: Modifier = Modifier,
@@ -1251,6 +1292,60 @@ private fun BottomBar(
                         fontWeight = FontWeight.Bold,
                     )
                 }
+                if (guideTimes != null) {
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        text = guideTimes,
+                        color = Color.White.copy(alpha = 0.80f),
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                }
+            }
+
+            // The guide travels with the picture: the programme on air, how far
+            // in it is, and what follows, so a pause or a zap never leaves the
+            // viewer guessing what this channel is showing.
+            if (guideTitle != null) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = guideTitle,
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (guideProgress != null) {
+                    Spacer(Modifier.height(6.dp))
+                    LinearProgressIndicator(
+                        progress = { guideProgress.coerceIn(0f, 1f) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(3.dp),
+                        color = Color.White,
+                        trackColor = Color.White.copy(alpha = 0.24f),
+                        drawStopIndicator = {},
+                    )
+                }
+                if (guideNext != null) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = guideNext,
+                        color = Color.White.copy(alpha = 0.72f),
+                        style = MaterialTheme.typography.labelMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            } else if (guideNotice != null) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = guideNotice,
+                    color = Color.White.copy(alpha = 0.66f),
+                    style = MaterialTheme.typography.labelMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
     }

@@ -1,14 +1,9 @@
-La lista ora resta sul dispositivo e le serie ripartono da dove le avevi lasciate.
+I tuoi dati restano al loro posto e la guida TV è sempre sotto gli occhi.
 
-• Pulsante Riprendi nella pagina di ogni serie: indica l'episodio esatto che ti aspetta e lo avvia con un clic
-• I film ripartono dal minuto preciso in cui li avevi interrotti
-• Pulsanti delle stagioni nella pagina di una serie: basta scorrere all'infinito
-• Preferiti e cronologia restano salvati sul dispositivo e sopravvivono a ogni aggiornamento della lista
-• La lista scaricata viene salvata davvero e si riapre in un secondo, invece di essere riscaricata a ogni avvio
-• La fine di un episodio viene annunciata con il conto alla rovescia e il nome del prossimo, con il ritardo che scegli tu
-• Pulsanti selezionabili nel player per cambiare canale o episodio: niente più cambi per sbaglio
-• Risolto: dopo il cambio canale l'immagine restava nera e si sentiva solo l'audio
-• Lo schermo non si spegne più da solo mentre stai guardando
-• Salvataggio di catalogo e guida TV più veloce e leggero
+• Risolto: dopo uno stacco di corrente il TV Box perdeva accessi, lista canali e licenza
+• Codice QR sulla TV: acquisti la licenza dal telefono, senza browser
+• Categorie: elenco completo e scorrevole, ora anche sui canali live
+• In modalità TV la tastiera non si apre più da sola sulla barra di ricerca
+• Nel player live vedi il programma in onda, quanto manca e cosa segue
 
 Grazie per usare NovaStream.

@@ -12,12 +12,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
@@ -37,20 +39,34 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rork.novastream.data.model.MediaKind
 import com.rork.novastream.data.model.SortOption
 import com.rork.novastream.ui.components.EmptyState
+import com.rork.novastream.ui.components.LocalIsTv
 import com.rork.novastream.ui.components.PosterCard
+import com.rork.novastream.ui.components.RequestInitialFocus
+import com.rork.novastream.ui.components.rememberFocusRequester
+import com.rork.novastream.ui.components.tvFocusFrame
 import com.rork.novastream.ui.i18n.LocalStrings
 import com.rork.novastream.ui.i18n.Strings
 import com.rork.novastream.ui.vm.AppViewModel
@@ -151,36 +167,84 @@ fun CatalogScreen(
     }
 
     if (groupSheetOpen) {
-        ModalBottomSheet(onDismissRequest = { groupSheetOpen = false }) {
-            Column(
+        CategorySheet(
+            title = strings.providerCategories,
+            allLabel = strings.allCategories,
+            groups = groups,
+            selectedGroup = query.group,
+            onSelect = { group ->
+                viewModel.applyQuery(kind, query.copy(group = group))
+                groupSheetOpen = false
+            },
+            onDismiss = { groupSheetOpen = false },
+        )
+    }
+}
+
+/**
+ * The provider's category list, shown as a sheet over the current screen.
+ *
+ * Providers ship hundreds of groups, so the list is lazy and scrollable and the
+ * sheet opens at full height: the old fixed column simply ran off the bottom of
+ * the screen and the categories past the fold could not be reached at all.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CategorySheet(
+    title: String,
+    allLabel: String,
+    groups: List<String>,
+    selectedGroup: String?,
+    onSelect: (String?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val strings = LocalStrings.current
+    // Full height from the start: a half-open sheet turns every D-pad press into
+    // a resize instead of a move down the list.
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val firstRow = rememberFocusRequester()
+
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp),
+        ) {
+            Text(title, style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = strings.categoriesCount.format(formatCount(groups.size)),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.height(12.dp))
+            LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp)
-                    .padding(bottom = 28.dp),
+                    // fill = false keeps a short list compact while a long one
+                    // takes the rest of the sheet and scrolls inside it.
+                    .weight(1f, fill = false),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
+                contentPadding = PaddingValues(bottom = 28.dp),
             ) {
-                Text(strings.providerCategories, style = MaterialTheme.typography.titleLarge)
-                Spacer(Modifier.height(4.dp))
-                GroupRow(
-                    label = strings.allCategories,
-                    selected = query.group == null,
-                    onClick = {
-                        viewModel.applyQuery(kind, query.copy(group = null))
-                        groupSheetOpen = false
-                    },
-                )
-                groups.forEach { group ->
+                item("all") {
+                    GroupRow(
+                        label = allLabel,
+                        selected = selectedGroup == null,
+                        onClick = { onSelect(null) },
+                        modifier = Modifier.focusRequester(firstRow),
+                    )
+                }
+                items(groups, key = { it }) { group ->
                     GroupRow(
                         label = group,
-                        selected = query.group == group,
-                        onClick = {
-                            viewModel.applyQuery(kind, query.copy(group = group))
-                            groupSheetOpen = false
-                        },
+                        selected = selectedGroup == group,
+                        onClick = { onSelect(if (selectedGroup == group) null else group) },
                     )
                 }
             }
         }
+        RequestInitialFocus(firstRow, key = groups.size)
     }
 }
 
@@ -194,6 +258,18 @@ fun SearchRow(
     onFilterClick: () -> Unit,
 ) {
     val strings = LocalStrings.current
+    val isTv = LocalIsTv.current
+    val keyboard = LocalSoftwareKeyboardController.current
+    // On a remote the highlight merely passes over this field on its way down
+    // the page. A keyboard that opened by itself would cover the screen and trap
+    // the viewer, so typing begins only when OK is pressed and BACK ends it.
+    var editing by remember { mutableStateOf(false) }
+
+    LaunchedEffect(editing, isTv) {
+        if (!isTv) return@LaunchedEffect
+        if (editing) keyboard?.show() else keyboard?.hide()
+    }
+
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -204,9 +280,44 @@ fun SearchRow(
         TextField(
             value = value,
             onValueChange = onValueChange,
+            // Read-only while it is only highlighted: this is what keeps the
+            // on-screen keyboard shut until the viewer asks for it.
+            readOnly = isTv && !editing,
+            supportingText = if (isTv) {
+                {
+                    Text(
+                        text = if (editing) "" else strings.searchOpenHint,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            } else null,
+            keyboardActions = KeyboardActions(
+                onSearch = {
+                    editing = false
+                    keyboard?.hide()
+                }
+            ),
             modifier = Modifier
                 .weight(1f)
-                .heightIn(min = 64.dp),
+                .heightIn(min = 64.dp)
+                .tvFocusFrame(cornerRadius = 18.dp)
+                .onFocusChanged { state ->
+                    if (!state.isFocused && editing) editing = false
+                }
+                .onPreviewKeyEvent { event ->
+                    if (!isTv || event.type != KeyEventType.KeyDown) {
+                        return@onPreviewKeyEvent false
+                    }
+                    when (event.key) {
+                        Key.DirectionCenter, Key.Enter, Key.NumPadEnter ->
+                            if (editing) false else { editing = true; true }
+
+                        Key.Back -> if (editing) { editing = false; true } else false
+
+                        else -> false
+                    }
+                },
             placeholder = {
                 Text(
                     text = placeholder,
@@ -247,7 +358,9 @@ fun SearchRow(
             shape = RoundedCornerShape(18.dp),
             color = if (filterActive) MaterialTheme.colorScheme.primary
             else MaterialTheme.colorScheme.primaryContainer,
-            modifier = Modifier.size(64.dp),
+            modifier = Modifier
+                .size(64.dp)
+                .tvFocusFrame(cornerRadius = 18.dp),
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Icon(
@@ -363,10 +476,17 @@ private fun ActiveGroupRow(group: String, description: String, onClear: () -> Un
 }
 
 @Composable
-private fun GroupRow(label: String, selected: Boolean, onClick: () -> Unit) {
+private fun GroupRow(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Surface(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .tvFocusFrame(cornerRadius = 12.dp),
         shape = RoundedCornerShape(12.dp),
         color = if (selected) MaterialTheme.colorScheme.primaryContainer
         else MaterialTheme.colorScheme.surface,

@@ -83,6 +83,7 @@ fun LiveScreen(
     }
 
     var guideEntryId by remember { mutableStateOf<String?>(null) }
+    var groupSheetOpen by remember { mutableStateOf(false) }
 
     val total = remember(catalog, settings, unlocked) { viewModel.countOf(MediaKind.LIVE) }
     val entries = remember(catalog, query, settings, unlocked, favorites) {
@@ -100,12 +101,12 @@ fun LiveScreen(
         SearchRow(
             value = query.search,
             placeholder = strings.searchIn.format(formatCount(total), strings.unitChannels),
-            filterActive = query.favoritesOnly,
-            filterDescription = strings.onlyFavorites,
+            filterActive = query.group != null,
+            filterDescription = strings.filterByCategory,
             onValueChange = { viewModel.applyQuery(MediaKind.LIVE, query.copy(search = it)) },
-            onFilterClick = {
-                viewModel.applyQuery(MediaKind.LIVE, query.copy(favoritesOnly = !query.favoritesOnly))
-            },
+            // The filter button opens the provider's channel groups, the same as
+            // on the film and series pages. Favourites stay one chip away below.
+            onFilterClick = { groupSheetOpen = true },
         )
 
         if (groups.isNotEmpty()) {
@@ -181,6 +182,23 @@ fun LiveScreen(
                 }
             }
         }
+    }
+
+    if (groupSheetOpen) {
+        CategorySheet(
+            title = strings.providerCategories,
+            allLabel = strings.allChannels,
+            groups = groups,
+            selectedGroup = query.group,
+            onSelect = { group ->
+                viewModel.applyQuery(
+                    MediaKind.LIVE,
+                    query.copy(group = group, favoritesOnly = false),
+                )
+                groupSheetOpen = false
+            },
+            onDismiss = { groupSheetOpen = false },
+        )
     }
 
     val guideEntry = guideEntryId?.let { viewModel.entryById(it) }
