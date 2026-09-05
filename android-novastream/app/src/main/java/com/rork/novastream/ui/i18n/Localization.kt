@@ -298,7 +298,7 @@ data class ExtraStrings(
     val buyLicenseWhere: String = "Where to buy",
     val buyLicenseFallback: String = "Ask the person or shop that gave you NovaStream for an activation code.",
     val buyLicenseAction: String = "Contact the seller",
-    val appVersionLine: String = "NovaStream 1.2.2",
+    val appVersionLine: String = "NovaStream 1.2.3",
     val licenseRevokedTitle: String = "License revoked",
     val licenseRevokedBody: String = "This license was disabled by the provider. Contact your seller to restore access.",
     val licenseSuspendedTitle: String = "License suspended",
