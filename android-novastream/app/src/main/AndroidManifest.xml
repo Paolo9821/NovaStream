@@ -11,6 +11,10 @@
     <uses-feature
         android:name="android.hardware.touchscreen"
         android:required="false" />
+    <!-- Offered where the system has it; a television simply never reports it. -->
+    <uses-feature
+        android:name="android.software.picture_in_picture"
+        android:required="false" />
 
     <application
         android:name=".NovaStreamApp"
@@ -26,7 +30,9 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode"
+            android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode|screenLayout|density"
+            android:supportsPictureInPicture="true"
+            android:resizeableActivity="true"
             android:theme="@style/Theme.RorkApp">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

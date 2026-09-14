@@ -158,6 +158,16 @@ data class CoreStrings(
     val epgSection: String = "TV guide (XMLTV)",
     val epgSubtitle: String = "Load an XMLTV file to see what is on air on every live channel.",
     val epgUpdateAction: String = "Update the guide",
+
+    val plotTitle: String = "Plot",
+    val loadingDetails: String = "Loading the description\u2026",
+    val noPlotAvailable: String = "Your provider did not send a description for this title.",
+    val readMore: String = "Read more",
+    val readLess: String = "Read less",
+    val castLabel: String = "Cast",
+    val directorLabel: String = "Director",
+    val releaseLabel: String = "Released",
+    val countryLabel: String = "Country",
 )
 
 data class ExtraStrings(
@@ -298,7 +308,7 @@ data class ExtraStrings(
     val buyLicenseWhere: String = "Where to buy",
     val buyLicenseFallback: String = "Ask the person or shop that gave you NovaStream for an activation code.",
     val buyLicenseAction: String = "Contact the seller",
-    val appVersionLine: String = "NovaStream 1.2.4",
+    val appVersionLine: String = "NovaStream 1.2.6",
     val licenseRevokedTitle: String = "License revoked",
     val licenseRevokedBody: String = "This license was disabled by the provider. Contact your seller to restore access.",
     val licenseSuspendedTitle: String = "License suspended",
@@ -335,6 +345,28 @@ data class ExtraStrings(
     val exitBody: String = "You pressed Back on the main menu. Leave the app?",
     val exitStay: String = "Stay in the app",
     val exitConfirm: String = "Close app",
+
+    val catalogRebuildAction: String = "Erase and download again",
+    val catalogRebuildHint: String = "Deletes every channel, film and series saved here and imports the provider list from scratch. Use it when new channels are missing.",
+    val catalogRebuildTitle: String = "Rebuild the whole list?",
+    val catalogRebuildBody: String = "Channels, films and series saved on this device are deleted and downloaded again from your provider. Favourites, history and your licence are untouched.",
+    val catalogRebuildConfirm: String = "Erase and download",
+    val catalogRebuilding: String = "Rebuilding the list\u2026",
+
+    val parentalPinTitle: String = "Enter the PIN",
+    val parentalPinWrong: String = "Wrong PIN.",
+    val parentalUnlockAction: String = "Unlock",
+    val parentalUnlockHint: String = "The PIN hides the blocked categories until the app is closed.",
+    val parentalScopeTitle: String = "Section",
+    val parentalSearchGroups: String = "Search a category",
+    val parentalBlockAll: String = "Block all",
+    val parentalClearAll: String = "Unblock all",
+    val parentalNoGroups: String = "No category in this section.",
+    val parentalBlockedInSection: String = "%s blocked here",
+    val parentalPinRequired: String = "Set a PIN first to protect the categories.",
+
+    val pipAction: String = "Picture-in-picture",
+    val pipUnsupported: String = "This device does not support picture-in-picture.",
 )
 
 /**
@@ -475,6 +507,15 @@ class Strings(
     val epgSection: String get() = core.epgSection
     val epgSubtitle: String get() = core.epgSubtitle
     val epgUpdateAction: String get() = core.epgUpdateAction
+    val plotTitle: String get() = core.plotTitle
+    val loadingDetails: String get() = core.loadingDetails
+    val noPlotAvailable: String get() = core.noPlotAvailable
+    val readMore: String get() = core.readMore
+    val readLess: String get() = core.readLess
+    val castLabel: String get() = core.castLabel
+    val directorLabel: String get() = core.directorLabel
+    val releaseLabel: String get() = core.releaseLabel
+    val countryLabel: String get() = core.countryLabel
     val epgUpdating: String get() = extra.epgUpdating
     val epgLoaded: String get() = extra.epgLoaded
     val epgNever: String get() = extra.epgNever
@@ -644,6 +685,25 @@ class Strings(
     val exitBody: String get() = extra.exitBody
     val exitStay: String get() = extra.exitStay
     val exitConfirm: String get() = extra.exitConfirm
+    val catalogRebuildAction: String get() = extra.catalogRebuildAction
+    val catalogRebuildHint: String get() = extra.catalogRebuildHint
+    val catalogRebuildTitle: String get() = extra.catalogRebuildTitle
+    val catalogRebuildBody: String get() = extra.catalogRebuildBody
+    val catalogRebuildConfirm: String get() = extra.catalogRebuildConfirm
+    val catalogRebuilding: String get() = extra.catalogRebuilding
+    val parentalPinTitle: String get() = extra.parentalPinTitle
+    val parentalPinWrong: String get() = extra.parentalPinWrong
+    val parentalUnlockAction: String get() = extra.parentalUnlockAction
+    val parentalUnlockHint: String get() = extra.parentalUnlockHint
+    val parentalScopeTitle: String get() = extra.parentalScopeTitle
+    val parentalSearchGroups: String get() = extra.parentalSearchGroups
+    val parentalBlockAll: String get() = extra.parentalBlockAll
+    val parentalClearAll: String get() = extra.parentalClearAll
+    val parentalNoGroups: String get() = extra.parentalNoGroups
+    val parentalBlockedInSection: String get() = extra.parentalBlockedInSection
+    val parentalPinRequired: String get() = extra.parentalPinRequired
+    val pipAction: String get() = extra.pipAction
+    val pipUnsupported: String get() = extra.pipUnsupported
 }
 
 private val English = Strings()
@@ -944,6 +1004,25 @@ private val Italian = Strings(
         exitBody = "Hai premuto Indietro nel menu principale. Vuoi uscire dall'app?",
         exitStay = "Resta nell'app",
         exitConfirm = "Chiudi l'app",
+        catalogRebuildAction = "Cancella e riscarica tutto",
+        catalogRebuildHint = "Elimina canali, film e serie salvati qui e riscarica la lista del provider da zero. Usalo quando mancano i canali nuovi.",
+        catalogRebuildTitle = "Ricostruire tutta la lista?",
+        catalogRebuildBody = "Canali, film e serie salvati su questo dispositivo vengono eliminati e riscaricati dal tuo provider. Preferiti, cronologia e licenza restano intatti.",
+        catalogRebuildConfirm = "Cancella e riscarica",
+        catalogRebuilding = "Ricostruzione della lista\u2026",
+        parentalPinTitle = "Inserisci il PIN",
+        parentalPinWrong = "PIN errato.",
+        parentalUnlockAction = "Sblocca",
+        parentalUnlockHint = "Il PIN nasconde le categorie bloccate finch\u00e9 l'app resta aperta.",
+        parentalScopeTitle = "Sezione",
+        parentalSearchGroups = "Cerca una categoria",
+        parentalBlockAll = "Blocca tutte",
+        parentalClearAll = "Sblocca tutte",
+        parentalNoGroups = "Nessuna categoria in questa sezione.",
+        parentalBlockedInSection = "%s bloccate qui",
+        parentalPinRequired = "Imposta prima un PIN per proteggere le categorie.",
+        pipAction = "Picture-in-picture",
+        pipUnsupported = "Questo dispositivo non supporta il picture-in-picture.",
     ),
 )
 
@@ -1235,6 +1314,25 @@ private val Spanish = Strings(
         exitBody = "Has pulsado Atrás en el menú principal. ¿Quieres salir de la app?",
         exitStay = "Seguir en la app",
         exitConfirm = "Cerrar la app",
+        catalogRebuildAction = "Borrar y descargar de nuevo",
+        catalogRebuildHint = "Elimina los canales, pel\u00edculas y series guardados aqu\u00ed e importa la lista del proveedor desde cero. \u00dasalo cuando falten canales nuevos.",
+        catalogRebuildTitle = "\u00bfReconstruir toda la lista?",
+        catalogRebuildBody = "Los canales, pel\u00edculas y series guardados en este dispositivo se borran y se descargan otra vez de tu proveedor. Favoritos, historial y licencia no se tocan.",
+        catalogRebuildConfirm = "Borrar y descargar",
+        catalogRebuilding = "Reconstruyendo la lista\u2026",
+        parentalPinTitle = "Introduce el PIN",
+        parentalPinWrong = "PIN incorrecto.",
+        parentalUnlockAction = "Desbloquear",
+        parentalUnlockHint = "El PIN oculta las categor\u00edas bloqueadas mientras la app est\u00e9 abierta.",
+        parentalScopeTitle = "Secci\u00f3n",
+        parentalSearchGroups = "Buscar una categor\u00eda",
+        parentalBlockAll = "Bloquear todas",
+        parentalClearAll = "Desbloquear todas",
+        parentalNoGroups = "No hay categor\u00edas en esta secci\u00f3n.",
+        parentalBlockedInSection = "%s bloqueadas aqu\u00ed",
+        parentalPinRequired = "Define primero un PIN para proteger las categor\u00edas.",
+        pipAction = "Imagen en imagen",
+        pipUnsupported = "Este dispositivo no admite imagen en imagen.",
     ),
 )
 
@@ -1526,6 +1624,25 @@ private val French = Strings(
         exitBody = "Vous avez appuyé sur Retour dans le menu principal. Quitter l'application ?",
         exitStay = "Rester dans l'application",
         exitConfirm = "Fermer l'application",
+        catalogRebuildAction = "Effacer et retélécharger",
+        catalogRebuildHint = "Supprime les cha\u00eenes, films et s\u00e9ries enregistr\u00e9s ici et réimporte la liste du fournisseur de z\u00e9ro. \u00c0 utiliser quand des cha\u00eenes r\u00e9centes manquent.",
+        catalogRebuildTitle = "Reconstruire toute la liste\u00a0?",
+        catalogRebuildBody = "Les cha\u00eenes, films et s\u00e9ries enregistr\u00e9s sur cet appareil sont supprim\u00e9s puis t\u00e9l\u00e9charg\u00e9s \u00e0 nouveau. Favoris, historique et licence restent intacts.",
+        catalogRebuildConfirm = "Effacer et t\u00e9l\u00e9charger",
+        catalogRebuilding = "Reconstruction de la liste\u2026",
+        parentalPinTitle = "Saisissez le code PIN",
+        parentalPinWrong = "Code PIN incorrect.",
+        parentalUnlockAction = "D\u00e9verrouiller",
+        parentalUnlockHint = "Le code masque les cat\u00e9gories bloqu\u00e9es tant que l'application reste ouverte.",
+        parentalScopeTitle = "Section",
+        parentalSearchGroups = "Rechercher une cat\u00e9gorie",
+        parentalBlockAll = "Tout bloquer",
+        parentalClearAll = "Tout d\u00e9bloquer",
+        parentalNoGroups = "Aucune cat\u00e9gorie dans cette section.",
+        parentalBlockedInSection = "%s bloqu\u00e9es ici",
+        parentalPinRequired = "D\u00e9finissez d'abord un code PIN pour prot\u00e9ger les cat\u00e9gories.",
+        pipAction = "Image dans l'image",
+        pipUnsupported = "Cet appareil ne prend pas en charge l'image dans l'image.",
     ),
 )
 
@@ -1817,6 +1934,25 @@ private val German = Strings(
         exitBody = "Sie haben im Hauptmenü Zurück gedrückt. Die App verlassen?",
         exitStay = "In der App bleiben",
         exitConfirm = "App schließen",
+        catalogRebuildAction = "Löschen und neu laden",
+        catalogRebuildHint = "L\u00f6scht alle hier gespeicherten Sender, Filme und Serien und importiert die Anbieterliste komplett neu. Ideal, wenn neue Sender fehlen.",
+        catalogRebuildTitle = "Gesamte Liste neu aufbauen?",
+        catalogRebuildBody = "Sender, Filme und Serien auf diesem Ger\u00e4t werden gel\u00f6scht und erneut vom Anbieter geladen. Favoriten, Verlauf und Lizenz bleiben erhalten.",
+        catalogRebuildConfirm = "L\u00f6schen und laden",
+        catalogRebuilding = "Liste wird neu aufgebaut\u2026",
+        parentalPinTitle = "PIN eingeben",
+        parentalPinWrong = "Falsche PIN.",
+        parentalUnlockAction = "Entsperren",
+        parentalUnlockHint = "Die PIN verbirgt gesperrte Kategorien, solange die App ge\u00f6ffnet ist.",
+        parentalScopeTitle = "Bereich",
+        parentalSearchGroups = "Kategorie suchen",
+        parentalBlockAll = "Alle sperren",
+        parentalClearAll = "Alle freigeben",
+        parentalNoGroups = "Keine Kategorie in diesem Bereich.",
+        parentalBlockedInSection = "%s hier gesperrt",
+        parentalPinRequired = "Lege zuerst eine PIN fest, um Kategorien zu sch\u00fctzen.",
+        pipAction = "Bild-in-Bild",
+        pipUnsupported = "Dieses Ger\u00e4t unterst\u00fctzt Bild-in-Bild nicht.",
     ),
 )
 
@@ -2108,6 +2244,25 @@ private val Portuguese = Strings(
         exitBody = "Carregou em Voltar no menu principal. Quer sair da app?",
         exitStay = "Ficar na app",
         exitConfirm = "Fechar a app",
+        catalogRebuildAction = "Apagar e transferir de novo",
+        catalogRebuildHint = "Apaga os canais, filmes e s\u00e9ries guardados aqui e importa a lista do fornecedor de raiz. Use quando faltarem canais novos.",
+        catalogRebuildTitle = "Reconstruir toda a lista?",
+        catalogRebuildBody = "Os canais, filmes e s\u00e9ries guardados neste dispositivo s\u00e3o apagados e transferidos de novo do seu fornecedor. Favoritos, hist\u00f3rico e licen\u00e7a ficam intactos.",
+        catalogRebuildConfirm = "Apagar e transferir",
+        catalogRebuilding = "A reconstruir a lista\u2026",
+        parentalPinTitle = "Introduza o PIN",
+        parentalPinWrong = "PIN incorreto.",
+        parentalUnlockAction = "Desbloquear",
+        parentalUnlockHint = "O PIN esconde as categorias bloqueadas enquanto a app estiver aberta.",
+        parentalScopeTitle = "Sec\u00e7\u00e3o",
+        parentalSearchGroups = "Procurar uma categoria",
+        parentalBlockAll = "Bloquear todas",
+        parentalClearAll = "Desbloquear todas",
+        parentalNoGroups = "Nenhuma categoria nesta sec\u00e7\u00e3o.",
+        parentalBlockedInSection = "%s bloqueadas aqui",
+        parentalPinRequired = "Defina primeiro um PIN para proteger as categorias.",
+        pipAction = "Imagem na imagem",
+        pipUnsupported = "Este dispositivo n\u00e3o suporta imagem na imagem.",
     ),
 )
 
@@ -2399,6 +2554,25 @@ private val Romanian = Strings(
         exitBody = "Ai apăsat Înapoi în meniul principal. Ieși din aplicație?",
         exitStay = "Rămân în aplicație",
         exitConfirm = "Închide aplicația",
+        catalogRebuildAction = "Șterge și descarcă din nou",
+        catalogRebuildHint = "\u0218terge canalele, filmele \u0219i serialele salvate aici \u0219i importă lista furnizorului de la zero. Folose\u0219te-o c\u00e2nd lipsesc canale noi.",
+        catalogRebuildTitle = "Reconstruie\u0219ti toat\u0103 lista?",
+        catalogRebuildBody = "Canalele, filmele \u0219i serialele salvate pe acest dispozitiv sunt \u0219terse \u0219i desc\u0103rcate din nou de la furnizor. Favoritele, istoricul \u0219i licen\u021ba r\u0103m\u00e2n neatinse.",
+        catalogRebuildConfirm = "\u0218terge \u0219i descarc\u0103",
+        catalogRebuilding = "Se reconstruie\u0219te lista\u2026",
+        parentalPinTitle = "Introdu PIN-ul",
+        parentalPinWrong = "PIN gre\u0219it.",
+        parentalUnlockAction = "Deblocheaz\u0103",
+        parentalUnlockHint = "PIN-ul ascunde categoriile blocate c\u00e2t timp aplica\u021bia r\u0103m\u00e2ne deschis\u0103.",
+        parentalScopeTitle = "Sec\u021biune",
+        parentalSearchGroups = "Caut\u0103 o categorie",
+        parentalBlockAll = "Blocheaz\u0103 tot",
+        parentalClearAll = "Deblocheaz\u0103 tot",
+        parentalNoGroups = "Nicio categorie \u00een aceast\u0103 sec\u021biune.",
+        parentalBlockedInSection = "%s blocate aici",
+        parentalPinRequired = "Seteaz\u0103 mai \u00eent\u00e2i un PIN pentru a proteja categoriile.",
+        pipAction = "Imagine \u00een imagine",
+        pipUnsupported = "Acest dispozitiv nu accept\u0103 imagine \u00een imagine.",
     ),
 )
 
@@ -2690,6 +2864,25 @@ private val Turkish = Strings(
         exitBody = "Ana menüde Geri tuşuna bastınız. Uygulamadan çıkılsın mı?",
         exitStay = "Uygulamada kal",
         exitConfirm = "Uygulamayı kapat",
+        catalogRebuildAction = "Sil ve yeniden indir",
+        catalogRebuildHint = "Burada kay\u0131tl\u0131 t\u00fcm kanal, film ve dizileri siler ve sa\u011flay\u0131c\u0131 listesini s\u0131f\u0131rdan indirir. Yeni kanallar g\u00f6r\u00fcnm\u00fcyorsa kullan\u0131n.",
+        catalogRebuildTitle = "T\u00fcm liste yeniden olu\u015fturulsun mu?",
+        catalogRebuildBody = "Bu cihazdaki kanal, film ve diziler silinir ve sa\u011flay\u0131c\u0131n\u0131zdan yeniden indirilir. Favoriler, ge\u00e7mi\u015f ve lisans\u0131n\u0131z etkilenmez.",
+        catalogRebuildConfirm = "Sil ve indir",
+        catalogRebuilding = "Liste yeniden olu\u015fturuluyor\u2026",
+        parentalPinTitle = "PIN girin",
+        parentalPinWrong = "Hatal\u0131 PIN.",
+        parentalUnlockAction = "Kilidi a\u00e7",
+        parentalUnlockHint = "PIN, uygulama a\u00e7\u0131k kald\u0131\u011f\u0131 s\u00fcrece engellenen kategorileri gizler.",
+        parentalScopeTitle = "B\u00f6l\u00fcm",
+        parentalSearchGroups = "Kategori ara",
+        parentalBlockAll = "T\u00fcm\u00fcn\u00fc engelle",
+        parentalClearAll = "T\u00fcm engelleri kald\u0131r",
+        parentalNoGroups = "Bu b\u00f6l\u00fcmde kategori yok.",
+        parentalBlockedInSection = "%s burada engellendi",
+        parentalPinRequired = "Kategorileri korumak i\u00e7in \u00f6nce bir PIN belirleyin.",
+        pipAction = "Resim i\u00e7inde resim",
+        pipUnsupported = "Bu cihaz resim i\u00e7inde resim \u00f6zelli\u011fini desteklemiyor.",
     ),
 )
 

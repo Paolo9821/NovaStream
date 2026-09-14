@@ -1,6 +1,7 @@
 package com.rork.novastream.data.local
 
 import android.content.Context
+import com.rork.novastream.data.model.MediaKind
 import com.rork.novastream.ui.i18n.Language
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -46,7 +47,12 @@ data class AppSettings(
     val onboardingDone: Boolean = false,
     val deviceProfile: DeviceProfile = DeviceProfile.PHONE,
     val language: Language = Language.ENGLISH,
-    val themeMode: ThemeMode = ThemeMode.SYSTEM,
+    /**
+     * Dark by default on every device: this is a television app watched in a
+     * dark room, and a white canvas lights up the whole lounge. Anyone who
+     * prefers otherwise switches it in Settings.
+     */
+    val themeMode: ThemeMode = ThemeMode.DARK,
     val dnsPreset: DnsPreset = DnsPreset.SYSTEM,
     val customDnsPrimary: String = "",
     val customDnsDohUrl: String = "",
@@ -59,8 +65,32 @@ data class AppSettings(
     val autoUpdateGuide: Boolean = true,
     val parentalEnabled: Boolean = false,
     val pinHash: String = "",
+    /**
+     * Categories hidden behind the PIN. Entries are `KIND|group` so the same
+     * group name can be blocked in Live and left open in Films; plain names
+     * written by older versions still block that group everywhere.
+     */
     val blockedGroups: Set<String> = emptySet(),
-)
+) {
+    /** True when [group] of [kind] is one of the protected categories. */
+    fun isGroupBlocked(kind: MediaKind, group: String): Boolean =
+        blockedGroups.contains(blockedGroupKey(kind, group)) || blockedGroups.contains(group)
+
+    /** Blocked categories of one section, as plain group names. */
+    fun blockedGroupsOf(kind: MediaKind): Set<String> {
+        val prefix = "${kind.name}|"
+        return blockedGroups.mapNotNullTo(mutableSetOf()) { entry ->
+            when {
+                entry.startsWith(prefix) -> entry.removePrefix(prefix)
+                !entry.contains('|') -> entry
+                else -> null
+            }
+        }
+    }
+}
+
+/** Storage key of a category inside one section. */
+fun blockedGroupKey(kind: MediaKind, group: String): String = "${kind.name}|$group"
 
 /** Non-sensitive preferences. The parental PIN is only ever stored as a salted hash. */
 class SettingsStore(context: Context) {
@@ -78,8 +108,8 @@ class SettingsStore(context: Context) {
         language = Language.fromCode(
             prefs.getString(KEY_LANGUAGE, null) ?: Locale.getDefault().language
         ),
-        themeMode = runCatching { ThemeMode.valueOf(prefs.getString(KEY_THEME, null) ?: "SYSTEM") }
-            .getOrDefault(ThemeMode.SYSTEM),
+        themeMode = runCatching { ThemeMode.valueOf(prefs.getString(KEY_THEME, null) ?: "DARK") }
+            .getOrDefault(ThemeMode.DARK),
         dnsPreset = runCatching { DnsPreset.valueOf(prefs.getString(KEY_DNS, null) ?: "SYSTEM") }
             .getOrDefault(DnsPreset.SYSTEM),
         customDnsPrimary = prefs.getString(KEY_DNS_CUSTOM_IP, "").orEmpty(),
@@ -136,6 +166,36 @@ class SettingsStore(context: Context) {
 
     fun setPin(pin: String) {
         update { it.copy(pinHash = hashPin(pin), parentalEnabled = true) }
+    }
+
+    /** Adds or removes one category of one section from the protected list. */
+    fun toggleBlockedGroup(kind: MediaKind, group: String) {
+        update { current ->
+            val key = blockedGroupKey(kind, group)
+            val updated = current.blockedGroups.toMutableSet()
+            // A legacy plain entry blocks the group everywhere: turning it off
+            // here has to clear that form too, or the row would never unblock.
+            val removed = updated.remove(key) or updated.remove(group)
+            if (!removed) updated.add(key)
+            current.copy(blockedGroups = updated)
+        }
+    }
+
+    /** Blocks or clears every category of one section in one go. */
+    fun setBlockedGroups(kind: MediaKind, groups: Collection<String>, blocked: Boolean) {
+        update { current ->
+            val updated = current.blockedGroups.toMutableSet()
+            groups.forEach { group ->
+                val key = blockedGroupKey(kind, group)
+                if (blocked) {
+                    updated.add(key)
+                } else {
+                    updated.remove(key)
+                    updated.remove(group)
+                }
+            }
+            current.copy(blockedGroups = updated)
+        }
     }
 
     fun clearParental() {

@@ -1,9 +1,10 @@
-I tuoi dati restano al loro posto e la guida TV è sempre sotto gli occhi.
+Trame dei film, controllo genitori per categoria e video in finestrella.
 
-• Risolto: dopo uno stacco di corrente il TV Box perdeva accessi, lista canali e licenza
-• Codice QR sulla TV: acquisti la licenza dal telefono, senza browser
-• Categorie: elenco completo e scorrevole, ora anche sui canali live
-• In modalità TV la tastiera non si apre più da sola sulla barra di ricerca
-• Nel player live vedi il programma in onda, quanto manca e cosa segue
+• Film e serie: trama, generi, cast, regia, durata e voto nella scheda
+• Controllo genitori: scegli con il PIN le categorie da nascondere in Live, Film e Serie
+• Picture-in-picture: continui a guardare mentre usi un'altra app
+• Nuovo tasto "Cancella e riscarica": recupera i canali nuovi del provider
+• Risolto: la finestra delle categorie Live si apriva vuota e le frecce non rispondevano
+• Tema scuro predefinito e home più colorata
 
 Grazie per usare NovaStream.

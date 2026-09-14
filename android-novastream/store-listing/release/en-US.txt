@@ -1,9 +1,10 @@
-Your data stays where you put it, and the TV guide is always in sight.
+Film plots, parental control by category and video in a small window.
 
-• Fixed: after a power cut the TV box lost its login, channel list and licence
-• QR code on TV: buy your licence from your phone, no browser needed
-• Categories: the full list now scrolls, and live channels have it too
-• On TV the keyboard no longer opens by itself on the search bar
-• The live player shows what is on air, how far in it is and what follows
+• Movies and series: plot, genres, cast, director, running time and rating
+• Parental control: pick with a PIN which categories to hide in Live, Movies, Series
+• Picture-in-picture: keep watching while you use another app
+• New "Erase and download again" button: brings in your provider's new channels
+• Fixed: the Live category sheet opened empty and the remote arrows did not respond
+• Dark theme by default and a more colourful home screen
 
 Thanks for using NovaStream.

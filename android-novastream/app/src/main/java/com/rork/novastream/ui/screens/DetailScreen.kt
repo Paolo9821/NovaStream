@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
@@ -43,8 +44,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.foundation.clickable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -53,6 +56,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil3.compose.AsyncImage
 import com.rork.novastream.data.model.Episode
+import com.rork.novastream.data.model.MediaDetails
 import com.rork.novastream.data.model.MediaEntry
 import com.rork.novastream.data.model.MediaKind
 import com.rork.novastream.data.model.Programme
@@ -89,6 +93,8 @@ fun DetailScreen(
     val favorites by viewModel.favorites.collectAsStateWithLifecycle()
     val epg by viewModel.epg.collectAsStateWithLifecycle()
     val history by viewModel.progress.collectAsStateWithLifecycle()
+    val details by viewModel.details.collectAsStateWithLifecycle()
+    val detailsLoading by viewModel.detailsLoading.collectAsStateWithLifecycle()
 
     val entry = remember(catalog, entryId) { viewModel.entryById(entryId) }
     val related = remember(catalog, entryId) { entry?.let { viewModel.related(it) }.orEmpty() }
@@ -100,8 +106,16 @@ fun DetailScreen(
     }
 
     LaunchedEffect(entryId) {
-        entry?.let { if (it.kind == MediaKind.SERIES) viewModel.loadEpisodes(it) }
+        entry?.let {
+            if (it.kind == MediaKind.SERIES) viewModel.loadEpisodes(it)
+            // Listings carry only a title and a poster: the plot, the genres and
+            // the cast live behind the provider's detail endpoint.
+            viewModel.loadDetails(it)
+        }
     }
+
+    /** Only the description of the title on screen, never a leftover one. */
+    val entryDetails = details?.takeIf { it.entryId == entryId }
 
     // Providers hand over every episode of every season in one flat list. Split
     // it by season so a long-running series is not an endless scroll.
@@ -185,26 +199,53 @@ fun DetailScreen(
                 bottom = padding.calculateBottomPadding() + 32.dp,
             ),
         ) {
-            item("cover") { CoverImage(entry) }
+            item("cover") {
+                CoverImage(entry, backdropUrl = entryDetails?.backdropUrl)
+            }
 
             item("meta") {
+                val genres = remember(entry.genres, entryDetails) {
+                    (entryDetails?.genres.orEmpty() + entry.genres).distinct()
+                }
+                val plot = entryDetails?.plot?.takeIf { it.isNotBlank() } ?: entry.plot
+
                 Column(Modifier.padding(horizontal = 20.dp)) {
                     Spacer(Modifier.height(18.dp))
                     Text(text = entry.title, style = MaterialTheme.typography.headlineMedium)
                     Spacer(Modifier.height(6.dp))
-                    Text(
-                        text = listOfNotNull(
-                            entry.year?.toString(),
-                            entry.quality,
-                            entry.group,
-                        ).joinToString("  •  "),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    if (entry.genres.isNotEmpty()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        entryDetails?.rating?.let { rating ->
+                            Icon(
+                                imageVector = Icons.Rounded.Star,
+                                contentDescription = null,
+                                tint = LocalNovaAccents.current.privacy,
+                                modifier = Modifier.size(16.dp),
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Text(
+                                text = rating,
+                                style = MaterialTheme.typography.titleSmall,
+                                color = LocalNovaAccents.current.privacy,
+                            )
+                            Spacer(Modifier.width(10.dp))
+                        }
+                        Text(
+                            text = listOfNotNull(
+                                entry.year?.toString(),
+                                entryDetails?.durationLabel,
+                                entry.quality,
+                                entry.group,
+                            ).joinToString("  •  "),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    if (genres.isNotEmpty()) {
                         Spacer(Modifier.height(12.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            entry.genres.take(3).forEach { genre ->
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(genres.take(6), key = { it }) { genre ->
                                 AssistChip(
                                     onClick = {},
                                     label = { Text(genre) },
@@ -217,14 +258,41 @@ fun DetailScreen(
                             }
                         }
                     }
-                    if (!entry.plot.isNullOrBlank()) {
-                        Spacer(Modifier.height(14.dp))
+
+                    // The whole reason someone opens a film page: what is it about.
+                    if (!plot.isNullOrBlank()) {
+                        Spacer(Modifier.height(16.dp))
                         Text(
-                            text = entry.plot,
-                            style = MaterialTheme.typography.bodyLarge,
+                            text = strings.plotTitle,
+                            style = MaterialTheme.typography.titleSmall,
+                            color = accentFor(entry.kind),
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        ExpandablePlot(text = plot, strings = strings)
+                    } else if (detailsLoading && entry.kind != MediaKind.LIVE) {
+                        Spacer(Modifier.height(16.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(15.dp),
+                                strokeWidth = 2.dp,
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Text(
+                                text = strings.loadingDetails,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    } else if (entry.kind != MediaKind.LIVE) {
+                        Spacer(Modifier.height(16.dp))
+                        Text(
+                            text = strings.noPlotAvailable,
+                            style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
+
+                    entryDetails?.let { info -> CreditsBlock(details = info, strings = strings) }
                 }
             }
 
@@ -522,8 +590,76 @@ private fun SeasonPicker(
     }
 }
 
+/**
+ * Plot text that opens up on demand. Providers ship synopses of very different
+ * lengths, so a long one is cut to four lines with a "read more" rather than
+ * pushing the play button off the screen.
+ */
 @Composable
-private fun CoverImage(entry: MediaEntry) {
+private fun ExpandablePlot(text: String, strings: Strings, modifier: Modifier = Modifier) {
+    var expanded by remember(text) { mutableStateOf(false) }
+    var overflows by remember(text) { mutableStateOf(false) }
+
+    Column(modifier = modifier) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = if (expanded) Int.MAX_VALUE else 4,
+            overflow = TextOverflow.Ellipsis,
+            onTextLayout = { result -> if (!expanded) overflows = result.hasVisualOverflow },
+        )
+        if (overflows) {
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = if (expanded) strings.readLess else strings.readMore,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { expanded = !expanded }
+                    .tvFocusFrame(cornerRadius = 8.dp)
+                    .padding(vertical = 4.dp, horizontal = 2.dp),
+            )
+        }
+    }
+}
+
+/** Cast, director and origin, shown only for the fields the provider filled in. */
+@Composable
+private fun CreditsBlock(details: MediaDetails, strings: Strings, modifier: Modifier = Modifier) {
+    val rows = listOfNotNull(
+        details.cast.takeIf { it.isNotEmpty() }?.let { strings.castLabel to it.joinToString(", ") },
+        details.director?.takeIf { it.isNotBlank() }?.let { strings.directorLabel to it },
+        details.releaseDate?.takeIf { it.isNotBlank() }?.let { strings.releaseLabel to it },
+        details.country?.takeIf { it.isNotBlank() }?.let { strings.countryLabel to it },
+    )
+    if (rows.isEmpty()) return
+
+    Column(modifier = modifier) {
+        Spacer(Modifier.height(16.dp))
+        rows.forEach { (label, value) ->
+            Row(modifier = Modifier.padding(bottom = 6.dp), verticalAlignment = Alignment.Top) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.width(96.dp),
+                )
+                Text(
+                    text = value,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CoverImage(entry: MediaEntry, backdropUrl: String? = null) {
+    val artwork = backdropUrl?.takeIf { it.isNotBlank() } ?: entry.logoUrl
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -531,7 +667,7 @@ private fun CoverImage(entry: MediaEntry) {
             .background(containerFor(entry.kind)),
         contentAlignment = Alignment.Center,
     ) {
-        if (entry.logoUrl.isNullOrBlank()) {
+        if (artwork.isNullOrBlank()) {
             Icon(
                 imageVector = iconFor(entry.kind),
                 contentDescription = null,
@@ -540,7 +676,7 @@ private fun CoverImage(entry: MediaEntry) {
             )
         } else {
             AsyncImage(
-                model = entry.logoUrl,
+                model = artwork,
                 contentDescription = entry.title,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop,

@@ -145,6 +145,22 @@ const it = {
   "support.done.again": "Invia un'altra richiesta",
   "support.note":
     "Prima di scriverci, prova a chiudere e riaprire l'app: nella maggior parte dei casi la licenza si sblocca da sola.",
+  "support.topic.deletion": "Cancellazione dei miei dati",
+  "support.deletion.title": "Cancellazione dei dati",
+  "support.deletion.body":
+    "Puoi chiedere la cancellazione di tutto ci\u00f2 che conserviamo sul tuo conto: licenza, ordini, email e richieste di assistenza. La elaboriamo entro 30 giorni e ti confermiamo via email.",
+  "support.deletion.cta": "Richiedi la cancellazione dei dati",
+  "support.deletion.warning":
+    "La cancellazione \u00e8 definitiva: la licenza legata a questo dispositivo viene disattivata e non pu\u00f2 essere recuperata, nemmeno se l'hai pagata.",
+  "support.deletion.confirm": "Ho capito: voglio cancellare i miei dati e disattivare la licenza.",
+  "support.deletion.messagePlaceholder":
+    "Facoltativo: indicaci altre email o altri dispositivi da includere nella cancellazione.",
+  "support.deletion.send": "Invia la richiesta di cancellazione",
+  "support.deletion.errConfirm": "Spunta la conferma per procedere.",
+  "support.deletion.doneTitle": "Richiesta di cancellazione registrata",
+  "support.deletion.doneBody":
+    "La elaboriamo entro 30 giorni e ti scriviamo a questo indirizzo quando i dati sono stati eliminati.",
+  "support.deletion.back": "Torna al modulo di assistenza",
   "legal.terms.title": "Termini di servizio",
   "legal.privacy.title": "Informativa sulla privacy",
   "legal.updated": "Ultimo aggiornamento: {date}",
@@ -274,6 +290,22 @@ const en: Dictionary = {
   "support.done.again": "Send another request",
   "support.note":
     "Before writing, try closing and reopening the app: most of the time the licence unlocks by itself.",
+  "support.topic.deletion": "Delete my data",
+  "support.deletion.title": "Data deletion",
+  "support.deletion.body":
+    "You can ask us to delete everything we hold about you: licence, orders, email address and support requests. We process it within 30 days and confirm by email.",
+  "support.deletion.cta": "Request deletion of my data",
+  "support.deletion.warning":
+    "Deletion is permanent: the licence bound to this device is switched off and cannot be recovered, even if you paid for it.",
+  "support.deletion.confirm": "I understand: delete my data and deactivate my licence.",
+  "support.deletion.messagePlaceholder":
+    "Optional: tell us about other email addresses or devices to include in the deletion.",
+  "support.deletion.send": "Send the deletion request",
+  "support.deletion.errConfirm": "Tick the confirmation to continue.",
+  "support.deletion.doneTitle": "Deletion request logged",
+  "support.deletion.doneBody":
+    "We process it within 30 days and write to this address once your data has been erased.",
+  "support.deletion.back": "Back to the support form",
   "legal.terms.title": "Terms of Service",
   "legal.privacy.title": "Privacy Policy",
   "legal.updated": "Last updated: {date}",
@@ -400,6 +432,22 @@ const es: Dictionary = {
   "support.done.again": "Enviar otra solicitud",
   "support.note":
     "Antes de escribir, prueba a cerrar y abrir la app: casi siempre la licencia se desbloquea sola.",
+  "support.topic.deletion": "Eliminar mis datos",
+  "support.deletion.title": "Eliminación de datos",
+  "support.deletion.body":
+    "Puedes pedirnos que borremos todo lo que guardamos sobre ti: licencia, pedidos, correo y solicitudes de soporte. Lo tramitamos en un plazo de 30 días y te lo confirmamos por email.",
+  "support.deletion.cta": "Solicitar la eliminación de mis datos",
+  "support.deletion.warning":
+    "La eliminación es definitiva: la licencia vinculada a este dispositivo se desactiva y no se puede recuperar, aunque la hayas pagado.",
+  "support.deletion.confirm": "Lo entiendo: borra mis datos y desactiva mi licencia.",
+  "support.deletion.messagePlaceholder":
+    "Opcional: indícanos otros correos o dispositivos que debamos incluir en la eliminación.",
+  "support.deletion.send": "Enviar la solicitud de eliminación",
+  "support.deletion.errConfirm": "Marca la confirmación para continuar.",
+  "support.deletion.doneTitle": "Solicitud de eliminación registrada",
+  "support.deletion.doneBody":
+    "La tramitamos en un plazo de 30 días y te escribimos a esta dirección cuando tus datos se hayan borrado.",
+  "support.deletion.back": "Volver al formulario de soporte",
   "legal.terms.title": "Términos del servicio",
   "legal.privacy.title": "Política de privacidad",
   "legal.updated": "Última actualización: {date}",
@@ -526,6 +574,22 @@ const fr: Dictionary = {
   "support.done.again": "Envoyer une autre demande",
   "support.note":
     "Avant d'écrire, essayez de fermer puis de rouvrir l'application : la licence se débloque presque toujours d'elle-même.",
+  "support.topic.deletion": "Supprimer mes données",
+  "support.deletion.title": "Suppression des données",
+  "support.deletion.body":
+    "Vous pouvez demander la suppression de tout ce que nous conservons à votre sujet : licence, commandes, adresse e-mail et demandes d'assistance. Nous traitons la demande sous 30 jours et confirmons par e-mail.",
+  "support.deletion.cta": "Demander la suppression de mes données",
+  "support.deletion.warning":
+    "La suppression est définitive : la licence liée à cet appareil est désactivée et ne peut pas être récupérée, même si vous l'avez payée.",
+  "support.deletion.confirm": "J'ai compris : supprimez mes données et désactivez ma licence.",
+  "support.deletion.messagePlaceholder":
+    "Facultatif : indiquez d'autres adresses e-mail ou appareils à inclure dans la suppression.",
+  "support.deletion.send": "Envoyer la demande de suppression",
+  "support.deletion.errConfirm": "Cochez la confirmation pour continuer.",
+  "support.deletion.doneTitle": "Demande de suppression enregistrée",
+  "support.deletion.doneBody":
+    "Nous la traitons sous 30 jours et vous écrivons à cette adresse une fois vos données effacées.",
+  "support.deletion.back": "Retour au formulaire d'assistance",
   "legal.terms.title": "Conditions de service",
   "legal.privacy.title": "Politique de confidentialité",
   "legal.updated": "Dernière mise à jour : {date}",
@@ -652,6 +716,22 @@ const de: Dictionary = {
   "support.done.again": "Weitere Anfrage senden",
   "support.note":
     "Schließen und öffnen Sie die App vorher einmal komplett: Meist entsperrt sich die Lizenz von selbst.",
+  "support.topic.deletion": "Meine Daten löschen",
+  "support.deletion.title": "Datenlöschung",
+  "support.deletion.body":
+    "Sie können die Löschung aller Daten verlangen, die wir zu Ihnen speichern: Lizenz, Bestellungen, E-Mail-Adresse und Supportanfragen. Wir erledigen das innerhalb von 30 Tagen und bestätigen es per E-Mail.",
+  "support.deletion.cta": "Löschung meiner Daten beantragen",
+  "support.deletion.warning":
+    "Die Löschung ist endgültig: Die an dieses Gerät gebundene Lizenz wird deaktiviert und lässt sich nicht wiederherstellen, auch wenn Sie dafür bezahlt haben.",
+  "support.deletion.confirm": "Verstanden: Daten löschen und Lizenz deaktivieren.",
+  "support.deletion.messagePlaceholder":
+    "Optional: Nennen Sie weitere E-Mail-Adressen oder Geräte, die mit gelöscht werden sollen.",
+  "support.deletion.send": "Löschantrag senden",
+  "support.deletion.errConfirm": "Bitte bestätigen Sie, um fortzufahren.",
+  "support.deletion.doneTitle": "Löschantrag erfasst",
+  "support.deletion.doneBody":
+    "Wir bearbeiten ihn innerhalb von 30 Tagen und schreiben an diese Adresse, sobald Ihre Daten gelöscht sind.",
+  "support.deletion.back": "Zurück zum Supportformular",
   "legal.terms.title": "Nutzungsbedingungen",
   "legal.privacy.title": "Datenschutzerklärung",
   "legal.updated": "Zuletzt aktualisiert: {date}",
@@ -778,6 +858,22 @@ const pt: Dictionary = {
   "support.done.again": "Enviar outro pedido",
   "support.note":
     "Antes de escrever, feche e volte a abrir a app: na maioria dos casos a licença desbloqueia sozinha.",
+  "support.topic.deletion": "Eliminar os meus dados",
+  "support.deletion.title": "Eliminação de dados",
+  "support.deletion.body":
+    "Pode pedir a eliminação de tudo o que guardamos sobre si: licença, encomendas, email e pedidos de assistência. Tratamos do pedido em 30 dias e confirmamos por email.",
+  "support.deletion.cta": "Pedir a eliminação dos meus dados",
+  "support.deletion.warning":
+    "A eliminação é definitiva: a licença associada a este dispositivo é desativada e não pode ser recuperada, mesmo que a tenha pago.",
+  "support.deletion.confirm": "Compreendi: eliminem os meus dados e desativem a licença.",
+  "support.deletion.messagePlaceholder":
+    "Opcional: indique outros emails ou dispositivos a incluir na eliminação.",
+  "support.deletion.send": "Enviar o pedido de eliminação",
+  "support.deletion.errConfirm": "Assinale a confirmação para continuar.",
+  "support.deletion.doneTitle": "Pedido de eliminação registado",
+  "support.deletion.doneBody":
+    "Tratamos dele em 30 dias e escrevemos para este endereço assim que os seus dados forem apagados.",
+  "support.deletion.back": "Voltar ao formulário de assistência",
   "legal.terms.title": "Termos de serviço",
   "legal.privacy.title": "Política de privacidade",
   "legal.updated": "Última atualização: {date}",
@@ -904,6 +1000,22 @@ const ro: Dictionary = {
   "support.done.again": "Trimite altă cerere",
   "support.note":
     "Înainte de a scrie, închide și redeschide aplicația: de cele mai multe ori licența se deblochează singură.",
+  "support.topic.deletion": "Șterge datele mele",
+  "support.deletion.title": "Ștergerea datelor",
+  "support.deletion.body":
+    "Poți cere ștergerea a tot ce păstrăm despre tine: licență, comenzi, email și cereri de asistență. Rezolvăm cererea în cel mult 30 de zile și îți confirmăm prin email.",
+  "support.deletion.cta": "Cere ștergerea datelor mele",
+  "support.deletion.warning":
+    "Ștergerea este definitivă: licența legată de acest dispozitiv se dezactivează și nu mai poate fi recuperată, chiar dacă ai plătit-o.",
+  "support.deletion.confirm": "Am înțeles: ștergeți datele mele și dezactivați licența.",
+  "support.deletion.messagePlaceholder":
+    "Opțional: spune-ne ce alte adrese de email sau dispozitive să includem în ștergere.",
+  "support.deletion.send": "Trimite cererea de ștergere",
+  "support.deletion.errConfirm": "Bifează confirmarea pentru a continua.",
+  "support.deletion.doneTitle": "Cerere de ștergere înregistrată",
+  "support.deletion.doneBody":
+    "O rezolvăm în cel mult 30 de zile și îți scriem la această adresă după ce datele au fost șterse.",
+  "support.deletion.back": "Înapoi la formularul de asistență",
   "legal.terms.title": "Termeni și condiții",
   "legal.privacy.title": "Politica de confidențialitate",
   "legal.updated": "Ultima actualizare: {date}",
@@ -1030,6 +1142,22 @@ const tr: Dictionary = {
   "support.done.again": "Başka bir talep gönder",
   "support.note":
     "Yazmadan önce uygulamayı tamamen kapatıp yeniden açın: çoğu zaman lisans kendiliğinden açılır.",
+  "support.topic.deletion": "Verilerimi sil",
+  "support.deletion.title": "Veri silme",
+  "support.deletion.body":
+    "Hakkınızda tuttuğumuz her şeyin silinmesini isteyebilirsiniz: lisans, siparişler, e-posta ve destek talepleri. Talebi 30 gün içinde işler ve e-posta ile onaylarız.",
+  "support.deletion.cta": "Verilerimin silinmesini iste",
+  "support.deletion.warning":
+    "Silme işlemi kalıcıdır: bu cihaza bağlı lisans devre dışı bırakılır ve ücretini ödemiş olsanız bile geri alınamaz.",
+  "support.deletion.confirm": "Anladım: verilerimi silin ve lisansımı devre dışı bırakın.",
+  "support.deletion.messagePlaceholder":
+    "İsteğe bağlı: silmeye dahil edilecek diğer e-posta adreslerini veya cihazları yazın.",
+  "support.deletion.send": "Silme talebini gönder",
+  "support.deletion.errConfirm": "Devam etmek için onayı işaretleyin.",
+  "support.deletion.doneTitle": "Silme talebi kaydedildi",
+  "support.deletion.doneBody":
+    "Talebi 30 gün içinde işler ve verileriniz silindiğinde bu adrese yazarız.",
+  "support.deletion.back": "Destek formuna dön",
   "legal.terms.title": "Hizmet Şartları",
   "legal.privacy.title": "Gizlilik Politikası",
   "legal.updated": "Son güncelleme: {date}",

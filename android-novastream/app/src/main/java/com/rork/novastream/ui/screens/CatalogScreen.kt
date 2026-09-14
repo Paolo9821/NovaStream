@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -185,8 +187,9 @@ fun CatalogScreen(
  * The provider's category list, shown as a sheet over the current screen.
  *
  * Providers ship hundreds of groups, so the list is lazy and scrollable and the
- * sheet opens at full height: the old fixed column simply ran off the bottom of
- * the screen and the categories past the fold could not be reached at all.
+ * sheet takes a fixed share of the screen. That height matters: a weighted list
+ * inside a sheet that measures its content with unbounded height collapses to
+ * nothing, which is why the Live sheet used to open completely empty.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -202,11 +205,14 @@ fun CategorySheet(
     // Full height from the start: a half-open sheet turns every D-pad press into
     // a resize instead of a move down the list.
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val firstRow = rememberFocusRequester()
+    val listFocus = rememberFocusRequester()
 
     ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
         Column(
             modifier = Modifier
+                // A real height, not "whatever the content wants": this is what
+                // gives the list room to exist and to scroll inside the sheet.
+                .fillMaxHeight(0.92f)
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp),
         ) {
@@ -221,9 +227,12 @@ fun CategorySheet(
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()
-                    // fill = false keeps a short list compact while a long one
-                    // takes the rest of the sheet and scrolls inside it.
-                    .weight(1f, fill = false),
+                    .weight(1f)
+                    // The list itself is the landing zone for the remote, so the
+                    // first press of an arrow already moves between categories
+                    // instead of doing nothing.
+                    .focusRequester(listFocus)
+                    .focusGroup(),
                 verticalArrangement = Arrangement.spacedBy(6.dp),
                 contentPadding = PaddingValues(bottom = 28.dp),
             ) {
@@ -232,7 +241,6 @@ fun CategorySheet(
                         label = allLabel,
                         selected = selectedGroup == null,
                         onClick = { onSelect(null) },
-                        modifier = Modifier.focusRequester(firstRow),
                     )
                 }
                 items(groups, key = { it }) { group ->
@@ -244,7 +252,7 @@ fun CategorySheet(
                 }
             }
         }
-        RequestInitialFocus(firstRow, key = groups.size)
+        RequestInitialFocus(listFocus, key = groups.size)
     }
 }
 

@@ -43,6 +43,32 @@ data class MediaEntry(
     val tvgId: String? = null,
 )
 
+/**
+ * The extra information a provider keeps behind its detail endpoint: plot,
+ * genres, cast and running time. Catalog listings only carry a title and an
+ * image, so this is fetched the moment a title is opened.
+ */
+@Serializable
+data class MediaDetails(
+    val entryId: String,
+    val plot: String? = null,
+    val genres: List<String> = emptyList(),
+    val cast: List<String> = emptyList(),
+    val director: String? = null,
+    val rating: String? = null,
+    val durationLabel: String? = null,
+    val releaseDate: String? = null,
+    val country: String? = null,
+    val coverUrl: String? = null,
+    val backdropUrl: String? = null,
+) {
+    /** True when nothing worth showing came back, so the UI can stay quiet. */
+    val isEmpty: Boolean
+        get() = plot.isNullOrBlank() && genres.isEmpty() && cast.isEmpty() &&
+            director.isNullOrBlank() && rating.isNullOrBlank() &&
+            durationLabel.isNullOrBlank() && releaseDate.isNullOrBlank()
+}
+
 @Serializable
 data class Catalog(
     val accountId: String = "",

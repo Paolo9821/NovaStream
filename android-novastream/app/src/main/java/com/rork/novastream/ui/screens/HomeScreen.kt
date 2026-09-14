@@ -1,7 +1,9 @@
 package com.rork.novastream.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -15,6 +17,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.AddCircleOutline
@@ -25,6 +28,7 @@ import androidx.compose.material.icons.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.PlaylistPlay
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -35,6 +39,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -42,6 +47,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -54,6 +65,7 @@ import com.rork.novastream.ui.components.EmptyState
 import com.rork.novastream.ui.components.FocusableSurface
 import com.rork.novastream.ui.components.PosterCard
 import com.rork.novastream.ui.components.SectionHeader
+import com.rork.novastream.ui.components.TvTextField
 import com.rork.novastream.ui.components.accentFor
 import com.rork.novastream.ui.i18n.LocalStrings
 import com.rork.novastream.ui.i18n.Strings
@@ -96,6 +108,9 @@ fun HomeScreen(
     // episode, but this row is about what is still unwatched.
     val unfinished = remember(progress) { progress.filterNot { it.completed } }
 
+    /** Open while the PIN is being typed to reveal the protected categories. */
+    var parentalPinOpen by remember { mutableStateOf(false) }
+
     LazyColumn(
         modifier = Modifier.fillMaxWidth(),
         contentPadding = PaddingValues(
@@ -107,15 +122,12 @@ fun HomeScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item("greeting") {
-            Column {
-                Text(text = greeting(strings), style = MaterialTheme.typography.headlineMedium)
-                Spacer(Modifier.height(10.dp))
-                PlaylistStatusChip(
-                    playlistLabel = active?.let { strings.playlistPrefix.format(it.name) }
-                        ?: strings.noActivePlaylist,
-                    connected = active != null,
-                )
-            }
+            GreetingHeader(
+                greeting = greeting(strings),
+                playlistLabel = active?.let { strings.playlistPrefix.format(it.name) }
+                    ?: strings.noActivePlaylist,
+                connected = active != null,
+            )
         }
 
         (license.status as? LicenseStatus.Trial)?.let { trial ->
@@ -232,9 +244,10 @@ fun HomeScreen(
             item("parental") {
                 ParentalRow(
                     unlocked = unlocked,
-                    blockedCount = settings.blockedGroups.size,
+                    blockedCount = viewModel.blockedCount(),
                     strings = strings,
                     onLock = { viewModel.lockParental() },
+                    onUnlock = { parentalPinOpen = true },
                     onOpenSettings = onOpenSettings,
                 )
             }
@@ -285,43 +298,151 @@ fun HomeScreen(
         }
     }
 
+    if (parentalPinOpen) {
+        ParentalUnlockDialog(
+            strings = strings,
+            onDismiss = { parentalPinOpen = false },
+            onSubmit = { pin -> viewModel.unlockParental(pin) },
+        )
+    }
 }
 
 /**
- * Which provider is on air. The encryption wording used to live here too, but it
- * is a one-off reassurance rather than daily information, so it now belongs to
- * Settings only.
+ * Asks for the PIN before the protected categories come back into view. A wrong
+ * code says so and keeps the dialog open, so nobody is left wondering whether
+ * the lock is broken.
  */
 @Composable
-private fun PlaylistStatusChip(playlistLabel: String, connected: Boolean) {
+private fun ParentalUnlockDialog(
+    strings: Strings,
+    onDismiss: () -> Unit,
+    onSubmit: (String) -> Boolean,
+) {
+    var pin by remember { mutableStateOf("") }
+    var wrong by remember { mutableStateOf(false) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(strings.parentalPinTitle) },
+        text = {
+            Column {
+                TvTextField(
+                    value = pin,
+                    onValueChange = { value ->
+                        if (value.length <= 6 && value.all { it.isDigit() }) {
+                            pin = value
+                            wrong = false
+                        }
+                    },
+                    label = { Text(strings.parentalPinLabel) },
+                    singleLine = true,
+                    isError = wrong,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = if (wrong) strings.parentalPinWrong else strings.parentalUnlockHint,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (wrong) MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { if (onSubmit(pin)) onDismiss() else wrong = true },
+                enabled = pin.length >= 4,
+            ) { Text(strings.parentalUnlockAction) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(strings.cancel) } },
+    )
+}
+
+/**
+ * The masthead of the app: a colour wash that names the time of day and the
+ * playlist on air. It is the one place where NovaStream is allowed to shout,
+ * and it gives the rest of the screen something to sit under.
+ */
+@Composable
+private fun GreetingHeader(
+    greeting: String,
+    playlistLabel: String,
+    connected: Boolean,
+    modifier: Modifier = Modifier,
+) {
     val accents = LocalNovaAccents.current
-    val tint = if (connected) accents.live else MaterialTheme.colorScheme.onSurfaceVariant
-    Surface(
-        shape = RoundedCornerShape(14.dp),
-        color = MaterialTheme.colorScheme.surface,
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(24.dp))
+            .background(
+                Brush.linearGradient(
+                    listOf(
+                        accents.movie.copy(alpha = 0.34f),
+                        accents.series.copy(alpha = 0.26f),
+                        accents.warm.copy(alpha = 0.22f),
+                    )
+                )
+            )
+            .padding(horizontal = 18.dp, vertical = 20.dp),
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                imageVector = Icons.Rounded.PlaylistPlay,
-                contentDescription = null,
-                tint = tint,
-                modifier = Modifier.size(18.dp),
-            )
-            Spacer(Modifier.width(8.dp))
+        Column {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(10.dp)
+                        .clip(RoundedCornerShape(5.dp))
+                        .background(if (connected) accents.live else accents.warm)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "NovaStream",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.72f),
+                )
+            }
+            Spacer(Modifier.height(8.dp))
             Text(
-                text = playlistLabel,
-                style = MaterialTheme.typography.titleSmall,
-                color = tint,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                text = greeting,
+                style = MaterialTheme.typography.headlineMedium,
+                fontWeight = FontWeight.Bold,
             )
+            Spacer(Modifier.height(12.dp))
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.78f),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.PlaylistPlay,
+                        contentDescription = null,
+                        tint = if (connected) accents.live else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = playlistLabel,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = if (connected) accents.live
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
         }
     }
 }
 
+/**
+ * Each section gets its own colour rather than a row of identical grey cards:
+ * live is green, films are blue, series are violet, and the tint carries
+ * through the whole app so a glance is enough to know where you are.
+ */
 @Composable
 private fun CategoryCard(
     kind: MediaKind,
@@ -330,46 +451,75 @@ private fun CategoryCard(
     strings: Strings,
     onClick: () -> Unit,
 ) {
+    val accent = accentFor(kind)
     FocusableSurface(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.surface,
-        focusRingColor = accentFor(kind),
+        focusRingColor = accent,
     ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(accent.copy(alpha = 0.22f), Color.Transparent),
+                    )
+                )
         ) {
-            CategoryBadge(kind = kind)
-            Spacer(Modifier.width(16.dp))
-            Text(
-                text = when (kind) {
-                    MediaKind.LIVE -> strings.liveTvTitle
-                    MediaKind.MOVIE -> strings.moviesTitle
-                    MediaKind.SERIES -> strings.seriesTitle
-                },
-                style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.weight(1f),
-            )
-            if (loading) {
-                CircularProgressIndicator(
-                    modifier = Modifier.size(16.dp),
-                    strokeWidth = 2.dp,
-                    color = accentFor(kind),
-                )
-            } else {
-                Text(
-                    text = "${formatCount(count)} ${unitOf(kind, strings)}",
-                    style = MaterialTheme.typography.titleSmall,
-                    color = accentFor(kind),
-                )
+            Row(
+                modifier = Modifier.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                CategoryBadge(kind = kind)
+                Spacer(Modifier.width(16.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = when (kind) {
+                            MediaKind.LIVE -> strings.liveTvTitle
+                            MediaKind.MOVIE -> strings.moviesTitle
+                            MediaKind.SERIES -> strings.seriesTitle
+                        },
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    if (loading) {
+                        Text(
+                            text = strings.catalogUpdating,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        Text(
+                            text = "${formatCount(count)} ${unitOf(kind, strings)}",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = accent,
+                        )
+                    }
+                }
+                if (loading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = accent,
+                    )
+                    Spacer(Modifier.width(6.dp))
+                }
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(RoundedCornerShape(11.dp))
+                        .background(accent.copy(alpha = 0.18f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = accent,
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
             }
-            Spacer(Modifier.width(6.dp))
-            Icon(
-                imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
     }
 }
@@ -431,6 +581,7 @@ private fun ParentalRow(
     blockedCount: Int,
     strings: Strings,
     onLock: () -> Unit,
+    onUnlock: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
     Surface(
@@ -462,6 +613,10 @@ private fun ParentalRow(
             if (unlocked) {
                 OutlinedButton(onClick = onLock) { Text(strings.lock) }
             } else {
+                // Typing the PIN reveals the protected categories for this
+                // session; changing what is protected still lives in Settings.
+                OutlinedButton(onClick = onUnlock) { Text(strings.parentalUnlockAction) }
+                Spacer(Modifier.width(8.dp))
                 OutlinedButton(onClick = onOpenSettings) { Text(strings.manage) }
             }
         }

@@ -14,7 +14,7 @@ android {
         minSdk = 24
         targetSdk = 36
         versionCode = (System.currentTimeMillis() / 1000).toInt()
-        versionName = "1.2.4"
+        versionName = "1.2.6"
     }
 
     buildTypes {
@@ -71,5 +71,9 @@ dependencies {
     implementation(libs.androidx.media3.exoplayer.hls)
     implementation(libs.androidx.media3.ui)
     implementation(libs.zxing.core)
+    // Google's own rating prompt: the store decides whether to show it, so the
+    // app never nags and never asks a leading question first.
+    implementation(libs.play.review)
+    implementation(libs.play.review.ktx)
     debugImplementation(libs.androidx.ui.tooling)
 }

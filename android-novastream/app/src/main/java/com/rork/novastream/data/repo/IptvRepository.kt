@@ -10,6 +10,7 @@ import com.rork.novastream.data.model.AccountType
 import com.rork.novastream.data.model.Catalog
 import com.rork.novastream.data.model.EpgGuide
 import com.rork.novastream.data.model.Episode
+import com.rork.novastream.data.model.MediaDetails
 import com.rork.novastream.data.model.MediaEntry
 import com.rork.novastream.data.model.MediaKind
 import com.rork.novastream.data.model.PlaylistAccount
@@ -117,6 +118,9 @@ class IptvRepository(context: Context) {
 
     /** Serializes cache writes so two syncs never fight over the same file. */
     private val vaultMutex = Mutex()
+
+    /** Detail answers already fetched in this session, keyed by entry id. */
+    private val detailsCache = LinkedHashMap<String, MediaDetails>()
 
     init {
         restore()
@@ -476,6 +480,34 @@ class IptvRepository(context: Context) {
         secureStore.putString(KEY_FAVORITES, json.encodeToString(updated))
     }
 
+    /**
+     * Plot, genres and cast of a title, read from the provider's detail
+     * endpoint. Answers are kept in memory for the session: reopening a film
+     * from the "same category" row must not hit the server again.
+     */
+    suspend fun detailsOf(entry: MediaEntry): MediaDetails? {
+        detailsCache[entry.id]?.let { return it }
+        val account = activeAccount ?: return null
+        if (account.type != AccountType.XTREAM) return null
+        val loaded = runCatching {
+            when (entry.kind) {
+                MediaKind.SERIES -> entry.seriesId?.let {
+                    xtream.loadSeriesDetails(account, entry.id, it)
+                }
+                MediaKind.MOVIE -> entry.streamId()?.let {
+                    xtream.loadMovieDetails(account, entry.id, it)
+                }
+                MediaKind.LIVE -> null
+            }
+        }.onFailure { Log.w(TAG, "Dettagli del titolo non disponibili") }.getOrNull()
+        if (loaded != null) detailsCache[entry.id] = loaded
+        return loaded
+    }
+
+    /** The provider's numeric id, recovered from the entry id (`movie_1234`). */
+    private fun MediaEntry.streamId(): String? =
+        id.substringAfter('_', "").takeIf { it.isNotBlank() }
+
     suspend fun episodesOf(entry: MediaEntry): List<Episode> {
         val account = activeAccount ?: return emptyList()
         val seriesId = entry.seriesId ?: return emptyList()
@@ -533,8 +565,33 @@ class IptvRepository(context: Context) {
     fun clearCatalogCache() {
         _catalog.value = Catalog()
         _epg.value = EpgGuide()
+        detailsCache.clear()
         catalogCache.clear()
         secureStore.clearVault()
+    }
+
+    /**
+     * Throws the saved list away and downloads it again from scratch.
+     *
+     * A normal refresh replaces the catalog only once the new one has parsed,
+     * which is the safe behaviour but also means a stale entry can survive a
+     * provider's own reshuffle. This one deletes the stored copy and the cached
+     * details first, so what comes back is exactly what the server has today —
+     * new channels included. Favourites and history are untouched: they live in
+     * the encrypted store and are keyed by id, not by catalog file.
+     */
+    suspend fun rebuildActiveCatalog() {
+        val account = activeAccount ?: return
+        if (_syncState.value is SyncState.Running) return
+        detailsCache.clear()
+        vaultMutex.withLock {
+            catalogCache.delete(catalogFile(account.id))
+            catalogCache.delete(epgFile(account.id))
+        }
+        _catalog.value = Catalog()
+        _epg.value = EpgGuide()
+        sync(account)
+        refreshEpg()
     }
 
     fun wipeEverything() {
@@ -544,6 +601,7 @@ class IptvRepository(context: Context) {
         _epg.value = EpgGuide()
         _progress.value = emptyList()
         _favorites.value = emptySet()
+        detailsCache.clear()
         secureStore.remove(KEY_ACCOUNTS)
         secureStore.remove(KEY_ACTIVE)
         secureStore.remove(KEY_PROGRESS)

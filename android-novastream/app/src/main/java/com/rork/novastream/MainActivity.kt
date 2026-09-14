@@ -6,11 +6,13 @@ import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -23,6 +25,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.rork.novastream.data.local.CrashReporter
 import com.rork.novastream.data.local.DeviceProfile
 import com.rork.novastream.data.local.LicenseStatus
+import com.rork.novastream.data.local.ReviewPrompt
 import com.rork.novastream.data.local.ThemeMode
 import com.rork.novastream.ui.components.LocalIsTv
 import com.rork.novastream.ui.i18n.LocalStrings
@@ -40,7 +43,18 @@ import com.rork.novastream.ui.vm.AppViewModel
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        // Edge to edge the supported way. Window.setStatusBarColor and
+        // setNavigationBarColor are deprecated from Android 15, where the
+        // platform always draws the bars itself: the transparent styles below
+        // are what the system reads instead, and it picks icon contrast on its
+        // own. NovaStream is a dark app, so both bars are declared dark.
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(TRANSPARENT_SCRIM),
+            navigationBarStyle = SystemBarStyle.dark(TRANSPARENT_SCRIM),
+        )
+        // Counts this launch. Nothing is shown here: the rating prompt only
+        // becomes due after a few days and a handful of openings.
+        ReviewPrompt.noteLaunch(this)
         setContent {
             val viewModel: AppViewModel = viewModel()
             val settings by viewModel.settings.collectAsStateWithLifecycle()
@@ -72,6 +86,19 @@ class MainActivity : ComponentActivity() {
                 }
                 lifecycleOwner.lifecycle.addObserver(observer)
                 onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+            }
+
+            // Play's own rating sheet, asked for once the app has actually been
+            // used and only while everything is in order: never on the licence
+            // screens, never during onboarding, and never right after a crash.
+            val readyToRate = license.termsAccepted &&
+                settings.onboardingDone &&
+                crashReport == null &&
+                (license.status is LicenseStatus.Licensed || license.status is LicenseStatus.Trial)
+            LaunchedEffect(readyToRate) {
+                if (!readyToRate) return@LaunchedEffect
+                if (!ReviewPrompt.isDue(this@MainActivity)) return@LaunchedEffect
+                ReviewPrompt.request(this@MainActivity)
             }
 
             CompositionLocalProvider(
@@ -145,5 +172,10 @@ class MainActivity : ComponentActivity() {
         val isTelevision = uiModeManager?.currentModeType == Configuration.UI_MODE_TYPE_TELEVISION ||
             packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
         return if (isTelevision) DeviceProfile.TV else DeviceProfile.PHONE
+    }
+
+    private companion object {
+        /** Fully transparent scrim: the app paints its own background. */
+        const val TRANSPARENT_SCRIM = 0x00000000
     }
 }

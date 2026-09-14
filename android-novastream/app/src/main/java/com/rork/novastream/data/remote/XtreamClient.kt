@@ -1,6 +1,7 @@
 package com.rork.novastream.data.remote
 
 import com.rork.novastream.data.model.Episode
+import com.rork.novastream.data.model.MediaDetails
 import com.rork.novastream.data.model.MediaEntry
 import com.rork.novastream.data.model.MediaKind
 import com.rork.novastream.data.model.PlaylistAccount
@@ -63,6 +64,58 @@ class XtreamClient(
         entries.trimToSize()
         entries
     }
+
+    /**
+     * Everything a provider knows about a film: plot, genres, cast, running
+     * time. Catalog listings only carry a title and a poster, so this is what
+     * turns a detail page into an actual description of the film.
+     */
+    suspend fun loadMovieDetails(account: PlaylistAccount, entryId: String, streamId: String): MediaDetails? =
+        withContext(Dispatchers.IO) {
+            val body = http.get(apiUrl(account, "get_vod_info") + "&vod_id=$streamId").bodyAsText()
+            val root = json.parseToJsonElement(body) as? JsonObject ?: return@withContext null
+            val info = root["info"] as? JsonObject
+            val movie = root["movie_data"] as? JsonObject
+            val details = MediaDetails(
+                entryId = entryId,
+                plot = info?.str("plot") ?: info?.str("description"),
+                genres = (info?.str("genre")).orEmpty().splitGenres(),
+                cast = (info?.str("cast") ?: info?.str("actors")).orEmpty().splitNames(),
+                director = info?.str("director"),
+                rating = info?.str("rating")?.takeIf { it != "0" && it != "0.0" },
+                durationLabel = info?.str("duration") ?: info?.str("episode_run_time")
+                    ?.let { minutes -> minutes.toIntOrNull()?.let { "$it min" } },
+                releaseDate = info?.str("releasedate") ?: info?.str("releaseDate")
+                    ?: movie?.str("added"),
+                country = info?.str("country"),
+                coverUrl = info?.str("movie_image") ?: info?.str("cover_big"),
+                backdropUrl = info?.firstBackdrop(),
+            )
+            details.takeUnless { it.isEmpty }
+        }
+
+    /** The same for a series, read from the header of its season listing. */
+    suspend fun loadSeriesDetails(account: PlaylistAccount, entryId: String, seriesId: String): MediaDetails? =
+        withContext(Dispatchers.IO) {
+            val body = http.get(apiUrl(account, "get_series_info") + "&series_id=$seriesId").bodyAsText()
+            val root = json.parseToJsonElement(body) as? JsonObject ?: return@withContext null
+            val info = root["info"] as? JsonObject ?: return@withContext null
+            val details = MediaDetails(
+                entryId = entryId,
+                plot = info.str("plot") ?: info.str("description"),
+                genres = info.str("genre").orEmpty().splitGenres(),
+                cast = (info.str("cast") ?: info.str("actors")).orEmpty().splitNames(),
+                director = info.str("director"),
+                rating = info.str("rating")?.takeIf { it != "0" && it != "0.0" },
+                durationLabel = info.str("episode_run_time")
+                    ?.let { minutes -> minutes.toIntOrNull()?.let { "$it min" } },
+                releaseDate = info.str("releaseDate") ?: info.str("releasedate"),
+                country = info.str("country"),
+                coverUrl = info.str("cover"),
+                backdropUrl = info.firstBackdrop(),
+            )
+            details.takeUnless { it.isEmpty }
+        }
 
     suspend fun loadEpisodes(account: PlaylistAccount, seriesId: String): List<Episode> =
         withContext(Dispatchers.IO) {
@@ -230,7 +283,19 @@ class XtreamClient(
     private fun String.enc(): String = encodeURLParameter()
 
     private fun String.splitGenres(): List<String> =
-        split(",", "/").map { it.trim() }.filter { it.isNotEmpty() }
+        split(",", "/").map { it.trim() }.filter { it.isNotEmpty() }.distinct().take(6)
+
+    private fun String.splitNames(): List<String> =
+        split(",").map { it.trim() }.filter { it.isNotEmpty() }.distinct().take(8)
+
+    /** Portals return the wide artwork as a one-element array of URLs. */
+    private fun JsonObject.firstBackdrop(): String? {
+        val array = this["backdrop_path"] as? JsonArray ?: return null
+        return array.firstOrNull()
+            ?.let { it as? JsonPrimitive }
+            ?.content
+            ?.takeIf { it.isNotBlank() && it != "null" }
+    }
 
     private fun String.epochMs(): Long {
         val seconds = toLongOrNull() ?: return 0L

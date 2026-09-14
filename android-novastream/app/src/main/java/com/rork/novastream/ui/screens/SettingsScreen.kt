@@ -4,11 +4,13 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -16,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -24,8 +27,11 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.DeleteSweep
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.NetworkCheck
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.RestartAlt
 import androidx.compose.material.icons.rounded.Smartphone
 import androidx.compose.material.icons.rounded.Speed
 import androidx.compose.material.icons.rounded.Tv
@@ -39,6 +45,7 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
@@ -51,6 +58,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -60,6 +68,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.KeyboardType
@@ -75,6 +84,7 @@ import com.rork.novastream.data.local.DeviceProfile
 import com.rork.novastream.data.local.DnsPreset
 import com.rork.novastream.data.local.LicenseStatus
 import com.rork.novastream.data.local.ThemeMode
+import com.rork.novastream.data.model.MediaKind
 import com.rork.novastream.data.model.SyncState
 import com.rork.novastream.ui.components.PrivacyNote
 import com.rork.novastream.ui.components.RequestInitialFocus
@@ -119,8 +129,10 @@ fun SettingsScreen(
     val storeUrl by viewModel.storeUrl.collectAsStateWithLifecycle()
 
     var pinDialogOpen by remember { mutableStateOf(false) }
-    var groupsDialogOpen by remember { mutableStateOf(false) }
+    /** The section whose categories are being picked, null when none is open. */
+    var groupsScope by remember { mutableStateOf<MediaKind?>(null) }
     var wipeDialogOpen by remember { mutableStateOf(false) }
+    var rebuildDialogOpen by remember { mutableStateOf(false) }
     var customDnsIp by remember(settings.customDnsPrimary) { mutableStateOf(settings.customDnsPrimary) }
     var customDnsDoh by remember(settings.customDnsDohUrl) { mutableStateOf(settings.customDnsDohUrl) }
 
@@ -368,6 +380,31 @@ fun SettingsScreen(
                             Text(strings.catalogUpdateAction)
                         }
                     }
+
+                    Spacer(Modifier.height(8.dp))
+                    // The hard reset: a provider that reshuffles its own ids can
+                    // leave a stale entry behind a plain refresh, so this one
+                    // throws the saved list away before importing again.
+                    OutlinedButton(
+                        onClick = { rebuildDialogOpen = true },
+                        enabled = !syncing && activeAccount != null,
+                        modifier = Modifier.fillMaxWidth().tvFocusFrame(cornerRadius = 20.dp),
+                    ) {
+                        Icon(Icons.Rounded.RestartAlt, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = if (syncing) strings.catalogRebuilding
+                            else strings.catalogRebuildAction,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = strings.catalogRebuildHint,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
 
                     if (catalogSaving) {
                         Spacer(Modifier.height(10.dp))
@@ -652,21 +689,42 @@ fun SettingsScreen(
                     if (settings.parentalEnabled) {
                         Spacer(Modifier.height(8.dp))
                         Text(
-                            text = strings.parentalBlockedCount.format(settings.blockedGroups.size),
+                            text = strings.parentalBlockedCount.format(viewModel.blockedCount()),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Spacer(Modifier.height(10.dp))
-                        OutlinedButton(
-                            onClick = { groupsDialogOpen = true },
-                            modifier = Modifier.fillMaxWidth().tvFocusFrame(cornerRadius = 20.dp),
-                            enabled = catalog.entries.isNotEmpty(),
-                        ) { Text(strings.parentalChooseGroups) }
-                        Spacer(Modifier.height(8.dp))
+
+                        // One row per section, so "which films are hidden" is
+                        // answered at a glance instead of inside a dialog.
+                        MediaKind.entries.forEach { kind ->
+                            val blocked = viewModel.blockedCountOf(kind)
+                            DnsRow(
+                                label = when (kind) {
+                                    MediaKind.LIVE -> strings.liveTvTitle
+                                    MediaKind.MOVIE -> strings.moviesTitle
+                                    MediaKind.SERIES -> strings.seriesTitle
+                                },
+                                description = strings.parentalBlockedInSection.format(blocked),
+                                selected = blocked > 0,
+                                onClick = { groupsScope = kind },
+                            )
+                            Spacer(Modifier.height(8.dp))
+                        }
+
                         OutlinedButton(
                             onClick = { pinDialogOpen = true },
                             modifier = Modifier.fillMaxWidth().tvFocusFrame(cornerRadius = 20.dp),
                         ) { Text(strings.parentalChangePin) }
+
+                        if (catalog.entries.isEmpty()) {
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = strings.parentalImportFirst,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
             }
@@ -735,24 +793,39 @@ fun SettingsScreen(
             onConfirm = { pin ->
                 viewModel.settingsStore.setPin(pin)
                 pinDialogOpen = false
-                groupsDialogOpen = true
+                groupsScope = MediaKind.LIVE
             },
         )
     }
 
-    if (groupsDialogOpen) {
-        GroupsDialog(
-            groups = viewModel.allGroups(),
-            blocked = settings.blockedGroups,
+    groupsScope?.let { kind ->
+        GroupsSheet(
+            kind = kind,
+            groups = viewModel.allGroupsOf(kind),
+            blocked = settings.blockedGroupsOf(kind),
             strings = strings,
-            onToggle = { group ->
-                viewModel.settingsStore.update { current ->
-                    val updated = current.blockedGroups.toMutableSet()
-                    if (!updated.add(group)) updated.remove(group)
-                    current.copy(blockedGroups = updated)
-                }
+            onToggle = { group -> viewModel.settingsStore.toggleBlockedGroup(kind, group) },
+            onSetAll = { groups, blocked ->
+                viewModel.settingsStore.setBlockedGroups(kind, groups, blocked)
             },
-            onDismiss = { groupsDialogOpen = false },
+            onDismiss = { groupsScope = null },
+        )
+    }
+
+    if (rebuildDialogOpen) {
+        AlertDialog(
+            onDismissRequest = { rebuildDialogOpen = false },
+            title = { Text(strings.catalogRebuildTitle) },
+            text = { Text(strings.catalogRebuildBody) },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.rebuildCatalog()
+                    rebuildDialogOpen = false
+                }) { Text(strings.catalogRebuildConfirm) }
+            },
+            dismissButton = {
+                TextButton(onClick = { rebuildDialogOpen = false }) { Text(strings.cancel) }
+            },
         )
     }
 
@@ -982,55 +1055,148 @@ private fun PinDialog(
     )
 }
 
+/**
+ * Categories of one section, each with a padlock switch.
+ *
+ * Providers ship hundreds of groups, so this is a full-height sheet with a
+ * search box and two bulk actions rather than a dialog: picking the adult
+ * categories out of a list of four hundred has to take seconds, not minutes.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun GroupsDialog(
+private fun GroupsSheet(
+    kind: MediaKind,
     groups: List<String>,
     blocked: Set<String>,
     strings: Strings,
     onToggle: (String) -> Unit,
+    onSetAll: (List<String>, Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(strings.parentalGroupsTitle) },
-        text = {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    var search by remember(kind) { mutableStateOf("") }
+    val listFocus = rememberFocusRequester()
+
+    val shown = remember(groups, search) {
+        val query = search.trim()
+        if (query.isEmpty()) groups
+        else groups.filter { it.contains(query, ignoreCase = true) }
+    }
+
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Column(
+            modifier = Modifier
+                .fillMaxHeight(0.92f)
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp),
+        ) {
+            Text(strings.parentalGroupsTitle, style = MaterialTheme.typography.titleLarge)
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = when (kind) {
+                    MediaKind.LIVE -> strings.liveTvTitle
+                    MediaKind.MOVIE -> strings.moviesTitle
+                    MediaKind.SERIES -> strings.seriesTitle
+                } + " · " + strings.parentalBlockedInSection.format(blocked.size),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
             if (groups.isEmpty()) {
-                Text(strings.parentalImportFirst)
-            } else {
-                LazyColumn(
-                    modifier = Modifier.height(360.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    items(count = groups.size, key = { groups[it] }) { index ->
-                        val group = groups[index]
-                        FilterChip(
-                            selected = blocked.contains(group),
-                            onClick = { onToggle(group) },
-                            label = { Text(group, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                            leadingIcon = if (blocked.contains(group)) {
-                                {
-                                    Icon(
-                                        Icons.Rounded.Check,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(16.dp),
-                                    )
-                                }
-                            } else null,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .tvFocusFrame(cornerRadius = 8.dp),
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = MaterialTheme.colorScheme.errorContainer,
-                                selectedLabelColor = MaterialTheme.colorScheme.onErrorContainer,
-                                selectedLeadingIconColor = MaterialTheme.colorScheme.onErrorContainer,
-                            ),
-                        )
-                    }
+                Spacer(Modifier.height(16.dp))
+                Text(strings.parentalNoGroups, style = MaterialTheme.typography.bodyMedium)
+                Spacer(Modifier.height(24.dp))
+                return@Column
+            }
+
+            Spacer(Modifier.height(12.dp))
+            TvTextField(
+                value = search,
+                onValueChange = { search = it },
+                label = { Text(strings.parentalSearchGroups) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Spacer(Modifier.height(10.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                OutlinedButton(
+                    onClick = { onSetAll(shown, true) },
+                    modifier = Modifier.weight(1f).tvFocusFrame(cornerRadius = 20.dp),
+                ) { Text(strings.parentalBlockAll, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                OutlinedButton(
+                    onClick = { onSetAll(shown, false) },
+                    modifier = Modifier.weight(1f).tvFocusFrame(cornerRadius = 20.dp),
+                ) { Text(strings.parentalClearAll, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            }
+
+            Spacer(Modifier.height(10.dp))
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .focusRequester(listFocus)
+                    .focusGroup(),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(bottom = 20.dp),
+            ) {
+                items(shown, key = { it }) { group ->
+                    BlockedGroupRow(
+                        label = group,
+                        blocked = blocked.contains(group),
+                        onToggle = { onToggle(group) },
+                    )
                 }
             }
-        },
-        confirmButton = { TextButton(onClick = onDismiss) { Text(strings.done) } },
-    )
+
+            Button(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 20.dp)
+                    .tvFocusFrame(cornerRadius = 20.dp),
+            ) { Text(strings.done) }
+        }
+        RequestInitialFocus(listFocus, key = kind)
+    }
+}
+
+/** One category with a padlock: red while it is behind the PIN. */
+@Composable
+private fun BlockedGroupRow(label: String, blocked: Boolean, onToggle: () -> Unit) {
+    Surface(
+        onClick = onToggle,
+        modifier = Modifier
+            .fillMaxWidth()
+            .tvFocusFrame(cornerRadius = 14.dp),
+        shape = RoundedCornerShape(14.dp),
+        color = if (blocked) MaterialTheme.colorScheme.errorContainer
+        else MaterialTheme.colorScheme.surfaceContainerHigh,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = if (blocked) Icons.Rounded.Lock else Icons.Rounded.LockOpen,
+                contentDescription = null,
+                tint = if (blocked) MaterialTheme.colorScheme.onErrorContainer
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp),
+            )
+            Spacer(Modifier.width(12.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyLarge,
+                color = if (blocked) MaterialTheme.colorScheme.onErrorContainer
+                else MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            Switch(checked = blocked, onCheckedChange = null)
+        }
+    }
 }
 
 private fun themeLabel(mode: ThemeMode, strings: Strings): String = when (mode) {

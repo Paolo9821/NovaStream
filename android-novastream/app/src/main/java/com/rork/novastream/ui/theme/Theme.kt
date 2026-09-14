@@ -20,6 +20,9 @@ data class NovaAccents(
     val privacy: Color,
     val privacyContainer: Color,
     val hairline: Color,
+    /** Warm pair used by the home header and its highlight cards. */
+    val warm: Color,
+    val warmAlt: Color,
 )
 
 private val LightAccents = NovaAccents(
@@ -32,6 +35,8 @@ private val LightAccents = NovaAccents(
     privacy = Color(0xFF8A6D00),
     privacyContainer = PrivacyAmberSoft,
     hairline = HairlineLight,
+    warm = AccentCoral,
+    warmAlt = AccentAmber,
 )
 
 private val DarkAccents = NovaAccents(
@@ -44,6 +49,8 @@ private val DarkAccents = NovaAccents(
     privacy = PrivacyAmber,
     privacyContainer = Color(0xFF33290A),
     hairline = HairlineDark,
+    warm = AccentCoralDark,
+    warmAlt = AccentAmberDark,
 )
 
 val LocalNovaAccents = staticCompositionLocalOf { LightAccents }
@@ -104,7 +111,9 @@ private val DarkScheme = darkColorScheme(
 
 @Composable
 fun AppTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    // Dark is the house style: this is a television app, usually watched with
+    // the lights down. The light scheme stays one tap away in Settings.
+    darkTheme: Boolean = true,
     content: @Composable () -> Unit
 ) {
     val colorScheme = if (darkTheme) DarkScheme else LightScheme

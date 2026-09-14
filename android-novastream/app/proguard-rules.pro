@@ -171,3 +171,11 @@
 
 # Keep Compose runtime annotations used by the compiler-generated code.
 -dontwarn androidx.compose.**
+
+# Google Play In-App Review. The library is compiled against a newer Play
+# Services core than the one it pulls in, so R8 sees an annotation class that
+# is not on the classpath. It is a compile-time annotation only: nothing reads
+# it at runtime, so the reference is safely ignored.
+-dontwarn com.google.android.gms.common.annotation.**
+-dontwarn com.google.android.play.core.**
+-keep class com.google.android.play.core.review.** { *; }

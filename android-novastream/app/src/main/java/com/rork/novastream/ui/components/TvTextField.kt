@@ -41,6 +41,7 @@ fun TvTextField(
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     visualTransformation: VisualTransformation = VisualTransformation.None,
     singleLine: Boolean = true,
+    isError: Boolean = false,
 ) {
     val isTv = LocalIsTv.current
     val keyboard = LocalSoftwareKeyboardController.current
@@ -58,6 +59,7 @@ fun TvTextField(
         trailingIcon = trailingIcon,
         supportingText = supportingText,
         singleLine = singleLine,
+        isError = isError,
         visualTransformation = visualTransformation,
         keyboardOptions = keyboardOptions,
         keyboardActions = KeyboardActions(

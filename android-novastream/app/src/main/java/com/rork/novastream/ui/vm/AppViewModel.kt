@@ -12,6 +12,7 @@ import com.rork.novastream.data.local.SettingsStore
 import com.rork.novastream.data.model.Catalog
 import com.rork.novastream.data.model.EpgGuide
 import com.rork.novastream.data.model.Episode
+import com.rork.novastream.data.model.MediaDetails
 import com.rork.novastream.data.model.MediaEntry
 import com.rork.novastream.data.model.MediaKind
 import com.rork.novastream.data.model.PlaylistAccount
@@ -182,6 +183,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val _episodesLoading = MutableStateFlow(false)
     val episodesLoading: StateFlow<Boolean> = _episodesLoading.asStateFlow()
 
+    private val _details = MutableStateFlow<MediaDetails?>(null)
+
+    /** Plot, genres and cast of the title currently open, when the provider has them. */
+    val details: StateFlow<MediaDetails?> = _details.asStateFlow()
+
+    private val _detailsLoading = MutableStateFlow(false)
+    val detailsLoading: StateFlow<Boolean> = _detailsLoading.asStateFlow()
+
     private val _dnsCheck = MutableStateFlow<DnsCheck?>(null)
     val dnsCheck: StateFlow<DnsCheck?> = _dnsCheck.asStateFlow()
 
@@ -204,8 +213,20 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val current = settings.value
         val all = catalog.value.of(kind)
         if (!current.parentalEnabled || _parentalUnlocked.value) return all
-        return all.filterNot { current.blockedGroups.contains(it.group) }
+        return all.filterNot { current.isGroupBlocked(kind, it.group) }
     }
+
+    /** Every category of one section, whatever the parental lock is hiding. */
+    fun allGroupsOf(kind: MediaKind): List<String> = catalog.value.of(kind)
+        .map { it.group }
+        .distinct()
+        .sorted()
+
+    /** How many categories of [kind] are currently behind the PIN. */
+    fun blockedCountOf(kind: MediaKind): Int =
+        settings.value.blockedGroupsOf(kind).count { group ->
+            catalog.value.of(kind).any { it.group == group }
+        }
 
     fun countOf(kind: MediaKind): Int = visibleEntries(kind).size
 
@@ -224,6 +245,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         .map { it.group }
         .distinct()
         .sorted()
+
+    /** Total categories currently protected by the PIN, across every section. */
+    fun blockedCount(): Int = MediaKind.entries.sumOf { blockedCountOf(it) }
 
     fun availableYears(kind: MediaKind): List<Int> = visibleEntries(kind)
         .mapNotNull { it.year }
@@ -305,6 +329,14 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch { repository.refreshActive() }
     }
 
+    /**
+     * Erases the saved list and downloads it again from the provider, so
+     * channels added or removed on their side always show up here.
+     */
+    fun rebuildCatalog() {
+        viewModelScope.launch { repository.rebuildActiveCatalog() }
+    }
+
     fun refreshEpg() {
         viewModelScope.launch { repository.refreshEpg() }
     }
@@ -318,6 +350,21 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     fun clearSyncState() = repository.clearSyncState()
 
     fun clearEpgState() = repository.clearEpgState()
+
+    /**
+     * Fetches the description of a title as its page opens. The old details are
+     * cleared first so a film never shows the plot of the one opened before it.
+     */
+    fun loadDetails(entry: MediaEntry) {
+        if (_details.value?.entryId != entry.id) _details.value = null
+        if (entry.kind == MediaKind.LIVE) return
+        viewModelScope.launch {
+            _detailsLoading.value = true
+            val loaded = repository.detailsOf(entry)
+            if (loaded != null) _details.value = loaded
+            _detailsLoading.value = false
+        }
+    }
 
     fun loadEpisodes(entry: MediaEntry) {
         if (entry.seriesId == null) {

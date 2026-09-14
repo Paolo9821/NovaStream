@@ -16,8 +16,8 @@ val PrivacyAmber = Color(0xFFF5C518)
 val PrivacyAmberSoft = Color(0xFFFDF3D3)
 val HairlineLight = Color(0xFFE5E7EB)
 
-val CanvasDark = Color(0xFF0D1117)
-val SurfaceDark = Color(0xFF161B24)
+val CanvasDark = Color(0xFF0B0F1A)
+val SurfaceDark = Color(0xFF151B29)
 val InkPrimaryDark = Color(0xFFF3F4F6)
 val InkSecondaryDark = Color(0xFF9CA3AF)
 val AccentBlueDark = Color(0xFF6E9BFF)
@@ -25,3 +25,13 @@ val AccentBlueSoftDark = Color(0xFF1C2C4C)
 val AccentGreenDark = Color(0xFF3DDCA4)
 val AccentPurpleDark = Color(0xFFA79BF5)
 val HairlineDark = Color(0xFF262D3A)
+
+/**
+ * Warm accents used on the home screen only. The catalogue rows lean blue,
+ * green and violet; these two give the greeting header and the highlight cards
+ * a colour of their own so the first screen does not read as one flat wall.
+ */
+val AccentCoral = Color(0xFFFF6B5B)
+val AccentCoralDark = Color(0xFFFF8A7A)
+val AccentAmber = Color(0xFFF59E0B)
+val AccentAmberDark = Color(0xFFFBBF24)

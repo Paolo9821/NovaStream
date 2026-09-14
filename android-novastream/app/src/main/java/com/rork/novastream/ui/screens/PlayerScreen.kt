@@ -1,5 +1,12 @@
 package com.rork.novastream.ui.screens
 
+import android.app.Activity
+import android.app.PictureInPictureParams
+import android.content.Context
+import android.content.ContextWrapper
+import android.content.pm.PackageManager
+import android.os.Build
+import android.util.Rational
 import android.view.ViewGroup
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
@@ -29,6 +36,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Forward10
 import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material.icons.rounded.PictureInPictureAlt
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Replay10
 import androidx.compose.material.icons.rounded.SkipNext
@@ -79,6 +87,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.activity.ComponentActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -284,6 +293,33 @@ fun PlayerScreen(
     DisposableEffect(hostView, screenBusy) {
         hostView.keepScreenOn = screenBusy
         onDispose { hostView.keepScreenOn = false }
+    }
+
+    // Picture-in-picture: the stream carries on in a corner of the screen while
+    // the viewer answers a message or browses something else. Televisions and
+    // older phones simply do not offer it, hence the capability check.
+    val activity: ComponentActivity? = remember(context) { context.findComponentActivity() }
+    val pipSupported = remember(activity) {
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            activity?.packageManager
+                ?.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE) == true
+    }
+
+    fun enterPictureInPicture() {
+        val host = activity ?: return
+        if (!pipSupported || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        // In a window the size of a business card the overlay would cover the
+        // whole picture, so the controls step aside before the switch.
+        controlsVisible = false
+        // The window keeps the aspect ratio of the video, so a 16:9 stream is
+        // not letterboxed inside an arbitrary box.
+        val format = player.videoFormat
+        val width = format?.width?.takeIf { it > 0 } ?: 16
+        val height = format?.height?.takeIf { it > 0 } ?: 9
+        val params = PictureInPictureParams.Builder()
+            .setAspectRatio(Rational(width, height))
+            .build()
+        runCatching { host.enterPictureInPictureMode(params) }
     }
 
     /** Swaps what is playing in place, keeping the viewer inside the player. */
@@ -878,6 +914,10 @@ fun PlayerScreen(
                 },
                 closeLabel = strings.closePlayer,
                 onBack = onBack,
+                pipLabel = strings.pipAction,
+                // Offered only where the system actually has the feature: on a
+                // television the button would simply do nothing.
+                onEnterPip = if (pipSupported) ({ enterPictureInPicture() }) else null,
             )
         }
 
@@ -966,6 +1006,8 @@ private fun PlayerTopBar(
     closeLabel: String,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    pipLabel: String? = null,
+    onEnterPip: (() -> Unit)? = null,
 ) {
     Row(
         modifier = modifier
@@ -988,7 +1030,7 @@ private fun PlayerTopBar(
             )
         }
         Spacer(Modifier.width(4.dp))
-        Column {
+        Column(Modifier.weight(1f)) {
             Text(
                 text = title,
                 color = Color.White,
@@ -1004,6 +1046,18 @@ private fun PlayerTopBar(
                     style = MaterialTheme.typography.labelMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        if (onEnterPip != null) {
+            IconButton(
+                onClick = onEnterPip,
+                modifier = Modifier.tvFocusFrame(cornerRadius = 24.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.PictureInPictureAlt,
+                    contentDescription = pipLabel,
+                    tint = Color.White,
                 )
             }
         }
@@ -1361,6 +1415,17 @@ private fun TimeLabel(text: String, semanticLabel: String? = null) {
             if (semanticLabel != null) contentDescription = semanticLabel
         },
     )
+}
+
+/**
+ * The activity hosting this screen, unwrapped from whatever context wrappers
+ * Compose hands down. Picture-in-picture is an activity-level call, so it needs
+ * the real host rather than the themed context.
+ */
+private tailrec fun Context.findComponentActivity(): ComponentActivity? = when (this) {
+    is ComponentActivity -> this
+    is ContextWrapper -> baseContext.findComponentActivity()
+    else -> null
 }
 
 /** Formats milliseconds as `m:ss` or `h:mm:ss` for the scrub bar labels. */

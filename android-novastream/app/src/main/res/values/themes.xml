@@ -1,4 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.RorkApp" parent="android:Theme.Material.Light.NoActionBar" />
+    <!--
+        Dark is the house style of NovaStream, so the window itself starts dark:
+        otherwise the system paints a white sheet for a frame before Compose
+        draws, which reads as a flash at every launch.
+
+        The bars are declared transparent here instead of being tinted from
+        code. Window.setStatusBarColor and setNavigationBarColor are deprecated
+        on Android 15, where the platform always draws edge to edge and decides
+        icon contrast from windowLightStatusBar / windowLightNavigationBar.
+    -->
+    <style name="Theme.RorkApp" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#FF0B0F1A</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+        <item name="android:enforceStatusBarContrast">false</item>
+        <item name="android:enforceNavigationBarContrast">false</item>
+    </style>
 </resources>
