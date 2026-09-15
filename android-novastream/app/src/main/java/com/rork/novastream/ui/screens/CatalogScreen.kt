@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.focusGroup
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -16,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -36,12 +36,10 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -65,6 +63,7 @@ import com.rork.novastream.data.model.MediaKind
 import com.rork.novastream.data.model.SortOption
 import com.rork.novastream.ui.components.EmptyState
 import com.rork.novastream.ui.components.LocalIsTv
+import com.rork.novastream.ui.components.PickerSheet
 import com.rork.novastream.ui.components.PosterCard
 import com.rork.novastream.ui.components.RequestInitialFocus
 import com.rork.novastream.ui.components.rememberFocusRequester
@@ -184,14 +183,13 @@ fun CatalogScreen(
 }
 
 /**
- * The provider's category list, shown as a sheet over the current screen.
+ * The provider's category list, shown as a full-height panel over the screen.
  *
- * Providers ship hundreds of groups, so the list is lazy and scrollable and the
- * sheet takes a fixed share of the screen. That height matters: a weighted list
- * inside a sheet that measures its content with unbounded height collapses to
- * nothing, which is why the Live sheet used to open completely empty.
+ * Providers ship hundreds of groups, so the list is lazy and scrollable. It sits
+ * in a [PickerSheet] rather than a bottom sheet on purpose: a sheet claims the
+ * fling that is left over when the list hits its end and shudders the panel up
+ * and down instead of letting the list settle on the last category.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CategorySheet(
     title: String,
@@ -202,54 +200,42 @@ fun CategorySheet(
     onDismiss: () -> Unit,
 ) {
     val strings = LocalStrings.current
-    // Full height from the start: a half-open sheet turns every D-pad press into
-    // a resize instead of a move down the list.
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val listState = rememberLazyListState()
     val listFocus = rememberFocusRequester()
 
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
-        Column(
+    PickerSheet(
+        title = title,
+        subtitle = strings.categoriesCount.format(formatCount(groups.size)),
+        closeLabel = strings.close,
+        onDismiss = onDismiss,
+    ) {
+        Spacer(Modifier.height(12.dp))
+        LazyColumn(
+            state = listState,
             modifier = Modifier
-                // A real height, not "whatever the content wants": this is what
-                // gives the list room to exist and to scroll inside the sheet.
-                .fillMaxHeight(0.92f)
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp),
+                .weight(1f)
+                // The list itself is the landing zone for the remote, so the
+                // first press of an arrow already moves between categories
+                // instead of doing nothing.
+                .focusRequester(listFocus)
+                .focusGroup(),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+            contentPadding = PaddingValues(bottom = 28.dp),
         ) {
-            Text(title, style = MaterialTheme.typography.titleLarge)
-            Spacer(Modifier.height(2.dp))
-            Text(
-                text = strings.categoriesCount.format(formatCount(groups.size)),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(12.dp))
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    // The list itself is the landing zone for the remote, so the
-                    // first press of an arrow already moves between categories
-                    // instead of doing nothing.
-                    .focusRequester(listFocus)
-                    .focusGroup(),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-                contentPadding = PaddingValues(bottom = 28.dp),
-            ) {
-                item("all") {
-                    GroupRow(
-                        label = allLabel,
-                        selected = selectedGroup == null,
-                        onClick = { onSelect(null) },
-                    )
-                }
-                items(groups, key = { it }) { group ->
-                    GroupRow(
-                        label = group,
-                        selected = selectedGroup == group,
-                        onClick = { onSelect(if (selectedGroup == group) null else group) },
-                    )
-                }
+            item("all") {
+                GroupRow(
+                    label = allLabel,
+                    selected = selectedGroup == null,
+                    onClick = { onSelect(null) },
+                )
+            }
+            items(groups, key = { it }) { group ->
+                GroupRow(
+                    label = group,
+                    selected = selectedGroup == group,
+                    onClick = { onSelect(if (selectedGroup == group) null else group) },
+                )
             }
         }
         RequestInitialFocus(listFocus, key = groups.size)

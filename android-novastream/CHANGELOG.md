@@ -53,6 +53,27 @@
   meno memoria occupata e avvio più rapido.
 - Versione applicazione aggiornata a 1.2.6.
 
+**Aggiunte successive (sempre 1.2.6)**
+
+- **Risolto il tremolio durante lo scorrimento delle categorie.** Scorrendo
+  velocemente l'elenco delle cartelle — sia quello del controllo genitori sia
+  quello che si apre dal pulsante in alto a destra in Live, Film e Serie — la
+  schermata sobbalzava su e giù. Il pannello non è più una finestra trascinabile:
+  la spinta residua dello scorrimento non viene più rubata dal pannello, così la
+  lista arriva in fondo e si ferma. Il pannello ha ora anche un pulsante di
+  chiusura in alto a destra.
+- **Il PIN serve anche per disattivare il blocco genitori.** Prima bastava
+  toccare di nuovo l'interruttore: ora viene chiesto il PIN, altrimenti chiunque
+  potrebbe spegnere la protezione in due secondi.
+- **Il PIN serve per cambiare il PIN.** Prima si poteva sovrascrivere senza
+  conoscere quello vecchio. Ora si inserisce prima il PIN attuale e solo dopo si
+  scrive quello nuovo.
+- **Il PIN serve per modificare le cartelle bloccate.** L'elenco delle categorie
+  protette è la protezione stessa: aprirlo senza PIN vanificava la funzione.
+- **Niente più apertura automatica di Live TV.** Dopo aver impostato il PIN la
+  selezione delle categorie non si apre più da sola: decidi tu da quale sezione
+  partire.
+
 ### English
 
 **New**
@@ -103,6 +124,24 @@
   a faster start.
 - App version updated to 1.2.6.
 
+**Added later in 1.2.6**
+
+- **Fixed the shuddering while scrolling the categories.** Flicking quickly
+  through the folder list — both the parental one and the one behind the button
+  at the top right of Live, Movies and Series — made the screen jump up and down.
+  The panel is no longer a draggable sheet, so it can no longer steal what is
+  left of a fling: the list reaches the bottom and stops there. The panel also
+  has a close button in its top-right corner now.
+- **The PIN is required to switch the parental lock off.** Tapping the switch
+  again used to be enough, so anyone could disable the protection in two seconds.
+- **The PIN is required to change the PIN.** It could previously be overwritten
+  without knowing the old one. The current PIN now comes first, the new one
+  after.
+- **The PIN is required to edit the blocked folders.** That list is the
+  protection itself, so reaching it without the PIN defeated the feature.
+- **No more jumping straight into Live TV.** After setting the PIN the category
+  picker no longer opens by itself: you choose which section to start from.
+
 ### Español
 
 **Novedades**
@@ -132,6 +171,17 @@
 
 **Además:** migración a las API modernas de pantalla completa (edge-to-edge),
 optimización avanzada de recursos con R8 y versión actualizada a 1.2.6.
+
+**Añadido después (sigue siendo 1.2.6)**
+
+- Corregido el temblor al desplazar las categorías, tanto en el control parental
+  como en el panel del botón superior derecho de Directo, Películas y Series: la
+  lista llega al final y se detiene. El panel tiene ahora un botón de cierre.
+- El PIN es obligatorio para desactivar el control parental.
+- El PIN actual es obligatorio antes de cambiarlo por uno nuevo.
+- El PIN es obligatorio para modificar las carpetas bloqueadas.
+- Tras definir el PIN ya no se abre automáticamente la sección Directo: eliges tú
+  por dónde empezar.
 
 ### Français
 
@@ -163,6 +213,18 @@ optimización avanzada de recursos con R8 y versión actualizada a 1.2.6.
 **Par ailleurs :** migration vers les API modernes plein écran (edge-to-edge),
 optimisation avancée des ressources avec R8, version portée à 1.2.6.
 
+**Ajouté ensuite (toujours 1.2.6)**
+
+- Correction du tremblement lors du défilement des catégories, dans le contrôle
+  parental comme dans le panneau du bouton en haut à droite de Direct, Films et
+  Séries : la liste atteint le bas et s'y arrête. Le panneau a désormais un
+  bouton de fermeture.
+- Le code PIN est exigé pour désactiver le contrôle parental.
+- Le code actuel est exigé avant d'en définir un nouveau.
+- Le code PIN est exigé pour modifier les dossiers bloqués.
+- Après la création du code, la section Direct ne s'ouvre plus d'elle-même :
+  c'est vous qui choisissez par où commencer.
+
 ### Deutsch
 
 **Neu**
@@ -192,6 +254,18 @@ optimisation avancée des ressources avec R8, version portée à 1.2.6.
 
 **Außerdem:** Umstellung auf die modernen Edge-to-Edge-APIs, optimiertes
 R8-Ressourcen-Shrinking und Version 1.2.6.
+
+**Später in 1.2.6 ergänzt**
+
+- Das Zittern beim Scrollen der Kategorien ist behoben — in der Kindersicherung
+  wie im Panel der Schaltfläche oben rechts in Live, Filme und Serien: Die Liste
+  läuft bis zum Ende und bleibt dort stehen. Das Panel hat jetzt außerdem eine
+  Schließen-Schaltfläche.
+- Die PIN wird verlangt, um die Kindersicherung auszuschalten.
+- Die aktuelle PIN wird verlangt, bevor eine neue gesetzt werden kann.
+- Die PIN wird verlangt, um die gesperrten Ordner zu bearbeiten.
+- Nach dem Festlegen der PIN öffnet sich der Live-Bereich nicht mehr von selbst:
+  Sie entscheiden, wo Sie anfangen.
 
 ### Português
 
@@ -223,6 +297,17 @@ R8-Ressourcen-Shrinking und Version 1.2.6.
 **Além disso:** migração para as APIs modernas de ecrã inteiro (edge-to-edge),
 otimização avançada de recursos com R8 e versão 1.2.6.
 
+**Acrescentado depois (ainda 1.2.6)**
+
+- Corrigida a tremura ao percorrer as categorias, tanto no controlo parental como
+  no painel do botão no canto superior direito de Direto, Filmes e Séries: a
+  lista chega ao fim e para. O painel passa a ter um botão de fechar.
+- O PIN é exigido para desativar o controlo parental.
+- O PIN atual é exigido antes de definir um novo.
+- O PIN é exigido para alterar as pastas bloqueadas.
+- Depois de definir o PIN, a secção Direto já não abre sozinha: escolhe por onde
+  começar.
+
 ### Română
 
 **Noutăți**
@@ -253,6 +338,17 @@ otimização avançada de recursos com R8 e versão 1.2.6.
 **În plus:** trecerea la API-urile moderne edge-to-edge, optimizarea avansată a
 resurselor cu R8 și versiunea 1.2.6.
 
+**Adăugat ulterior (tot 1.2.6)**
+
+- Rezolvat tremuratul la derularea categoriilor, atât în controlul parental, cât
+  și în panoul butonului din dreapta sus din Live, Filme și Seriale: lista ajunge
+  la capăt și se oprește. Panoul are acum și un buton de închidere.
+- PIN-ul este cerut pentru dezactivarea controlului parental.
+- PIN-ul actual este cerut înainte de setarea unuia nou.
+- PIN-ul este cerut pentru modificarea folderelor blocate.
+- După setarea PIN-ului, secțiunea Live nu se mai deschide singură: alegi tu de
+  unde începi.
+
 ### Türkçe
 
 **Yenilikler**
@@ -282,6 +378,17 @@ resurselor cu R8 și versiunea 1.2.6.
 
 **Ayrıca:** modern edge-to-edge API'lerine geçiş, R8 ile gelişmiş kaynak
 optimizasyonu ve 1.2.6 sürümü.
+
+**Sonradan eklendi (yine 1.2.6)**
+
+- Kategorileri kaydırırken oluşan titreme giderildi; hem ebeveyn kontrolünde hem
+  de Canlı, Filmler ve Dizilerdeki sağ üst düğmenin panelinde liste artık sona
+  ulaşıp orada duruyor. Panele bir kapatma düğmesi de eklendi.
+- Ebeveyn kilidini kapatmak için PIN isteniyor.
+- Yeni PIN belirlemeden önce mevcut PIN isteniyor.
+- Engellenen klasörleri değiştirmek için PIN isteniyor.
+- PIN belirlendikten sonra Canlı bölümü kendiliğinden açılmıyor; nereden
+  başlayacağınıza siz karar veriyorsunuz.
 
 ## 1.2.2 (versionCode 5)
 

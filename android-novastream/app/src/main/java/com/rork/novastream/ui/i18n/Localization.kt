@@ -364,6 +364,10 @@ data class ExtraStrings(
     val parentalNoGroups: String = "No category in this section.",
     val parentalBlockedInSection: String = "%s blocked here",
     val parentalPinRequired: String = "Set a PIN first to protect the categories.",
+    val parentalCurrentPin: String = "Current PIN",
+    val parentalNewPin: String = "New PIN (4-6 digits)",
+    val parentalPinToDisable: String = "Enter the PIN to turn off the parental lock.",
+    val parentalPinToEdit: String = "Enter the PIN to change the protected categories.",
 
     val pipAction: String = "Picture-in-picture",
     val pipUnsupported: String = "This device does not support picture-in-picture.",
@@ -702,6 +706,10 @@ class Strings(
     val parentalNoGroups: String get() = extra.parentalNoGroups
     val parentalBlockedInSection: String get() = extra.parentalBlockedInSection
     val parentalPinRequired: String get() = extra.parentalPinRequired
+    val parentalCurrentPin: String get() = extra.parentalCurrentPin
+    val parentalNewPin: String get() = extra.parentalNewPin
+    val parentalPinToDisable: String get() = extra.parentalPinToDisable
+    val parentalPinToEdit: String get() = extra.parentalPinToEdit
     val pipAction: String get() = extra.pipAction
     val pipUnsupported: String get() = extra.pipUnsupported
 }
@@ -1021,6 +1029,10 @@ private val Italian = Strings(
         parentalNoGroups = "Nessuna categoria in questa sezione.",
         parentalBlockedInSection = "%s bloccate qui",
         parentalPinRequired = "Imposta prima un PIN per proteggere le categorie.",
+        parentalCurrentPin = "PIN attuale",
+        parentalNewPin = "Nuovo PIN (4-6 cifre)",
+        parentalPinToDisable = "Inserisci il PIN per disattivare il blocco genitori.",
+        parentalPinToEdit = "Inserisci il PIN per modificare le categorie protette.",
         pipAction = "Picture-in-picture",
         pipUnsupported = "Questo dispositivo non supporta il picture-in-picture.",
     ),
@@ -1331,6 +1343,10 @@ private val Spanish = Strings(
         parentalNoGroups = "No hay categor\u00edas en esta secci\u00f3n.",
         parentalBlockedInSection = "%s bloqueadas aqu\u00ed",
         parentalPinRequired = "Define primero un PIN para proteger las categor\u00edas.",
+        parentalCurrentPin = "PIN actual",
+        parentalNewPin = "Nuevo PIN (4-6 d\u00edgitos)",
+        parentalPinToDisable = "Introduce el PIN para desactivar el control parental.",
+        parentalPinToEdit = "Introduce el PIN para cambiar las categor\u00edas protegidas.",
         pipAction = "Imagen en imagen",
         pipUnsupported = "Este dispositivo no admite imagen en imagen.",
     ),
@@ -1641,6 +1657,10 @@ private val French = Strings(
         parentalNoGroups = "Aucune cat\u00e9gorie dans cette section.",
         parentalBlockedInSection = "%s bloqu\u00e9es ici",
         parentalPinRequired = "D\u00e9finissez d'abord un code PIN pour prot\u00e9ger les cat\u00e9gories.",
+        parentalCurrentPin = "Code actuel",
+        parentalNewPin = "Nouveau code (4-6 chiffres)",
+        parentalPinToDisable = "Saisissez le code pour d\u00e9sactiver le contr\u00f4le parental.",
+        parentalPinToEdit = "Saisissez le code pour modifier les cat\u00e9gories prot\u00e9g\u00e9es.",
         pipAction = "Image dans l'image",
         pipUnsupported = "Cet appareil ne prend pas en charge l'image dans l'image.",
     ),
@@ -1951,6 +1971,10 @@ private val German = Strings(
         parentalNoGroups = "Keine Kategorie in diesem Bereich.",
         parentalBlockedInSection = "%s hier gesperrt",
         parentalPinRequired = "Lege zuerst eine PIN fest, um Kategorien zu sch\u00fctzen.",
+        parentalCurrentPin = "Aktuelle PIN",
+        parentalNewPin = "Neue PIN (4-6 Ziffern)",
+        parentalPinToDisable = "Gib die PIN ein, um die Kindersicherung auszuschalten.",
+        parentalPinToEdit = "Gib die PIN ein, um die gesch\u00fctzten Kategorien zu \u00e4ndern.",
         pipAction = "Bild-in-Bild",
         pipUnsupported = "Dieses Ger\u00e4t unterst\u00fctzt Bild-in-Bild nicht.",
     ),
@@ -2261,6 +2285,10 @@ private val Portuguese = Strings(
         parentalNoGroups = "Nenhuma categoria nesta sec\u00e7\u00e3o.",
         parentalBlockedInSection = "%s bloqueadas aqui",
         parentalPinRequired = "Defina primeiro um PIN para proteger as categorias.",
+        parentalCurrentPin = "PIN atual",
+        parentalNewPin = "Novo PIN (4-6 d\u00edgitos)",
+        parentalPinToDisable = "Introduza o PIN para desativar o controlo parental.",
+        parentalPinToEdit = "Introduza o PIN para alterar as categorias protegidas.",
         pipAction = "Imagem na imagem",
         pipUnsupported = "Este dispositivo n\u00e3o suporta imagem na imagem.",
     ),
@@ -2571,6 +2599,10 @@ private val Romanian = Strings(
         parentalNoGroups = "Nicio categorie \u00een aceast\u0103 sec\u021biune.",
         parentalBlockedInSection = "%s blocate aici",
         parentalPinRequired = "Seteaz\u0103 mai \u00eent\u00e2i un PIN pentru a proteja categoriile.",
+        parentalCurrentPin = "PIN actual",
+        parentalNewPin = "PIN nou (4-6 cifre)",
+        parentalPinToDisable = "Introdu PIN-ul pentru a dezactiva controlul parental.",
+        parentalPinToEdit = "Introdu PIN-ul pentru a modifica categoriile protejate.",
         pipAction = "Imagine \u00een imagine",
         pipUnsupported = "Acest dispozitiv nu accept\u0103 imagine \u00een imagine.",
     ),
@@ -2881,6 +2913,10 @@ private val Turkish = Strings(
         parentalNoGroups = "Bu b\u00f6l\u00fcmde kategori yok.",
         parentalBlockedInSection = "%s burada engellendi",
         parentalPinRequired = "Kategorileri korumak i\u00e7in \u00f6nce bir PIN belirleyin.",
+        parentalCurrentPin = "Mevcut PIN",
+        parentalNewPin = "Yeni PIN (4-6 rakam)",
+        parentalPinToDisable = "Ebeveyn kilidini kapatmak i\u00e7in PIN'i girin.",
+        parentalPinToEdit = "Korunan kategorileri de\u011fi\u015ftirmek i\u00e7in PIN'i girin.",
         pipAction = "Resim i\u00e7inde resim",
         pipUnsupported = "Bu cihaz resim i\u00e7inde resim \u00f6zelli\u011fini desteklemiyor.",
     ),

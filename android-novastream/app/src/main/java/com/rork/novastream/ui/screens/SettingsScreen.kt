@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -19,6 +18,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -45,7 +45,6 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
@@ -58,7 +57,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -86,6 +84,7 @@ import com.rork.novastream.data.local.LicenseStatus
 import com.rork.novastream.data.local.ThemeMode
 import com.rork.novastream.data.model.MediaKind
 import com.rork.novastream.data.model.SyncState
+import com.rork.novastream.ui.components.PickerSheet
 import com.rork.novastream.ui.components.PrivacyNote
 import com.rork.novastream.ui.components.RequestInitialFocus
 import com.rork.novastream.ui.components.TvTextField
@@ -128,7 +127,9 @@ fun SettingsScreen(
     val accents = LocalNovaAccents.current
     val storeUrl by viewModel.storeUrl.collectAsStateWithLifecycle()
 
-    var pinDialogOpen by remember { mutableStateOf(false) }
+    /** What the PIN is being asked for, null while no dialog is up. */
+    var pinRequest by remember { mutableStateOf<PinRequest?>(null) }
+    var pinWrong by remember { mutableStateOf(false) }
     /** The section whose categories are being picked, null when none is open. */
     var groupsScope by remember { mutableStateOf<MediaKind?>(null) }
     var wipeDialogOpen by remember { mutableStateOf(false) }
@@ -682,8 +683,10 @@ fun SettingsScreen(
                         title = strings.parentalToggle,
                         subtitle = strings.parentalToggleSub,
                         checked = settings.parentalEnabled,
+                        // Turning the lock off is exactly what a child would try
+                        // first, so it asks for the PIN just like unlocking does.
                         onCheckedChange = { value ->
-                            if (value) pinDialogOpen = true else viewModel.settingsStore.clearParental()
+                            pinRequest = if (value) PinRequest.Create else PinRequest.Disable
                         },
                     )
                     if (settings.parentalEnabled) {
@@ -707,13 +710,15 @@ fun SettingsScreen(
                                 },
                                 description = strings.parentalBlockedInSection.format(blocked),
                                 selected = blocked > 0,
-                                onClick = { groupsScope = kind },
+                                // The category list is the lock itself: reaching
+                                // it without the PIN would defeat the feature.
+                                onClick = { pinRequest = PinRequest.Edit(kind) },
                             )
                             Spacer(Modifier.height(8.dp))
                         }
 
                         OutlinedButton(
-                            onClick = { pinDialogOpen = true },
+                            onClick = { pinRequest = PinRequest.Change },
                             modifier = Modifier.fillMaxWidth().tvFocusFrame(cornerRadius = 20.dp),
                         ) { Text(strings.parentalChangePin) }
 
@@ -783,17 +788,58 @@ fun SettingsScreen(
         }
     }
 
-    if (pinDialogOpen) {
+    pinRequest?.let { request ->
+        val choosing = request is PinRequest.Create || request is PinRequest.Replace
         PinDialog(
-            title = strings.parentalSetPin,
-            label = strings.parentalPinLabel,
+            requestKey = request,
+            title = if (choosing) strings.parentalSetPin else strings.parentalPinTitle,
+            label = when (request) {
+                PinRequest.Create -> strings.parentalPinLabel
+                PinRequest.Replace -> strings.parentalNewPin
+                else -> strings.parentalCurrentPin
+            },
+            hint = when (request) {
+                PinRequest.Disable -> strings.parentalPinToDisable
+                is PinRequest.Edit -> strings.parentalPinToEdit
+                else -> null
+            },
+            error = if (pinWrong) strings.parentalPinWrong else null,
             confirmLabel = strings.confirm,
             cancelLabel = strings.cancel,
-            onDismiss = { pinDialogOpen = false },
+            onDismiss = {
+                pinRequest = null
+                pinWrong = false
+            },
             onConfirm = { pin ->
-                viewModel.settingsStore.setPin(pin)
-                pinDialogOpen = false
-                groupsScope = MediaKind.LIVE
+                pinWrong = false
+                when (request) {
+                    // No PIN exists yet, or the old one has just been proved:
+                    // whatever is typed here becomes the new PIN.
+                    PinRequest.Create, PinRequest.Replace -> {
+                        viewModel.settingsStore.setPin(pin)
+                        pinRequest = null
+                    }
+
+                    else -> if (viewModel.settingsStore.verifyPin(pin)) {
+                        when (request) {
+                            PinRequest.Disable -> {
+                                viewModel.settingsStore.clearParental()
+                                pinRequest = null
+                            }
+
+                            PinRequest.Change -> pinRequest = PinRequest.Replace
+
+                            is PinRequest.Edit -> {
+                                groupsScope = request.kind
+                                pinRequest = null
+                            }
+
+                            else -> pinRequest = null
+                        }
+                    } else {
+                        pinWrong = true
+                    }
+                }
             },
         )
     }
@@ -1024,29 +1070,83 @@ private fun ResultRow(title: String, value: String, hint: String) {
     }
 }
 
+/**
+ * Everything the parental PIN is asked for.
+ *
+ * Only [Create] and [Replace] write a new PIN; the others prove the caller
+ * already knows the current one before anything is changed or revealed.
+ */
+private sealed interface PinRequest {
+    /** No PIN exists yet: the lock is being switched on for the first time. */
+    data object Create : PinRequest
+
+    /** Switching the lock off, which must not be possible without the PIN. */
+    data object Disable : PinRequest
+
+    /** Step one of changing the PIN: prove the old one. */
+    data object Change : PinRequest
+
+    /** Step two of changing the PIN: type the new one. */
+    data object Replace : PinRequest
+
+    /** Opening the protected categories of one section. */
+    data class Edit(val kind: MediaKind) : PinRequest
+}
+
+/**
+ * Numeric PIN prompt.
+ *
+ * The typed digits are tied to [requestKey], so moving from "prove the old PIN"
+ * to "choose the new one" starts from an empty field instead of carrying the
+ * previous entry over.
+ */
 @Composable
 private fun PinDialog(
+    requestKey: Any,
     title: String,
     label: String,
     confirmLabel: String,
     cancelLabel: String,
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
+    hint: String? = null,
+    error: String? = null,
 ) {
-    var pin by remember { mutableStateOf("") }
+    var pin by remember(requestKey) { mutableStateOf("") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
-            TvTextField(
-                value = pin,
-                onValueChange = { if (it.length <= 6 && it.all { char -> char.isDigit() }) pin = it },
-                label = { Text(label) },
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-            )
+            Column {
+                if (hint != null) {
+                    Text(
+                        text = hint,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(12.dp))
+                }
+                TvTextField(
+                    value = pin,
+                    onValueChange = {
+                        if (it.length <= 6 && it.all { char -> char.isDigit() }) pin = it
+                    },
+                    label = { Text(label) },
+                    singleLine = true,
+                    isError = error != null,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                )
+                if (error != null) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = error,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
         },
         confirmButton = {
             TextButton(onClick = { onConfirm(pin) }, enabled = pin.length >= 4) { Text(confirmLabel) }
@@ -1058,11 +1158,12 @@ private fun PinDialog(
 /**
  * Categories of one section, each with a padlock switch.
  *
- * Providers ship hundreds of groups, so this is a full-height sheet with a
+ * Providers ship hundreds of groups, so this is a full-height panel with a
  * search box and two bulk actions rather than a dialog: picking the adult
  * categories out of a list of four hundred has to take seconds, not minutes.
+ * It uses [PickerSheet] instead of a bottom sheet because a sheet takes over
+ * the end of a fling and makes the whole panel jump up and down.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun GroupsSheet(
     kind: MediaKind,
@@ -1073,8 +1174,8 @@ private fun GroupsSheet(
     onSetAll: (List<String>, Boolean) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     var search by remember(kind) { mutableStateOf("") }
+    val listState = rememberLazyListState()
     val listFocus = rememberFocusRequester()
 
     val shown = remember(groups, search) {
@@ -1083,80 +1184,70 @@ private fun GroupsSheet(
         else groups.filter { it.contains(query, ignoreCase = true) }
     }
 
-    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
-        Column(
-            modifier = Modifier
-                .fillMaxHeight(0.92f)
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp),
-        ) {
-            Text(strings.parentalGroupsTitle, style = MaterialTheme.typography.titleLarge)
-            Spacer(Modifier.height(2.dp))
-            Text(
-                text = when (kind) {
-                    MediaKind.LIVE -> strings.liveTvTitle
-                    MediaKind.MOVIE -> strings.moviesTitle
-                    MediaKind.SERIES -> strings.seriesTitle
-                } + " · " + strings.parentalBlockedInSection.format(blocked.size),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
-            if (groups.isEmpty()) {
-                Spacer(Modifier.height(16.dp))
-                Text(strings.parentalNoGroups, style = MaterialTheme.typography.bodyMedium)
-                Spacer(Modifier.height(24.dp))
-                return@Column
-            }
-
-            Spacer(Modifier.height(12.dp))
-            TvTextField(
-                value = search,
-                onValueChange = { search = it },
-                label = { Text(strings.parentalSearchGroups) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth(),
-            )
-
-            Spacer(Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                OutlinedButton(
-                    onClick = { onSetAll(shown, true) },
-                    modifier = Modifier.weight(1f).tvFocusFrame(cornerRadius = 20.dp),
-                ) { Text(strings.parentalBlockAll, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-                OutlinedButton(
-                    onClick = { onSetAll(shown, false) },
-                    modifier = Modifier.weight(1f).tvFocusFrame(cornerRadius = 20.dp),
-                ) { Text(strings.parentalClearAll, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-            }
-
-            Spacer(Modifier.height(10.dp))
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .focusRequester(listFocus)
-                    .focusGroup(),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(bottom = 20.dp),
-            ) {
-                items(shown, key = { it }) { group ->
-                    BlockedGroupRow(
-                        label = group,
-                        blocked = blocked.contains(group),
-                        onToggle = { onToggle(group) },
-                    )
-                }
-            }
-
-            Button(
-                onClick = onDismiss,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 20.dp)
-                    .tvFocusFrame(cornerRadius = 20.dp),
-            ) { Text(strings.done) }
+    PickerSheet(
+        title = strings.parentalGroupsTitle,
+        subtitle = when (kind) {
+            MediaKind.LIVE -> strings.liveTvTitle
+            MediaKind.MOVIE -> strings.moviesTitle
+            MediaKind.SERIES -> strings.seriesTitle
+        } + " · " + strings.parentalBlockedInSection.format(blocked.size),
+        closeLabel = strings.close,
+        onDismiss = onDismiss,
+    ) {
+        if (groups.isEmpty()) {
+            Spacer(Modifier.height(16.dp))
+            Text(strings.parentalNoGroups, style = MaterialTheme.typography.bodyMedium)
+            return@PickerSheet
         }
+
+        Spacer(Modifier.height(12.dp))
+        TvTextField(
+            value = search,
+            onValueChange = { search = it },
+            label = { Text(strings.parentalSearchGroups) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        Spacer(Modifier.height(10.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            OutlinedButton(
+                onClick = { onSetAll(shown, true) },
+                modifier = Modifier.weight(1f).tvFocusFrame(cornerRadius = 20.dp),
+            ) { Text(strings.parentalBlockAll, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+            OutlinedButton(
+                onClick = { onSetAll(shown, false) },
+                modifier = Modifier.weight(1f).tvFocusFrame(cornerRadius = 20.dp),
+            ) { Text(strings.parentalClearAll, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        }
+
+        Spacer(Modifier.height(10.dp))
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .focusRequester(listFocus)
+                .focusGroup(),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(bottom = 20.dp),
+        ) {
+            items(shown, key = { it }) { group ->
+                BlockedGroupRow(
+                    label = group,
+                    blocked = blocked.contains(group),
+                    onToggle = { onToggle(group) },
+                )
+            }
+        }
+
+        Button(
+            onClick = onDismiss,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = 20.dp)
+                .tvFocusFrame(cornerRadius = 20.dp),
+        ) { Text(strings.done) }
         RequestInitialFocus(listFocus, key = kind)
     }
 }
