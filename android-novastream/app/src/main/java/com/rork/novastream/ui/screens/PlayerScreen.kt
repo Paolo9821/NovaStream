@@ -60,6 +60,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -207,10 +208,26 @@ fun PlayerScreen(
             }
     }
 
+    /**
+     * End-of-stream state, kept for the whole player session rather than
+     * rebuilt for every stream.
+     *
+     * The ExoPlayer listener is registered once; when these were rebuilt on
+     * each episode the listener went on writing into the state objects of the
+     * episode it had been created with, so only the first episode of a run ever
+     * announced what came next. They are cleared whenever the source changes.
+     */
+    var playbackEnded by remember { mutableStateOf(false) }
+    var upNextDismissed by remember { mutableStateOf(false) }
+    var secondsLeft by remember { mutableIntStateOf(0) }
+
     // Loads whatever should be on screen into the running player, so switching
     // channel or episode swaps the source and keeps the same video surface.
     LaunchedEffect(player, activeStreamUrl) {
         buffering = true
+        playbackEnded = false
+        upNextDismissed = false
+        secondsLeft = 0
         player.stop()
         player.setMediaItem(MediaItem.fromUri(activeStreamUrl))
         player.prepare()
@@ -218,11 +235,6 @@ fun PlayerScreen(
         if (resumeFromMs > 0L) player.seekTo(resumeFromMs)
         player.playWhenReady = true
     }
-
-    /** Set when the stream reaches its natural end, to offer what comes next. */
-    var playbackEnded by remember(activeStreamUrl) { mutableStateOf(false) }
-    var upNextDismissed by remember(activeStreamUrl) { mutableStateOf(false) }
-    var secondsLeft by remember(activeStreamUrl) { mutableIntStateOf(0) }
 
     fun showControls() {
         controlsVisible = true
@@ -266,6 +278,25 @@ fun PlayerScreen(
     // was left and can offer to carry on from its page.
     val currentEpisode = remember(episodes, activeStreamUrl, isSeries) {
         if (isSeries) episodes.firstOrNull { it.streamUrl == activeStreamUrl } else null
+    }
+
+    // The player listener, the progress ticker and the lifecycle observer are
+    // all set up once and outlive any number of episodes, so they read what is
+    // playing through these instead of capturing it when they were created.
+    val playingEntry by rememberUpdatedState(entry)
+    val playingStreamUrl by rememberUpdatedState(activeStreamUrl)
+    val playingEpisode by rememberUpdatedState(currentEpisode)
+
+    /** Writes down the position of whatever is on screen at this instant. */
+    fun saveCurrentProgress(positionMs: Long, durationMs: Long) {
+        val watched = playingEntry ?: return
+        viewModel.saveProgress(
+            entry = watched,
+            streamUrl = playingStreamUrl,
+            positionMs = positionMs,
+            durationMs = durationMs,
+            episode = playingEpisode,
+        )
     }
 
     val nextEpisode = remember(episodes, activeStreamUrl, isSeries) {
@@ -325,6 +356,11 @@ fun PlayerScreen(
     /** Swaps what is playing in place, keeping the viewer inside the player. */
     fun switchTo(newEntryId: String, newStreamUrl: String) {
         if (newStreamUrl.isBlank()) return
+        // Cleared here as well as when the source loads, so the card of the
+        // episode just finished cannot survive into the one starting.
+        playbackEnded = false
+        upNextDismissed = false
+        secondsLeft = 0
         activeEntryId = newEntryId
         activeStreamUrl = newStreamUrl
         controlsVisible = true
@@ -357,15 +393,15 @@ fun PlayerScreen(
                     controlsVisible = true
                     // Marks the episode as watched right away, so the series page
                     // offers the next one even if the box is switched off here.
-                    entry?.let {
-                        viewModel.saveProgress(
-                            entry = it,
-                            streamUrl = activeStreamUrl,
-                            positionMs = player.duration.coerceAtLeast(0L),
-                            durationMs = player.duration.coerceAtLeast(0L),
-                            episode = currentEpisode,
-                        )
-                    }
+                    saveCurrentProgress(
+                        positionMs = player.duration.coerceAtLeast(0L),
+                        durationMs = player.duration.coerceAtLeast(0L),
+                    )
+                } else {
+                    // Anything else means a stream is rolling again: the end of
+                    // the previous one must not stay latched, or the episode now
+                    // playing would never get to announce its own.
+                    playbackEnded = false
                 }
             }
 
@@ -390,15 +426,10 @@ fun PlayerScreen(
         player.addListener(listener)
 
         onDispose {
-            entry?.let {
-                viewModel.saveProgress(
-                    entry = it,
-                    streamUrl = activeStreamUrl,
-                    positionMs = player.currentPosition,
-                    durationMs = player.duration.coerceAtLeast(0L),
-                    episode = currentEpisode,
-                )
-            }
+            saveCurrentProgress(
+                positionMs = player.currentPosition,
+                durationMs = player.duration.coerceAtLeast(0L),
+            )
             player.removeListener(listener)
             player.release()
         }
@@ -418,15 +449,10 @@ fun PlayerScreen(
             sinceLastSaveMs += 400
             if (sinceLastSaveMs >= PROGRESS_SAVE_INTERVAL_MS) {
                 sinceLastSaveMs = 0L
-                entry?.let {
-                    viewModel.saveProgress(
-                        entry = it,
-                        streamUrl = activeStreamUrl,
-                        positionMs = player.currentPosition,
-                        durationMs = player.duration.coerceAtLeast(0L),
-                        episode = currentEpisode,
-                    )
-                }
+                saveCurrentProgress(
+                    positionMs = player.currentPosition,
+                    durationMs = player.duration.coerceAtLeast(0L),
+                )
             }
             delay(400)
         }
@@ -440,15 +466,10 @@ fun PlayerScreen(
             if (event != Lifecycle.Event.ON_STOP) return@LifecycleEventObserver
             player.pause()
             controlsVisible = true
-            entry?.let {
-                viewModel.saveProgress(
-                    entry = it,
-                    streamUrl = activeStreamUrl,
-                    positionMs = player.currentPosition,
-                    durationMs = player.duration.coerceAtLeast(0L),
-                    episode = currentEpisode,
-                )
-            }
+            saveCurrentProgress(
+                positionMs = player.currentPosition,
+                durationMs = player.duration.coerceAtLeast(0L),
+            )
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }

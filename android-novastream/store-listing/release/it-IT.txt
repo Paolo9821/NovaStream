@@ -1,10 +1,9 @@
-Trame dei film, controllo genitori per categoria e video in finestrella.
+Serie TV: avviso del prossimo episodio a ogni puntata ed elenchi completi.
 
-• Film e serie: trama, generi, cast, regia, durata e voto nella scheda
-• Controllo genitori: scegli con il PIN le categorie da nascondere in Live, Film e Serie
-• Picture-in-picture: continui a guardare mentre usi un'altra app
-• Nuovo tasto "Cancella e riscarica": recupera i canali nuovi del provider
-• Risolto: la finestra delle categorie Live si apriva vuota e le frecce non rispondevano
-• Tema scuro predefinito e home più colorata
+• Risolto: l'avviso del prossimo episodio usciva solo alla fine del primo episodio
+• Il passaggio automatico prosegue ora da solo fino all'ultima puntata della stagione
+• Risolto: alcune serie risultavano "senza elenco episodi" pur avendo le puntate
+• Ora vengono letti tutti i formati usati dai provider per le stagioni
+• Versione 1.2.7
 
 Grazie per usare NovaStream.

@@ -1,10 +1,9 @@
-Film plots, parental control by category and video in a small window.
+Series: the next-episode notice on every episode, and complete episode lists.
 
-• Movies and series: plot, genres, cast, director, running time and rating
-• Parental control: pick with a PIN which categories to hide in Live, Movies, Series
-• Picture-in-picture: keep watching while you use another app
-• New "Erase and download again" button: brings in your provider's new channels
-• Fixed: the Live category sheet opened empty and the remote arrows did not respond
-• Dark theme by default and a more colourful home screen
+• Fixed: the next-episode notice only appeared at the end of the first episode
+• Auto-play now carries on by itself to the last episode of the season
+• Fixed: some series showed "no episode list" even though the episodes existed
+• Every season format used by providers is now read
+• Version 1.2.7
 
 Thanks for using NovaStream.

@@ -117,30 +117,58 @@ class XtreamClient(
             details.takeUnless { it.isEmpty }
         }
 
+    /**
+     * Episodes of a series, read from `get_series_info`.
+     *
+     * Portals disagree on the shape of that response, which is why some series
+     * used to come back "without episodes" while others listed fine on the very
+     * same account. All of these are accepted here:
+     * - `episodes` as an object keyed by season (`{"1": [...]}`), the documented form;
+     * - `episodes` as an array of season buckets, which is what PHP produces
+     *   whenever the season keys happen to run 0, 1, 2… ;
+     * - `episodes` as one flat array of episodes with no season grouping;
+     * - the whole document wrapped in an array.
+     *
+     * Season and episode numbers are taken from the episode itself when it
+     * carries them and only then from the key it was filed under, and the
+     * playable id is accepted under any of the three names portals use.
+     */
     suspend fun loadEpisodes(account: PlaylistAccount, seriesId: String): List<Episode> =
         withContext(Dispatchers.IO) {
             val body = http.get(apiUrl(account, "get_series_info") + "&series_id=$seriesId").bodyAsText()
-            val root = json.parseToJsonElement(body) as? JsonObject ?: return@withContext emptyList()
-            val seasons = root["episodes"] as? JsonObject ?: return@withContext emptyList()
+            val root = runCatching { json.parseToJsonElement(body) }.getOrNull()?.asObject()
+                ?: return@withContext emptyList()
+            val buckets = root["episodes"].seasonBuckets()
 
-            seasons.entries.flatMap { (seasonKey, value) ->
-                val seasonNumber = seasonKey.toIntOrNull() ?: 0
-                (value as? JsonArray).orEmptyElements().mapNotNull { element ->
-                    val obj = element as? JsonObject ?: return@mapNotNull null
-                    val id = obj.str("id") ?: return@mapNotNull null
-                    val extension = obj.str("container_extension") ?: "mp4"
+            buckets.flatMap { (seasonKey, entries) ->
+                entries.mapIndexedNotNull { position, element ->
+                    val obj = element as? JsonObject ?: return@mapIndexedNotNull null
                     val info = obj["info"] as? JsonObject
+                    val id = obj.str("id") ?: obj.str("stream_id") ?: obj.str("episode_id")
+                        ?: return@mapIndexedNotNull null
+                    val extension = obj.str("container_extension")
+                        ?: info?.str("container_extension")
+                        ?: "mp4"
+                    val number = obj.str("episode_num")?.toIntOrNull()
+                        ?: info?.str("episode_num")?.toIntOrNull()
+                        ?: (position + 1)
+                    val season = obj.str("season")?.toIntOrNull()
+                        ?: info?.str("season")?.toIntOrNull()
+                        ?: seasonKey
+                        ?: 1
                     Episode(
                         id = id,
-                        title = obj.str("title") ?: "Episodio ${obj.str("episode_num").orEmpty()}",
-                        season = seasonNumber,
-                        number = obj.str("episode_num")?.toIntOrNull() ?: 0,
+                        title = obj.str("title") ?: info?.str("name") ?: "Episodio $number",
+                        season = season.coerceAtLeast(0),
+                        number = number,
                         streamUrl = "${base(account)}/series/${account.username.enc()}/${account.password.enc()}/$id.$extension",
-                        plot = info?.str("plot"),
+                        plot = info?.str("plot") ?: info?.str("description"),
                         thumbUrl = info?.str("movie_image")?.takeIf { it.isNotBlank() },
                     )
                 }
-            }.sortedWith(compareBy({ it.season }, { it.number }))
+            }
+                .distinctBy { it.streamUrl }
+                .sortedWith(compareBy({ it.season }, { it.number }))
         }
 
     /** Verifies the credentials before an account is saved. */
@@ -317,4 +345,37 @@ class XtreamClient(
     }
 
     private fun JsonArray?.orEmptyElements(): List<JsonElement> = this ?: emptyList()
+
+    /** The document itself, or the first object of a response wrapped in an array. */
+    private fun JsonElement.asObject(): JsonObject? = when (this) {
+        is JsonObject -> this
+        is JsonArray -> firstOrNull() as? JsonObject
+        else -> null
+    }
+
+    /**
+     * The `episodes` node flattened into (season number or null, episodes)
+     * pairs, whichever of the three shapes the portal used. A null season means
+     * the grouping carried no number and the episodes have to speak for
+     * themselves.
+     */
+    private fun JsonElement?.seasonBuckets(): List<Pair<Int?, List<JsonElement>>> = when (this) {
+        is JsonObject -> entries.map { (key, value) ->
+            key.toIntOrNull() to value.episodeElements()
+        }
+        is JsonArray -> when {
+            // A flat list of episodes: no season grouping at all.
+            firstOrNull() is JsonObject -> listOf(null to toList())
+            // Season buckets that lost their keys to PHP's 0-based encoding.
+            else -> mapIndexed { index, element -> index to element.episodeElements() }
+        }
+        else -> emptyList()
+    }
+
+    /** Episodes of one season, whether filed as an array or as a keyed object. */
+    private fun JsonElement?.episodeElements(): List<JsonElement> = when (this) {
+        is JsonArray -> toList()
+        is JsonObject -> values.toList()
+        else -> emptyList()
+    }
 }

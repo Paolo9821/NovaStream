@@ -1,5 +1,121 @@
 # NovaStream — Changelog
 
+Da 1.2.7 ogni versione ha anche un file dedicato nella cartella `changelogs`
+(`changelogs/1.2.7.md`, `changelogs/1.2.6.md`, …), scritto in tutte e otto le
+lingue dell'app. Questo file resta lo storico completo in ordine di rilascio.
+
+## 1.2.7
+
+### Italiano
+
+**Correzioni**
+
+- **L'avviso del prossimo episodio compariva una sola volta.** Guardando una serie
+  di seguito, l'avviso con il conto alla rovescia usciva alla fine del primo
+  episodio e poi non si faceva più vedere: dal secondo in poi bisognava cambiare
+  puntata a mano. Il player teneva memoria dell'episodio da cui era partito e
+  continuava a rispondere a quello, invece che a quello effettivamente in onda. Ora
+  l'avviso torna alla fine di ogni episodio e il passaggio automatico prosegue da
+  solo fino all'ultima puntata della stagione.
+- **Alcune serie risultavano senza episodi.** Su certe serie compariva "Il provider
+  non ha fornito un elenco episodi per questa serie" anche se le puntate c'erano.
+  Non era un limite del provider: i portali IPTV scrivono l'elenco delle stagioni in
+  tre formati diversi e NovaStream ne leggeva uno solo, quindi tutte le serie
+  scritte negli altri due sembravano vuote. Ora vengono letti tutti e quelle serie
+  mostrano il loro elenco completo.
+
+**Altro**
+
+- Versione applicazione aggiornata a 1.2.7.
+- Ogni versione ha ora il proprio file di changelog in `changelogs`, in tutte le
+  lingue dell'app; sono stati creati anche quelli delle versioni precedenti, dalla
+  1.2.1 in poi.
+
+### English
+
+**Fixes**
+
+- **The next-episode notice only appeared once.** Watching a series back to back,
+  the countdown card showed up at the end of the first episode and then never again:
+  from the second one on you had to change it by hand. The player was still holding
+  on to the episode it had started with and answering for that one instead of the
+  one actually on screen. The notice now comes back at the end of every episode, and
+  auto-play carries on by itself to the last episode of the season.
+- **Some series looked like they had no episodes.** Certain series showed "The
+  provider did not return an episode list for this series" even though the episodes
+  existed. It was not a limitation of the provider: IPTV portals write the season
+  listing in three different shapes and NovaStream only read one of them, so every
+  series written in the other two looked empty. All three are now read, and those
+  series show their full list.
+
+**Other**
+
+- App version updated to 1.2.7.
+- Every version now has its own changelog file in `changelogs`, in every language of
+  the app; the earlier versions from 1.2.1 on were written up as well.
+
+### Español
+
+- Corregido: el aviso del próximo episodio solo aparecía una vez; ahora vuelve al
+  final de cada episodio y el cambio automático continúa hasta el último de la
+  temporada.
+- Corregido: algunas series parecían no tener episodios. Los portales IPTV escriben
+  la lista de temporadas de tres formas distintas y la aplicación solo leía una;
+  ahora se leen las tres.
+- Versión actualizada a 1.2.7; cada versión tiene su propio archivo de cambios en la
+  carpeta `changelogs`.
+
+### Français
+
+- Corrigé : l'avis d'épisode suivant n'apparaissait qu'une fois ; il revient
+  maintenant à la fin de chaque épisode et l'enchaînement automatique continue
+  jusqu'au dernier de la saison.
+- Corrigé : certaines séries semblaient sans épisodes. Les portails IPTV écrivent la
+  liste des saisons de trois façons différentes et l'application n'en lisait qu'une ;
+  les trois sont désormais lues.
+- Version portée à 1.2.7 ; chaque version a son propre fichier de nouveautés dans le
+  dossier `changelogs`.
+
+### Deutsch
+
+- Behoben: Der Hinweis auf die nächste Folge erschien nur einmal; er kommt jetzt am
+  Ende jeder Folge, und die automatische Wiedergabe läuft bis zur letzten Folge der
+  Staffel weiter.
+- Behoben: Manche Serien schienen keine Folgen zu haben. IPTV-Portale schreiben die
+  Staffelliste in drei verschiedenen Formen, die App las nur eine; jetzt werden alle
+  drei gelesen.
+- Version auf 1.2.7 aktualisiert; jede Version hat eine eigene Änderungsdatei im
+  Ordner `changelogs`.
+
+### Português
+
+- Corrigido: o aviso do próximo episódio aparecia apenas uma vez; volta agora no fim
+  de cada episódio e a reprodução automática segue até ao último da temporada.
+- Corrigido: algumas séries pareciam não ter episódios. Os portais IPTV escrevem a
+  lista de temporadas de três formas diferentes e a aplicação só lia uma; agora são
+  lidas as três.
+- Versão atualizada para 1.2.7; cada versão tem o seu ficheiro de novidades na pasta
+  `changelogs`.
+
+### Română
+
+- Rezolvat: anunțul episodului următor apărea o singură dată; revine acum la finalul
+  fiecărui episod, iar redarea automată continuă până la ultimul episod al sezonului.
+- Rezolvat: unele seriale păreau fără episoade. Portalurile IPTV scriu lista
+  sezoanelor în trei forme diferite, iar aplicația citea doar una; acum sunt citite
+  toate trei.
+- Versiune actualizată la 1.2.7; fiecare versiune are propriul fișier de noutăți în
+  folderul `changelogs`.
+
+### Türkçe
+
+- Düzeltildi: sonraki bölüm uyarısı yalnızca bir kez çıkıyordu; artık her bölümün
+  sonunda geri geliyor ve otomatik geçiş sezonun son bölümüne kadar sürüyor.
+- Düzeltildi: bazı diziler bölümsüz görünüyordu. IPTV portalları sezon listesini üç
+  farklı biçimde yazıyor, uygulama yalnızca birini okuyordu; artık üçü de okunuyor.
+- Sürüm 1.2.7'ye güncellendi; her sürümün `changelogs` klasöründe kendi değişiklik
+  dosyası var.
+
 ## 1.2.6
 
 ### Italiano
