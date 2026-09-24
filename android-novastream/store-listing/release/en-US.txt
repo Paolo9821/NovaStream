@@ -1,9 +1,10 @@
-Series: the next-episode notice on every episode, and complete episode lists.
+Pick audio and subtitles, change picture format and playback speed.
 
-• Fixed: the next-episode notice only appeared at the end of the first episode
-• Auto-play now carries on by itself to the last episode of the season
-• Fixed: some series showed "no episode list" even though the episodes existed
-• Every season format used by providers is now read
-• Version 1.2.7
+• New player panel: every audio track and subtitle of the title
+• The chosen language is remembered for the next film or episode
+• Picture format: Fit, Fill, Stretch, 16:9, 4:3
+• Speed from 0.5× to 2× for films and series
+• "Refresh the list" on Home now downloads everything from scratch
+• Version 1.2.8
 
 Thanks for using NovaStream.

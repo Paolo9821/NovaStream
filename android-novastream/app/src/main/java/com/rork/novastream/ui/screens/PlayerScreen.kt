@@ -7,6 +7,7 @@ import android.content.ContextWrapper
 import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Rational
+import android.view.KeyEvent
 import android.view.ViewGroup
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
@@ -22,6 +23,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -33,6 +35,8 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AspectRatio
+import androidx.compose.material.icons.rounded.Audiotrack
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Forward10
 import androidx.compose.material.icons.rounded.Pause
@@ -41,6 +45,8 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Replay10
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
+import androidx.compose.material.icons.rounded.Speed
+import androidx.compose.material.icons.rounded.Subtitles
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -93,14 +99,21 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.media3.common.C
+import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.TrackSelectionParameters
+import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import com.rork.novastream.data.local.SUBTITLES_OFF
+import com.rork.novastream.data.local.VideoFit
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rork.novastream.data.model.Episode
 import com.rork.novastream.data.model.MediaEntry
@@ -108,6 +121,7 @@ import com.rork.novastream.data.model.MediaKind
 import com.rork.novastream.ui.components.rememberFocusRequester
 import com.rork.novastream.ui.components.tvFocusFrame
 import com.rork.novastream.ui.i18n.LocalStrings
+import com.rork.novastream.ui.i18n.Strings
 import com.rork.novastream.ui.vm.AppViewModel
 import kotlinx.coroutines.delay
 import java.util.Locale
@@ -133,6 +147,12 @@ private const val STALL_TIMEOUT_MS = 18_000L
 /** Backoff between attempts: 2s, 4s, 8s, then a steady 12s. */
 private fun reconnectDelayMs(attempt: Int): Long =
     (2_000L shl (attempt - 1).coerceIn(0, 3)).coerceAtMost(12_000L)
+
+/** Speeds offered for films and series; live channels always run at 1×. */
+private val PLAYBACK_SPEEDS = listOf(0.5f, 0.75f, 1f, 1.25f, 1.5f, 2f)
+
+private const val CHOICE_AUTO = "auto"
+private const val CHOICE_OFF = "off"
 
 @OptIn(UnstableApi::class)
 @Composable
@@ -204,9 +224,22 @@ fun PlayerScreen(
                 // Keeps the box awake while a stream is running: without it a TV
                 // suspends the CPU and the picture dies mid-programme.
                 setWakeMode(C.WAKE_MODE_NETWORK)
+                // The languages picked last time are asked for up front, so the
+                // next film or episode already starts in them.
+                trackSelectionParameters = trackSelectionParameters.withSavedLanguages(
+                    audio = settings.audioLanguage,
+                    subtitles = settings.subtitleLanguage,
+                )
                 playWhenReady = true
             }
     }
+
+    /** Audio and subtitle tracks of what is playing, and what is picked among them. */
+    var tracks by remember(player) { mutableStateOf(player.currentTracks) }
+    var trackParams by remember(player) { mutableStateOf(player.trackSelectionParameters) }
+    var optionsOpen by remember { mutableStateOf(false) }
+    /** Chosen for the session: a slowed-down film should not slow the next one down forever. */
+    var playbackSpeed by remember { mutableFloatStateOf(1f) }
 
     /**
      * End-of-stream state, kept for the whole player session rather than
@@ -229,6 +262,12 @@ fun PlayerScreen(
         upNextDismissed = false
         secondsLeft = 0
         player.stop()
+        // A track picked by hand belongs to the stream it was picked on; the
+        // next one is matched by the saved language instead.
+        player.trackSelectionParameters = player.trackSelectionParameters
+            .buildUpon()
+            .clearOverrides()
+            .build()
         player.setMediaItem(MediaItem.fromUri(activeStreamUrl))
         player.prepare()
         // Picks the film back up where it was left instead of restarting it.
@@ -243,6 +282,12 @@ fun PlayerScreen(
 
     val isLiveStream = entry?.kind == MediaKind.LIVE
     val isSeries = entry?.kind == MediaKind.SERIES
+
+    // A live channel cannot run faster than it is broadcast, so it always
+    // plays at normal speed whatever was chosen for the film before it.
+    LaunchedEffect(player, playbackSpeed, isLiveStream) {
+        player.setPlaybackSpeed(if (isLiveStream) 1f else playbackSpeed)
+    }
 
     // What is on this channel right now, so pausing or zapping always answers
     // "what am I watching?" without leaving the picture.
@@ -403,6 +448,14 @@ fun PlayerScreen(
                     // playing would never get to announce its own.
                     playbackEnded = false
                 }
+            }
+
+            override fun onTracksChanged(newTracks: Tracks) {
+                tracks = newTracks
+            }
+
+            override fun onTrackSelectionParametersChanged(parameters: TrackSelectionParameters) {
+                trackParams = parameters
             }
 
             override fun onIsPlayingChanged(playing: Boolean) {
@@ -582,7 +635,10 @@ fun PlayerScreen(
     val keyFocus = rememberFocusRequester()
     /** Where the highlight lands when the controls come up. */
     val controlsFocus = rememberFocusRequester()
-    LaunchedEffect(controlsVisible, activeStreamUrl, error) {
+    LaunchedEffect(controlsVisible, activeStreamUrl, error, optionsOpen) {
+        // The options panel holds the highlight while it is open; it comes back
+        // to the controls once the panel closes.
+        if (optionsOpen) return@LaunchedEffect
         if (controlsVisible && error == null) {
             // The control row is only laid out once the overlay has faded in.
             repeat(3) { withFrameNanos { } }
@@ -611,12 +667,210 @@ fun PlayerScreen(
     val previousLabel =
         if (isLiveStream) strings.previousChannelAction else strings.previousEpisodeAction
 
+    // Track names are written in the app's language: "ita" on the stream
+    // reads "Italiano" in Italian and "Italian" in English.
+    val uiLocale = remember(settings.language) { Locale.forLanguageTag(settings.language.code) }
+    val audioTracks = remember(tracks, uiLocale, strings) {
+        trackOptions(tracks, C.TRACK_TYPE_AUDIO, uiLocale, strings)
+    }
+    val subtitleTracks = remember(tracks, uiLocale, strings) {
+        trackOptions(tracks, C.TRACK_TYPE_TEXT, uiLocale, strings)
+    }
+
+    fun openOptions() {
+        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+        optionsOpen = true
+    }
+
+    fun chooseAudio(key: String) {
+        val builder = player.trackSelectionParameters.buildUpon()
+        if (key == CHOICE_AUTO) {
+            player.trackSelectionParameters = builder
+                .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                .setPreferredAudioLanguage(null)
+                .build()
+            viewModel.setAudioLanguage("")
+            return
+        }
+        val option = audioTracks.firstOrNull { it.key == key } ?: return
+        if (!option.supported) return
+        val language = option.format.usableLanguage()
+        player.trackSelectionParameters = builder
+            .setOverrideForType(TrackSelectionOverride(option.group.mediaTrackGroup, option.index))
+            .setPreferredAudioLanguage(language)
+            .build()
+        viewModel.setAudioLanguage(language.orEmpty())
+    }
+
+    fun chooseSubtitles(key: String) {
+        val builder = player.trackSelectionParameters.buildUpon()
+            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+        when (key) {
+            CHOICE_OFF -> {
+                player.trackSelectionParameters = builder
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                    .build()
+                viewModel.setSubtitleLanguage(SUBTITLES_OFF)
+            }
+            CHOICE_AUTO -> {
+                player.trackSelectionParameters = builder
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                    .setPreferredTextLanguage(null)
+                    .build()
+                viewModel.setSubtitleLanguage("")
+            }
+            else -> {
+                val option = subtitleTracks.firstOrNull { it.key == key } ?: return
+                if (!option.supported) return
+                val language = option.format.usableLanguage()
+                player.trackSelectionParameters = builder
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                    .setOverrideForType(
+                        TrackSelectionOverride(option.group.mediaTrackGroup, option.index)
+                    )
+                    .setPreferredTextLanguage(language)
+                    .build()
+                viewModel.setSubtitleLanguage(language.orEmpty())
+            }
+        }
+    }
+
+    val optionSections = run {
+        val audioOverridden = trackParams.overrides.values.any { it.type == C.TRACK_TYPE_AUDIO }
+        val textOverridden = trackParams.overrides.values.any { it.type == C.TRACK_TYPE_TEXT }
+        val textDisabled = trackParams.disabledTrackTypes.contains(C.TRACK_TYPE_TEXT)
+        val audioNow = audioTracks.firstOrNull { it.selected }?.label
+        val subtitleNow = subtitleTracks.firstOrNull { it.selected }?.label
+
+        buildList {
+            add(
+                PlayerOptionSection(
+                    id = "audio",
+                    title = strings.audioSection,
+                    icon = Icons.Rounded.Audiotrack,
+                    // A single track leaves nothing to choose, so the section
+                    // just says so instead of offering one lonely row.
+                    choices = if (audioTracks.size < 2) emptyList() else buildList {
+                        add(
+                            PlayerChoice(
+                                key = CHOICE_AUTO,
+                                label = audioNow?.let { strings.trackAutoNow.format(it) }
+                                    ?: strings.trackAuto,
+                                selected = !audioOverridden,
+                            )
+                        )
+                        audioTracks.forEach { option ->
+                            add(
+                                PlayerChoice(
+                                    key = option.key,
+                                    label = option.label,
+                                    detail = option.detail,
+                                    selected = audioOverridden && option.selected,
+                                )
+                            )
+                        }
+                    },
+                    emptyNote = strings.noAudioChoice,
+                    onChoose = ::chooseAudio,
+                )
+            )
+            add(
+                PlayerOptionSection(
+                    id = "subtitles",
+                    title = strings.subtitlesSection,
+                    icon = Icons.Rounded.Subtitles,
+                    choices = if (subtitleTracks.isEmpty()) emptyList() else buildList {
+                        add(
+                            PlayerChoice(
+                                key = CHOICE_OFF,
+                                label = strings.subtitlesOff,
+                                selected = textDisabled,
+                            )
+                        )
+                        add(
+                            PlayerChoice(
+                                key = CHOICE_AUTO,
+                                label = subtitleNow?.let { strings.trackAutoNow.format(it) }
+                                    ?: strings.trackAuto,
+                                selected = !textDisabled && !textOverridden,
+                            )
+                        )
+                        subtitleTracks.forEach { option ->
+                            add(
+                                PlayerChoice(
+                                    key = option.key,
+                                    label = option.label,
+                                    detail = option.detail,
+                                    selected = !textDisabled && textOverridden && option.selected,
+                                )
+                            )
+                        }
+                    },
+                    emptyNote = strings.noSubtitles,
+                    onChoose = ::chooseSubtitles,
+                )
+            )
+            add(
+                PlayerOptionSection(
+                    id = "fit",
+                    title = strings.videoFitSection,
+                    icon = Icons.Rounded.AspectRatio,
+                    choices = VideoFit.entries.map { fit ->
+                        PlayerChoice(
+                            key = fit.name,
+                            label = fit.label(strings),
+                            selected = settings.videoFit == fit,
+                        )
+                    },
+                    onChoose = { key ->
+                        VideoFit.entries.firstOrNull { it.name == key }?.let { fit ->
+                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            viewModel.setVideoFit(fit)
+                        }
+                    },
+                )
+            )
+            if (!isLiveStream) {
+                add(
+                    PlayerOptionSection(
+                        id = "speed",
+                        title = strings.playbackSpeedSection,
+                        icon = Icons.Rounded.Speed,
+                        choices = PLAYBACK_SPEEDS.map { speed ->
+                            PlayerChoice(
+                                key = speed.toString(),
+                                label = if (speed == 1f) strings.speedNormal else speedLabel(speed),
+                                detail = if (speed == 1f) speedLabel(speed) else null,
+                                selected = playbackSpeed == speed,
+                            )
+                        },
+                        onChoose = { key ->
+                            key.toFloatOrNull()?.let { speed ->
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                playbackSpeed = speed
+                            }
+                        },
+                    )
+                )
+            }
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
             .onPreviewKeyEvent { event ->
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                // Remotes with a dedicated subtitles or audio key open the
+                // options straight away, from anywhere in the player.
+                val nativeCode = event.nativeKeyEvent.keyCode
+                if (nativeCode == KeyEvent.KEYCODE_CAPTIONS ||
+                    nativeCode == KeyEvent.KEYCODE_MEDIA_AUDIO_TRACK
+                ) {
+                    openOptions()
+                    return@onPreviewKeyEvent true
+                }
                 // While the up-next card is on screen the remote drives it: OK
                 // starts the episode straight away, Back calls the whole thing off.
                 if (upNextVisible && nextEpisode != null) {
@@ -662,7 +916,13 @@ fun PlayerScreen(
                         onBack()
                         return@onPreviewKeyEvent true
                     }
-                    Key.Menu, Key.Info -> {
+                    Key.Menu -> {
+                        // First press brings the controls up, the second one
+                        // opens audio, subtitles and picture format.
+                        if (controlsVisible && error == null) openOptions() else showControls()
+                        return@onPreviewKeyEvent true
+                    }
+                    Key.Info -> {
                         showControls()
                         return@onPreviewKeyEvent true
                     }
@@ -700,6 +960,14 @@ fun PlayerScreen(
             .focusRequester(keyFocus)
             .focusable()
     ) {
+        // A forced ratio gets a frame of exactly that shape, centred, and the
+        // picture is stretched into it; the other modes fill the whole screen
+        // and let the view decide how the picture sits inside.
+        val forcedRatio = settings.videoFit.forcedRatio
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
         AndroidView(
             factory = { viewContext ->
                 PlayerView(viewContext).apply {
@@ -719,9 +987,16 @@ fun PlayerScreen(
                 // Re-attaches the surface whenever the player instance changes,
                 // otherwise the picture would be lost while the audio carries on.
                 if (view.player !== player) view.player = player
+                val resize = settings.videoFit.resizeMode()
+                if (view.resizeMode != resize) view.resizeMode = resize
             },
-            modifier = Modifier.fillMaxSize(),
+            modifier = if (forcedRatio != null) {
+                Modifier.aspectRatio(forcedRatio)
+            } else {
+                Modifier.fillMaxSize()
+            },
         )
+        }
 
         // Tap surface: single tap toggles the controls, double tap jumps ±10 s.
         Box(
@@ -930,9 +1205,14 @@ fun PlayerScreen(
                     } ?: strings.playerPausedBadge
                     resumeNoticeVisible && resumeFromMs > 0L ->
                         strings.playerResumedFrom.format(formatTime(resumeFromMs))
-                    seekable -> "${formatTime(positionMs)} / ${formatTime(durationMs)}"
+                    seekable -> buildString {
+                        append("${formatTime(positionMs)} / ${formatTime(durationMs)}")
+                        if (playbackSpeed != 1f) append(" · ${speedLabel(playbackSpeed)}")
+                    }
                     else -> null
                 },
+                optionsLabel = strings.playerOptionsAction,
+                onOpenOptions = { openOptions() },
                 closeLabel = strings.closePlayer,
                 onBack = onBack,
                 pipLabel = strings.pipAction,
@@ -972,6 +1252,18 @@ fun PlayerScreen(
                 }
             }
         }
+    }
+
+    if (optionsOpen) {
+        PlayerOptionsPanel(
+            title = strings.playerOptionsAction,
+            closeLabel = strings.close,
+            sections = optionSections,
+            onDismiss = {
+                optionsOpen = false
+                showControls()
+            },
+        )
     }
 }
 
@@ -1029,6 +1321,8 @@ private fun PlayerTopBar(
     modifier: Modifier = Modifier,
     pipLabel: String? = null,
     onEnterPip: (() -> Unit)? = null,
+    optionsLabel: String? = null,
+    onOpenOptions: (() -> Unit)? = null,
 ) {
     Row(
         modifier = modifier
@@ -1067,6 +1361,18 @@ private fun PlayerTopBar(
                     style = MaterialTheme.typography.labelMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        if (onOpenOptions != null) {
+            IconButton(
+                onClick = onOpenOptions,
+                modifier = Modifier.tvFocusFrame(cornerRadius = 24.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Subtitles,
+                    contentDescription = optionsLabel,
+                    tint = Color.White,
                 )
             }
         }
@@ -1447,6 +1753,132 @@ private tailrec fun Context.findComponentActivity(): ComponentActivity? = when (
     is ComponentActivity -> this
     is ContextWrapper -> baseContext.findComponentActivity()
     else -> null
+}
+
+/** One audio or subtitle track of the stream, ready to be listed. */
+private data class TrackOption(
+    val key: String,
+    val group: Tracks.Group,
+    val index: Int,
+    val format: Format,
+    val label: String,
+    val detail: String?,
+    val supported: Boolean,
+    val selected: Boolean,
+)
+
+/** Every track of [type] the stream carries, named for the viewer. */
+private fun trackOptions(
+    tracks: Tracks,
+    type: Int,
+    uiLocale: Locale,
+    strings: Strings,
+): List<TrackOption> {
+    var number = 0
+    return tracks.groups.withIndex()
+        .filter { (_, group) -> group.type == type }
+        .flatMap { (groupIndex, group) ->
+            (0 until group.length).map { trackIndex ->
+                number += 1
+                val format = group.getTrackFormat(trackIndex)
+                val supported = group.isTrackSupported(trackIndex)
+                val language = format.usableLanguage()?.let { languageName(it, uiLocale) }
+                val customLabel = format.label?.trim()?.takeIf { it.isNotEmpty() }
+                val label = language ?: customLabel ?: strings.trackNumbered.format(number)
+                val detail = listOfNotNull(
+                    customLabel?.takeIf { language != null && !it.equals(language, ignoreCase = true) },
+                    channelsLabel(format.channelCount),
+                    codecLabel(format.sampleMimeType ?: format.codecs),
+                    if (!supported) strings.trackUnsupported else null,
+                ).joinToString(" · ").ifEmpty { null }
+                TrackOption(
+                    key = "$groupIndex:$trackIndex",
+                    group = group,
+                    index = trackIndex,
+                    format = format,
+                    label = label,
+                    detail = detail,
+                    supported = supported,
+                    selected = group.isTrackSelected(trackIndex),
+                )
+            }
+        }
+}
+
+/** The language tag of a track, or null when the stream left it blank or undetermined. */
+private fun Format.usableLanguage(): String? =
+    language?.trim()?.takeIf { it.isNotEmpty() && !it.equals(C.LANGUAGE_UNDETERMINED, ignoreCase = true) }
+
+private fun languageName(tag: String, uiLocale: Locale): String {
+    val name = runCatching { Locale.forLanguageTag(tag).getDisplayLanguage(uiLocale) }.getOrNull()
+    val readable = name?.takeIf { it.isNotBlank() && !it.equals(tag, ignoreCase = true) } ?: tag.uppercase(Locale.ROOT)
+    return readable.replaceFirstChar { it.titlecase(uiLocale) }
+}
+
+private fun channelsLabel(count: Int): String? = when {
+    count == Format.NO_VALUE || count <= 0 -> null
+    count == 1 -> "Mono"
+    count == 2 -> "Stereo"
+    count == 6 -> "5.1"
+    count == 8 -> "7.1"
+    else -> "${count}ch"
+}
+
+private fun codecLabel(mime: String?): String? {
+    val value = mime?.lowercase(Locale.ROOT) ?: return null
+    return when {
+        value.contains("eac3-joc") -> "Dolby Atmos"
+        value.contains("eac3") || value.contains("ec-3") -> "Dolby Digital+"
+        value.contains("ac3") || value.contains("ac-3") -> "Dolby Digital"
+        value.contains("dts") -> "DTS"
+        value.contains("mp4a") || value.contains("aac") -> "AAC"
+        value == "audio/mpeg" -> "MP3"
+        value.contains("opus") -> "Opus"
+        value.contains("vtt") -> "WebVTT"
+        value.contains("subrip") -> "SRT"
+        value.contains("cea-608") || value.contains("cea-708") -> "CC"
+        value.contains("ttml") -> "TTML"
+        value.contains("dvbsubs") -> "DVB"
+        value.contains("pgs") -> "PGS"
+        value.contains("ssa") -> "SSA"
+        else -> null
+    }
+}
+
+/** Asks for the languages chosen last time, or hides subtitles if they were turned off. */
+private fun TrackSelectionParameters.withSavedLanguages(
+    audio: String,
+    subtitles: String,
+): TrackSelectionParameters {
+    val builder = buildUpon().setPreferredAudioLanguage(audio.ifBlank { null })
+    when {
+        subtitles == SUBTITLES_OFF -> builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+        subtitles.isNotBlank() -> builder
+            .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+            .setPreferredTextLanguage(subtitles)
+        else -> builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+    }
+    return builder.build()
+}
+
+@OptIn(UnstableApi::class)
+private fun VideoFit.resizeMode(): Int = when (this) {
+    VideoFit.FIT -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+    VideoFit.FILL -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+    VideoFit.STRETCH, VideoFit.RATIO_16_9, VideoFit.RATIO_4_3 -> AspectRatioFrameLayout.RESIZE_MODE_FILL
+}
+
+private fun VideoFit.label(strings: Strings): String = when (this) {
+    VideoFit.FIT -> strings.videoFitFit
+    VideoFit.FILL -> strings.videoFitFill
+    VideoFit.STRETCH -> strings.videoFitStretch
+    VideoFit.RATIO_16_9 -> strings.videoFit169
+    VideoFit.RATIO_4_3 -> strings.videoFit43
+}
+
+private fun speedLabel(speed: Float): String {
+    val text = if (speed % 1f == 0f) speed.toInt().toString() else speed.toString().trimEnd('0')
+    return "$text×"
 }
 
 /** Formats milliseconds as `m:ss` or `h:mm:ss` for the scrub bar labels. */

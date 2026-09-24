@@ -14,7 +14,7 @@ android {
         minSdk = 24
         targetSdk = 36
         versionCode = (System.currentTimeMillis() / 1000).toInt()
-        versionName = "1.2.7"
+        versionName = "1.2.8"
     }
 
     buildTypes {

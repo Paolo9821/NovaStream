@@ -308,7 +308,7 @@ data class ExtraStrings(
     val buyLicenseWhere: String = "Where to buy",
     val buyLicenseFallback: String = "Ask the person or shop that gave you NovaStream for an activation code.",
     val buyLicenseAction: String = "Contact the seller",
-    val appVersionLine: String = "NovaStream 1.2.7",
+    val appVersionLine: String = "NovaStream 1.2.8",
     val licenseRevokedTitle: String = "License revoked",
     val licenseRevokedBody: String = "This license was disabled by the provider. Contact your seller to restore access.",
     val licenseSuspendedTitle: String = "License suspended",
@@ -371,6 +371,24 @@ data class ExtraStrings(
 
     val pipAction: String = "Picture-in-picture",
     val pipUnsupported: String = "This device does not support picture-in-picture.",
+    val playerOptionsAction: String = "Audio, subtitles and picture",
+    val audioSection: String = "Audio",
+    val subtitlesSection: String = "Subtitles",
+    val trackAuto: String = "Automatic",
+    val trackAutoNow: String = "Automatic · %s",
+    val subtitlesOff: String = "Off",
+    val trackNumbered: String = "Track %d",
+    val trackUnsupported: String = "Not supported on this device",
+    val noAudioChoice: String = "This stream has a single audio track.",
+    val noSubtitles: String = "This stream has no subtitles.",
+    val videoFitSection: String = "Picture format",
+    val videoFitFit: String = "Fit to screen",
+    val videoFitFill: String = "Fill screen (crop)",
+    val videoFitStretch: String = "Stretch",
+    val videoFit169: String = "Force 16:9",
+    val videoFit43: String = "Force 4:3",
+    val playbackSpeedSection: String = "Speed",
+    val speedNormal: String = "Normal",
 )
 
 /**
@@ -712,6 +730,24 @@ class Strings(
     val parentalPinToEdit: String get() = extra.parentalPinToEdit
     val pipAction: String get() = extra.pipAction
     val pipUnsupported: String get() = extra.pipUnsupported
+    val playerOptionsAction: String get() = extra.playerOptionsAction
+    val audioSection: String get() = extra.audioSection
+    val subtitlesSection: String get() = extra.subtitlesSection
+    val trackAuto: String get() = extra.trackAuto
+    val trackAutoNow: String get() = extra.trackAutoNow
+    val subtitlesOff: String get() = extra.subtitlesOff
+    val trackNumbered: String get() = extra.trackNumbered
+    val trackUnsupported: String get() = extra.trackUnsupported
+    val noAudioChoice: String get() = extra.noAudioChoice
+    val noSubtitles: String get() = extra.noSubtitles
+    val videoFitSection: String get() = extra.videoFitSection
+    val videoFitFit: String get() = extra.videoFitFit
+    val videoFitFill: String get() = extra.videoFitFill
+    val videoFitStretch: String get() = extra.videoFitStretch
+    val videoFit169: String get() = extra.videoFit169
+    val videoFit43: String get() = extra.videoFit43
+    val playbackSpeedSection: String get() = extra.playbackSpeedSection
+    val speedNormal: String get() = extra.speedNormal
 }
 
 private val English = Strings()
@@ -1035,6 +1071,24 @@ private val Italian = Strings(
         parentalPinToEdit = "Inserisci il PIN per modificare le categorie protette.",
         pipAction = "Picture-in-picture",
         pipUnsupported = "Questo dispositivo non supporta il picture-in-picture.",
+        playerOptionsAction = "Audio, sottotitoli e immagine",
+        audioSection = "Audio",
+        subtitlesSection = "Sottotitoli",
+        trackAuto = "Automatico",
+        trackAutoNow = "Automatico · %s",
+        subtitlesOff = "Disattivati",
+        trackNumbered = "Traccia %d",
+        trackUnsupported = "Non supportata da questo dispositivo",
+        noAudioChoice = "Questo contenuto ha una sola traccia audio.",
+        noSubtitles = "Questo contenuto non ha sottotitoli.",
+        videoFitSection = "Formato immagine",
+        videoFitFit = "Adatta allo schermo",
+        videoFitFill = "Riempi lo schermo (ritaglia)",
+        videoFitStretch = "Allarga",
+        videoFit169 = "Forza 16:9",
+        videoFit43 = "Forza 4:3",
+        playbackSpeedSection = "Velocità",
+        speedNormal = "Normale",
     ),
 )
 
@@ -1349,6 +1403,24 @@ private val Spanish = Strings(
         parentalPinToEdit = "Introduce el PIN para cambiar las categor\u00edas protegidas.",
         pipAction = "Imagen en imagen",
         pipUnsupported = "Este dispositivo no admite imagen en imagen.",
+        playerOptionsAction = "Audio, subtítulos e imagen",
+        audioSection = "Audio",
+        subtitlesSection = "Subtítulos",
+        trackAuto = "Automático",
+        trackAutoNow = "Automático · %s",
+        subtitlesOff = "Desactivados",
+        trackNumbered = "Pista %d",
+        trackUnsupported = "No compatible con este dispositivo",
+        noAudioChoice = "Este contenido tiene una sola pista de audio.",
+        noSubtitles = "Este contenido no tiene subtítulos.",
+        videoFitSection = "Formato de imagen",
+        videoFitFit = "Ajustar a la pantalla",
+        videoFitFill = "Llenar la pantalla (recortar)",
+        videoFitStretch = "Estirar",
+        videoFit169 = "Forzar 16:9",
+        videoFit43 = "Forzar 4:3",
+        playbackSpeedSection = "Velocidad",
+        speedNormal = "Normal",
     ),
 )
 
@@ -1663,6 +1735,24 @@ private val French = Strings(
         parentalPinToEdit = "Saisissez le code pour modifier les cat\u00e9gories prot\u00e9g\u00e9es.",
         pipAction = "Image dans l'image",
         pipUnsupported = "Cet appareil ne prend pas en charge l'image dans l'image.",
+        playerOptionsAction = "Audio, sous-titres et image",
+        audioSection = "Audio",
+        subtitlesSection = "Sous-titres",
+        trackAuto = "Automatique",
+        trackAutoNow = "Automatique · %s",
+        subtitlesOff = "Désactivés",
+        trackNumbered = "Piste %d",
+        trackUnsupported = "Non pris en charge par cet appareil",
+        noAudioChoice = "Ce contenu n'a qu'une piste audio.",
+        noSubtitles = "Ce contenu n'a pas de sous-titres.",
+        videoFitSection = "Format d'image",
+        videoFitFit = "Adapter à l'écran",
+        videoFitFill = "Remplir l'écran (rogner)",
+        videoFitStretch = "Étirer",
+        videoFit169 = "Forcer 16:9",
+        videoFit43 = "Forcer 4:3",
+        playbackSpeedSection = "Vitesse",
+        speedNormal = "Normale",
     ),
 )
 
@@ -1977,6 +2067,24 @@ private val German = Strings(
         parentalPinToEdit = "Gib die PIN ein, um die gesch\u00fctzten Kategorien zu \u00e4ndern.",
         pipAction = "Bild-in-Bild",
         pipUnsupported = "Dieses Ger\u00e4t unterst\u00fctzt Bild-in-Bild nicht.",
+        playerOptionsAction = "Audio, Untertitel und Bild",
+        audioSection = "Audio",
+        subtitlesSection = "Untertitel",
+        trackAuto = "Automatisch",
+        trackAutoNow = "Automatisch · %s",
+        subtitlesOff = "Aus",
+        trackNumbered = "Spur %d",
+        trackUnsupported = "Auf diesem Gerät nicht unterstützt",
+        noAudioChoice = "Dieser Inhalt hat nur eine Tonspur.",
+        noSubtitles = "Dieser Inhalt hat keine Untertitel.",
+        videoFitSection = "Bildformat",
+        videoFitFit = "An Bildschirm anpassen",
+        videoFitFill = "Bildschirm füllen (zuschneiden)",
+        videoFitStretch = "Strecken",
+        videoFit169 = "16:9 erzwingen",
+        videoFit43 = "4:3 erzwingen",
+        playbackSpeedSection = "Geschwindigkeit",
+        speedNormal = "Normal",
     ),
 )
 
@@ -2291,6 +2399,24 @@ private val Portuguese = Strings(
         parentalPinToEdit = "Introduza o PIN para alterar as categorias protegidas.",
         pipAction = "Imagem na imagem",
         pipUnsupported = "Este dispositivo n\u00e3o suporta imagem na imagem.",
+        playerOptionsAction = "Áudio, legendas e imagem",
+        audioSection = "Áudio",
+        subtitlesSection = "Legendas",
+        trackAuto = "Automático",
+        trackAutoNow = "Automático · %s",
+        subtitlesOff = "Desativadas",
+        trackNumbered = "Faixa %d",
+        trackUnsupported = "Não suportada neste dispositivo",
+        noAudioChoice = "Este conteúdo tem apenas uma faixa de áudio.",
+        noSubtitles = "Este conteúdo não tem legendas.",
+        videoFitSection = "Formato da imagem",
+        videoFitFit = "Ajustar ao ecrã",
+        videoFitFill = "Preencher o ecrã (recortar)",
+        videoFitStretch = "Esticar",
+        videoFit169 = "Forçar 16:9",
+        videoFit43 = "Forçar 4:3",
+        playbackSpeedSection = "Velocidade",
+        speedNormal = "Normal",
     ),
 )
 
@@ -2605,6 +2731,24 @@ private val Romanian = Strings(
         parentalPinToEdit = "Introdu PIN-ul pentru a modifica categoriile protejate.",
         pipAction = "Imagine \u00een imagine",
         pipUnsupported = "Acest dispozitiv nu accept\u0103 imagine \u00een imagine.",
+        playerOptionsAction = "Audio, subtitrări și imagine",
+        audioSection = "Audio",
+        subtitlesSection = "Subtitrări",
+        trackAuto = "Automat",
+        trackAutoNow = "Automat · %s",
+        subtitlesOff = "Dezactivate",
+        trackNumbered = "Pista %d",
+        trackUnsupported = "Nu este acceptată pe acest dispozitiv",
+        noAudioChoice = "Acest conținut are o singură pistă audio.",
+        noSubtitles = "Acest conținut nu are subtitrări.",
+        videoFitSection = "Format imagine",
+        videoFitFit = "Potrivește pe ecran",
+        videoFitFill = "Umple ecranul (decupează)",
+        videoFitStretch = "Întinde",
+        videoFit169 = "Forțează 16:9",
+        videoFit43 = "Forțează 4:3",
+        playbackSpeedSection = "Viteză",
+        speedNormal = "Normală",
     ),
 )
 
@@ -2919,6 +3063,24 @@ private val Turkish = Strings(
         parentalPinToEdit = "Korunan kategorileri de\u011fi\u015ftirmek i\u00e7in PIN'i girin.",
         pipAction = "Resim i\u00e7inde resim",
         pipUnsupported = "Bu cihaz resim i\u00e7inde resim \u00f6zelli\u011fini desteklemiyor.",
+        playerOptionsAction = "Ses, altyazı ve görüntü",
+        audioSection = "Ses",
+        subtitlesSection = "Altyazı",
+        trackAuto = "Otomatik",
+        trackAutoNow = "Otomatik · %s",
+        subtitlesOff = "Kapalı",
+        trackNumbered = "Parça %d",
+        trackUnsupported = "Bu cihazda desteklenmiyor",
+        noAudioChoice = "Bu içerikte tek bir ses parçası var.",
+        noSubtitles = "Bu içerikte altyazı yok.",
+        videoFitSection = "Görüntü biçimi",
+        videoFitFit = "Ekrana sığdır",
+        videoFitFill = "Ekranı doldur (kırp)",
+        videoFitStretch = "Uzat",
+        videoFit169 = "16:9'a zorla",
+        videoFit43 = "4:3'e zorla",
+        playbackSpeedSection = "Hız",
+        speedNormal = "Normal",
     ),
 )
 

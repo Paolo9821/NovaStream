@@ -4,6 +4,60 @@ Da 1.2.7 ogni versione ha anche un file dedicato nella cartella `changelogs`
 (`changelogs/1.2.7.md`, `changelogs/1.2.6.md`, …), scritto in tutte e otto le
 lingue dell'app. Questo file resta lo storico completo in ordine di rilascio.
 
+## 1.2.8
+
+Dettaglio completo in 8 lingue: `changelogs/1.2.8.md`.
+
+### Italiano
+
+- Nuovo pannello nel player per scegliere traccia audio e sottotitoli, con lingua
+  per esteso e dettagli (5.1, Dolby Digital, AAC); la lingua scelta viene ricordata.
+- Formato immagine: Adatta, Riempi, Allarga, Forza 16:9, Forza 4:3 (salvato).
+- Velocità da 0,5× a 2× per film e serie (solo per la sessione, mai sui live).
+- "Aggiorna la lista dal provider" in Home ora cancella e riscarica tutto come nelle
+  Impostazioni, con conferma.
+- Versione 1.2.8.
+
+### English
+
+- New player panel to pick the audio track and subtitles, with the language spelled
+  out and details (5.1, Dolby Digital, AAC); the chosen language is remembered.
+- Picture format: Fit, Fill, Stretch, Force 16:9, Force 4:3 (saved).
+- Speed from 0.5× to 2× for films and series (session only, never on live).
+- "Refresh the list from the provider" on Home now erases and downloads everything
+  again like in Settings, with confirmation.
+- Version 1.2.8.
+
+### Español
+
+- Panel de audio y subtítulos en el reproductor; formato de imagen; velocidad de
+  0,5× a 2×; el botón de actualizar de Inicio ahora borra y descarga todo de nuevo.
+
+### Français
+
+- Panneau audio et sous-titres dans le lecteur ; format d'image ; vitesse de 0,5× à
+  2× ; le bouton d'actualisation de l'accueil efface et retélécharge désormais tout.
+
+### Deutsch
+
+- Audio- und Untertitel-Leiste im Player; Bildformat; Geschwindigkeit 0,5× bis 2×;
+  die Aktualisieren-Taste auf der Startseite löscht jetzt alles und lädt es neu.
+
+### Português
+
+- Painel de áudio e legendas no reprodutor; formato da imagem; velocidade de 0,5× a
+  2×; o botão de atualizar do Início agora apaga e volta a descarregar tudo.
+
+### Română
+
+- Panou audio și subtitrări în player; format imagine; viteză 0,5×–2×; butonul de
+  actualizare din ecranul principal șterge acum totul și descarcă din nou.
+
+### Türkçe
+
+- Oynatıcıda ses ve altyazı paneli; görüntü biçimi; 0,5×–2× hız; ana ekrandaki
+  yenile düğmesi artık her şeyi silip yeniden indiriyor.
+
 ## 1.2.7
 
 ### Italiano

@@ -1,9 +1,10 @@
-Serie TV: avviso del prossimo episodio a ogni puntata ed elenchi completi.
+Scegli audio e sottotitoli, cambia formato e velocità dell'immagine.
 
-• Risolto: l'avviso del prossimo episodio usciva solo alla fine del primo episodio
-• Il passaggio automatico prosegue ora da solo fino all'ultima puntata della stagione
-• Risolto: alcune serie risultavano "senza elenco episodi" pur avendo le puntate
-• Ora vengono letti tutti i formati usati dai provider per le stagioni
-• Versione 1.2.7
+• Nuovo pannello nel player: tutte le tracce audio e i sottotitoli del contenuto
+• La lingua scelta viene ricordata per il film o l'episodio successivo
+• Formato immagine: Adatta, Riempi, Allarga, 16:9, 4:3
+• Velocità da 0,5× a 2× per film e serie
+• "Aggiorna la lista" in Home ora riscarica tutto da zero
+• Versione 1.2.8
 
 Grazie per usare NovaStream.

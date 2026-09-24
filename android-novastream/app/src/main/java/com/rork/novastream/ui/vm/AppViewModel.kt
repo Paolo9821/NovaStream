@@ -9,6 +9,7 @@ import com.rork.novastream.data.local.DeviceIdentity
 import com.rork.novastream.data.local.LicenseState
 import com.rork.novastream.data.local.LicenseStore
 import com.rork.novastream.data.local.SettingsStore
+import com.rork.novastream.data.local.VideoFit
 import com.rork.novastream.data.model.Catalog
 import com.rork.novastream.data.model.EpgGuide
 import com.rork.novastream.data.model.Episode
@@ -115,6 +116,20 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setAutoUpdateGuide(enabled: Boolean) {
         settingsStore.update { it.copy(autoUpdateGuide = enabled) }
+    }
+
+    /** Remembers the audio language, so the next episode starts in it too. */
+    fun setAudioLanguage(language: String) {
+        settingsStore.update { it.copy(audioLanguage = language) }
+    }
+
+    /** Remembers the subtitle language, or [com.rork.novastream.data.local.SUBTITLES_OFF]. */
+    fun setSubtitleLanguage(language: String) {
+        settingsStore.update { it.copy(subtitleLanguage = language) }
+    }
+
+    fun setVideoFit(fit: VideoFit) {
+        settingsStore.update { it.copy(videoFit = fit) }
     }
 
     /** When the active catalog was last downloaded, or 0 when never. */

@@ -43,6 +43,25 @@ enum class CatalogUpdateInterval(val days: Int) {
     val intervalMs: Long get() = days * 24L * 60 * 60 * 1000
 }
 
+/**
+ * How the picture sits on the screen. [FIT] shows the whole frame, [FILL]
+ * crops to cover the screen, [STRETCH] distorts to cover it, and the two ratio
+ * modes force a shape for channels that broadcast with the wrong one.
+ */
+enum class VideoFit(val forcedRatio: Float?) {
+    FIT(null),
+    FILL(null),
+    STRETCH(null),
+    RATIO_16_9(16f / 9f),
+    RATIO_4_3(4f / 3f);
+
+    /** The next mode, for the one-press format button in the player. */
+    fun next(): VideoFit = entries[(ordinal + 1) % entries.size]
+}
+
+/** Stored subtitle choice meaning "never show subtitles". */
+const val SUBTITLES_OFF = "off"
+
 data class AppSettings(
     val onboardingDone: Boolean = false,
     val deviceProfile: DeviceProfile = DeviceProfile.PHONE,
@@ -63,6 +82,14 @@ data class AppSettings(
     val nextEpisodeDelaySeconds: Int = 10,
     val catalogUpdateInterval: CatalogUpdateInterval = CatalogUpdateInterval.DAILY,
     val autoUpdateGuide: Boolean = true,
+    /** Audio language picked in the player, empty to follow the stream. */
+    val audioLanguage: String = "",
+    /**
+     * Subtitle language picked in the player: empty follows the stream,
+     * [SUBTITLES_OFF] keeps them hidden.
+     */
+    val subtitleLanguage: String = "",
+    val videoFit: VideoFit = VideoFit.FIT,
     val parentalEnabled: Boolean = false,
     val pinHash: String = "",
     /**
@@ -122,6 +149,11 @@ class SettingsStore(context: Context) {
             CatalogUpdateInterval.valueOf(prefs.getString(KEY_AUTO_UPDATE, null) ?: "DAILY")
         }.getOrDefault(CatalogUpdateInterval.DAILY),
         autoUpdateGuide = prefs.getBoolean(KEY_AUTO_UPDATE_EPG, true),
+        audioLanguage = prefs.getString(KEY_AUDIO_LANGUAGE, "").orEmpty(),
+        subtitleLanguage = prefs.getString(KEY_SUBTITLE_LANGUAGE, "").orEmpty(),
+        videoFit = runCatching {
+            VideoFit.valueOf(prefs.getString(KEY_VIDEO_FIT, null) ?: "FIT")
+        }.getOrDefault(VideoFit.FIT),
         parentalEnabled = prefs.getBoolean(KEY_PARENTAL, false),
         pinHash = prefs.getString(KEY_PIN, "").orEmpty(),
         blockedGroups = prefs.getStringSet(KEY_BLOCKED, emptySet())?.toSet() ?: emptySet(),
@@ -142,6 +174,9 @@ class SettingsStore(context: Context) {
             .putInt(KEY_AUTOPLAY_DELAY, settings.nextEpisodeDelaySeconds)
             .putString(KEY_AUTO_UPDATE, settings.catalogUpdateInterval.name)
             .putBoolean(KEY_AUTO_UPDATE_EPG, settings.autoUpdateGuide)
+            .putString(KEY_AUDIO_LANGUAGE, settings.audioLanguage)
+            .putString(KEY_SUBTITLE_LANGUAGE, settings.subtitleLanguage)
+            .putString(KEY_VIDEO_FIT, settings.videoFit.name)
             .putBoolean(KEY_PARENTAL, settings.parentalEnabled)
             .putString(KEY_PIN, settings.pinHash)
             .putStringSet(KEY_BLOCKED, settings.blockedGroups)
@@ -227,6 +262,9 @@ class SettingsStore(context: Context) {
         const val KEY_AUTOPLAY_DELAY = "autoplay_next_delay"
         const val KEY_AUTO_UPDATE = "catalog_auto_update"
         const val KEY_AUTO_UPDATE_EPG = "catalog_auto_update_epg"
+        const val KEY_AUDIO_LANGUAGE = "player_audio_language"
+        const val KEY_SUBTITLE_LANGUAGE = "player_subtitle_language"
+        const val KEY_VIDEO_FIT = "player_video_fit"
         const val KEY_PARENTAL = "parental_enabled"
         const val KEY_PIN = "parental_pin"
         const val KEY_BLOCKED = "parental_blocked_groups"

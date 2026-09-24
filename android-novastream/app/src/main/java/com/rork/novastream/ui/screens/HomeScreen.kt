@@ -96,6 +96,8 @@ fun HomeScreen(
     val storeUrl by viewModel.storeUrl.collectAsStateWithLifecycle()
     val restoring by viewModel.catalogRestoring.collectAsStateWithLifecycle()
     val recovering by viewModel.catalogRecovering.collectAsStateWithLifecycle()
+    /** Same full rebuild as in Settings, so it asks the same confirmation. */
+    var rebuildDialogOpen by remember { mutableStateOf(false) }
 
     val active = remember(accounts, activeId) { accounts.firstOrNull { it.id == activeId } }
     val counts = remember(catalog, settings, unlocked) {
@@ -283,8 +285,12 @@ fun HomeScreen(
 
         if (active != null) {
             item("refresh") {
+                // Throws away every saved channel, film and series and imports
+                // the provider list from scratch, exactly like "Erase and
+                // download again" in Settings, so new channels always show up.
                 OutlinedButton(
-                    onClick = { viewModel.refresh() },
+                    onClick = { rebuildDialogOpen = true },
+                    enabled = syncState !is SyncState.Running,
                     modifier = Modifier.fillMaxWidth(),
                     colors = ButtonDefaults.outlinedButtonColors(
                         contentColor = MaterialTheme.colorScheme.onSurfaceVariant
@@ -296,6 +302,23 @@ fun HomeScreen(
                 }
             }
         }
+    }
+
+    if (rebuildDialogOpen) {
+        AlertDialog(
+            onDismissRequest = { rebuildDialogOpen = false },
+            title = { Text(strings.catalogRebuildTitle) },
+            text = { Text(strings.catalogRebuildBody) },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.rebuildCatalog()
+                    rebuildDialogOpen = false
+                }) { Text(strings.catalogRebuildConfirm) }
+            },
+            dismissButton = {
+                TextButton(onClick = { rebuildDialogOpen = false }) { Text(strings.cancel) }
+            },
+        )
     }
 
     if (parentalPinOpen) {
