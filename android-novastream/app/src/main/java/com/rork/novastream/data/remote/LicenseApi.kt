@@ -76,6 +76,10 @@ data class DeviceSync(
     val key: String,
     val install: List<PlaylistAccount>,
     val remove: List<String>,
+    /** When the key stops working, already moved onto this device's clock. */
+    val keyExpiresAtMs: Long = 0L,
+    /** Server time of the last opening from the website; it grows when the key is used. */
+    val lastOpenAtMs: Long = 0L,
 )
 
 /** Outcome of asking the server. Silence is never treated as a verdict. */
@@ -216,10 +220,16 @@ class LicenseApi(private val baseUrl: String = LICENSE_BACKEND_URL) {
             }
             val remove = (body["remove"] as? JsonArray).orEmpty()
                 .mapNotNull { it.jsonPrimitive.contentOrNull?.takeIf { id -> id.isNotBlank() } }
+            // The countdown runs on this device's clock, whatever time it thinks it is.
+            val serverTime = body["serverTime"]?.jsonPrimitive?.longOrNull ?: 0L
+            val skew = if (serverTime > 0L) System.currentTimeMillis() - serverTime else 0L
+            val expiresAt = body["keyExpiresAt"]?.jsonPrimitive?.longOrNull ?: 0L
             DeviceSync(
                 key = body["key"]?.jsonPrimitive?.contentOrNull.orEmpty(),
                 install = install,
                 remove = remove,
+                keyExpiresAtMs = if (expiresAt > 0L) expiresAt + skew else 0L,
+                lastOpenAtMs = body["lastOpenAt"]?.jsonPrimitive?.longOrNull ?: 0L,
             )
         }.getOrElse { error ->
             Log.d(TAG, "device sync unavailable: ${error.message}")

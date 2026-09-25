@@ -14,7 +14,9 @@ Dettaglio completo in 8 lingue: `changelogs/1.2.9.md`.
   aggiungono o cancellano le playlist senza usare il telecomando.
 - Il modulo accetta M3U oppure Xtream Codes e termina con un CAPTCHA di lettere e
   numeri contro i bot.
-- In Account: riquadro con dispositivo, chiave di 6 caratteri e QR code (su TV).
+- In Account: riquadro con dispositivo, chiave di 6 caratteri e QR code (su TV). La
+  chiave è monouso e cambia ogni 5 minuti (con conto alla rovescia) e appena viene
+  usata; sul sito apre una sessione di al massimo un'ora.
 - L'app si allinea al sito da sola e avvisa quando una playlist viene aggiunta o
   rimossa da lì. Credenziali cifrate e cancellate dal server appena consegnate.
 - Versione 1.2.9.
@@ -25,7 +27,9 @@ Dettaglio completo in 8 lingue: `changelogs/1.2.9.md`.
   added or deleted without using the remote.
 - The form takes M3U or Xtream Codes and ends with a letters-and-numbers CAPTCHA
   against bots.
-- In Accounts: card with device, 6-character key and QR code (on TV).
+- In Accounts: card with device, 6-character key and QR code (on TV). The key is
+  single use and changes every 5 minutes (with a countdown) and as soon as it is
+  used; on the website it opens a session of one hour at most.
 - The app lines up with the website by itself and shows a notice when a playlist is
   added or removed there. Credentials encrypted and deleted from the server once
   delivered.
@@ -33,32 +37,34 @@ Dettaglio completo in 8 lingue: `changelogs/1.2.9.md`.
 
 ### Español
 
-- Gestión de listas desde la web (M3U o Xtream) con clave del dispositivo y CAPTCHA;
+- Gestión de listas desde la web (M3U o Xtream) con clave monouso que cambia cada 5 minutos y CAPTCHA;
   la app se sincroniza sola.
 
 ### Français
 
-- Gestion des playlists depuis le site (M3U ou Xtream) avec clé d'appareil et
-  CAPTCHA ; l'app se synchronise toute seule.
+- Gestion des playlists depuis le site (M3U ou Xtream) avec clé à usage unique
+  renouvelée toutes les 5 minutes et CAPTCHA ; l'app se synchronise toute seule.
 
 ### Deutsch
 
-- Playlist-Verwaltung über die Website (M3U oder Xtream) mit Geräteschlüssel und
-  CAPTCHA; die App gleicht sich selbst ab.
+- Playlist-Verwaltung über die Website (M3U oder Xtream) mit Einmal-Schlüssel, der
+  alle 5 Minuten wechselt, und CAPTCHA; die App gleicht sich selbst ab.
 
 ### Português
 
-- Gestão de listas no site (M3U ou Xtream) com chave do dispositivo e CAPTCHA; a app
+- Gestão de listas no site (M3U ou Xtream) com chave de uso único que muda a cada 5 minutos e
+  CAPTCHA; a app
   sincroniza sozinha.
 
 ### Română
 
-- Gestionarea playlisturilor de pe site (M3U sau Xtream) cu cheia dispozitivului și
-  CAPTCHA; aplicația se sincronizează singură.
+- Gestionarea playlisturilor de pe site (M3U sau Xtream) cu cheie de unică folosință
+  schimbată la fiecare 5 minute și CAPTCHA; aplicația se sincronizează singură.
 
 ### Türkçe
 
-- Web sitesinden liste yönetimi (M3U veya Xtream), cihaz anahtarı ve CAPTCHA ile;
+- Web sitesinden liste yönetimi (M3U veya Xtream), her 5 dakikada değişen tek kullanımlık anahtar ve CAPTCHA
+  ile;
   uygulama kendiliğinden eşitlenir.
 
 ## 1.2.8

@@ -267,6 +267,13 @@ export type DeviceView = {
   limit: number;
 };
 
+/** Answer to a key: the key itself is spent, the browser gets a session instead. */
+export type DeviceOpened = DeviceView & { session: string; sessionExpiresAt: number };
+
+/** True when the website session is over and the device must be opened again. */
+export const isSessionExpired = (err: unknown): boolean =>
+  err instanceof ApiError && err.status === 401;
+
 export type Captcha = { token: string; image: string; expiresAt: number };
 
 export type NewPlaylist = {
@@ -281,13 +288,19 @@ export type NewPlaylist = {
 
 export const fetchCaptcha = (): Promise<Captcha> => call<Captcha>("/api/captcha");
 
-/** Opens a device with its key; the key is shown inside the app. */
-export const openDevice = (identifier: string, key: string): Promise<DeviceView> =>
-  post<DeviceView>("/api/device/open", { identifier: normalizeDeviceId(identifier), key });
+/**
+ * Opens a device with the key shown inside the app. The key works once and
+ * lives five minutes; the returned session keeps this browser in.
+ */
+export const openDevice = (identifier: string, key: string): Promise<DeviceOpened> =>
+  post<DeviceOpened>("/api/device/open", { identifier: normalizeDeviceId(identifier), key });
+
+export const viewDevice = (identifier: string, session: string): Promise<DeviceView> =>
+  post<DeviceView>("/api/device/view", { identifier: normalizeDeviceId(identifier), session });
 
 export const addDevicePlaylist = (input: {
   identifier: string;
-  key: string;
+  session: string;
   playlist: NewPlaylist;
   captchaToken: string;
   captchaAnswer: string;
@@ -299,11 +312,11 @@ export const addDevicePlaylist = (input: {
 
 export const removeDevicePlaylist = (
   identifier: string,
-  key: string,
+  session: string,
   id: string,
 ): Promise<{ ok: true; playlists: DevicePlaylist[] }> =>
   post<{ ok: true; playlists: DevicePlaylist[] }>("/api/device/playlist-remove", {
     identifier: normalizeDeviceId(identifier),
-    key,
+    session,
     id,
   });

@@ -21,10 +21,16 @@ import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -37,6 +43,10 @@ import com.rork.novastream.data.local.DeviceIdentity
 import com.rork.novastream.ui.components.LocalIsTv
 import com.rork.novastream.ui.components.QrCodePanel
 import com.rork.novastream.ui.i18n.Strings
+import kotlinx.coroutines.delay
+
+/** Lifetime of a website key; the server renews it once this is up. */
+private const val KEY_LIFETIME_MS: Long = 5 * 60 * 1000L
 
 /**
  * Address of the website playlist manager with the device and its key already
@@ -62,13 +72,26 @@ internal fun playlistManagerLink(storeUrl: String, identity: DeviceIdentity, key
 fun WebManageCard(
     identity: DeviceIdentity,
     deviceKey: String,
+    deviceKeyExpiresAt: Long,
     storeUrl: String,
     strings: Strings,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val isTv = LocalIsTv.current
-    val link = playlistManagerLink(storeUrl, identity, deviceKey)
+
+    // Ticks once a second so the countdown under the key stays honest.
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(deviceKeyExpiresAt) {
+        while (true) {
+            now = System.currentTimeMillis()
+            delay(1_000L)
+        }
+    }
+    val remainingMs = (deviceKeyExpiresAt - now).coerceAtLeast(0L)
+    // A key past its time is dead on the server: hide it until the new one arrives.
+    val keyShown = if (deviceKeyExpiresAt > 0L && remainingMs == 0L) "" else deviceKey
+    val link = playlistManagerLink(storeUrl, identity, keyShown)
     val siteLabel = storeUrl.removePrefix("https://").removePrefix("http://").trimEnd('/') + "/playlist"
 
     Surface(
@@ -118,12 +141,34 @@ fun WebManageCard(
                 )
                 CodeTile(
                     label = strings.webManageKeyLabel,
-                    value = deviceKey.chunked(3).joinToString(" "),
-                    loading = deviceKey.isBlank(),
+                    value = keyShown.chunked(3).joinToString(" "),
+                    loading = keyShown.isBlank(),
                     loadingLabel = strings.webManageKeyLoading,
                     emphasize = true,
                     modifier = Modifier.weight(1f),
                 )
+            }
+
+            if (keyShown.isNotBlank() && deviceKeyExpiresAt > 0L) {
+                val seconds = ((remainingMs + 999L) / 1000L).toInt()
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    LinearProgressIndicator(
+                        progress = { (remainingMs.toFloat() / KEY_LIFETIME_MS).coerceIn(0f, 1f) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(2.dp)),
+                        color = if (seconds <= 30) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                        trackColor = MaterialTheme.colorScheme.surfaceVariant,
+                        drawStopIndicator = {},
+                    )
+                    Text(
+                        text = strings.webManageKeyExpires.format("%d:%02d".format(seconds / 60, seconds % 60)),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontFamily = FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
 
             Text(
@@ -132,7 +177,7 @@ fun WebManageCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            if (isTv && deviceKey.isNotBlank()) {
+            if (isTv && keyShown.isNotBlank()) {
                 QrCodePanel(
                     content = link,
                     title = strings.webManageQrTitle,

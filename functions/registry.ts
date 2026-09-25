@@ -143,6 +143,15 @@ const KEY_ALPHABET = "ACDEFHJKLMNPQRTUVWXY23456789";
 
 const KEY_LENGTH = 6;
 
+/** A website key lives five minutes at most, and dies earlier the moment it is used. */
+const KEY_TTL_MS = 5 * 60 * 1000;
+
+/** A website session opened with a key ends after this much inactivity... */
+const SESSION_IDLE_MS = 15 * 60 * 1000;
+
+/** ...and in any case after this long, however active it is. */
+const SESSION_MAX_MS = 60 * 60 * 1000;
+
 type DeviceRow = {
   device_id: string;
   mac: string;
@@ -151,7 +160,19 @@ type DeviceRow = {
   last_seen_at: number;
   key_failures: number;
   locked_until: number;
+  key_issued_at: number;
+  last_open_at: number;
 };
+
+type DeviceSessionRow = {
+  token_hash: string;
+  device_id: string;
+  created_at: number;
+  last_used_at: number;
+  expires_at: number;
+};
+
+type AuthFailure = { ok: false; error: string; retryInSeconds?: number };
 
 type DevicePlaylistRow = {
   id: string;
@@ -334,6 +355,25 @@ export class Registry extends DurableObject {
       )
     `);
     this.ctx.storage.sql.exec("CREATE INDEX IF NOT EXISTS idx_devices_mac ON devices (mac)");
+    // Added with the rotating key: older rows start at 0, i.e. already expired.
+    for (const column of ["key_issued_at", "last_open_at"]) {
+      try {
+        this.ctx.storage.sql.exec(`ALTER TABLE devices ADD COLUMN ${column} INTEGER NOT NULL DEFAULT 0`);
+      } catch {
+        /* column already there */
+      }
+    }
+    // The website never keeps the key: using it opens a short session instead,
+    // stored here only as a hash. One session per device at a time.
+    this.ctx.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS device_sessions (
+        token_hash TEXT PRIMARY KEY,
+        device_id TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        last_used_at INTEGER NOT NULL,
+        expires_at INTEGER NOT NULL
+      )
+    `);
     // `sealed` holds the encrypted credentials of a playlist sent from the site
     // only until the device has collected it; it is blanked right after.
     this.ctx.storage.sql.exec(`
@@ -434,14 +474,18 @@ export class Registry extends DurableObject {
           this.deviceSync(String(body.deviceId ?? ""), String(body.mac ?? ""), reportedOf(body)),
         );
       case "/device-open":
-        return Response.json(this.deviceOpen(String(body.identifier ?? ""), String(body.key ?? "")));
+        return Response.json(
+          this.deviceOpen(String(body.identifier ?? ""), String(body.key ?? ""), String(body.sessionHash ?? "")),
+        );
+      case "/device-view":
+        return Response.json(this.deviceView(String(body.identifier ?? ""), String(body.sessionHash ?? "")));
       case "/device-playlist-add":
         return Response.json(this.devicePlaylistAdd(body));
       case "/device-playlist-remove":
         return Response.json(
           this.devicePlaylistRemove(
             String(body.identifier ?? ""),
-            String(body.key ?? ""),
+            String(body.sessionHash ?? ""),
             String(body.id ?? ""),
           ),
         );
@@ -566,17 +610,37 @@ export class Registry extends DurableObject {
     );
   }
 
+  private keyIsLive(device: DeviceRow, now: number): boolean {
+    return Boolean(device.device_key) && device.key_issued_at > 0 && now - device.key_issued_at < KEY_TTL_MS;
+  }
+
+  /** Draws a fresh key, never the same as the one it replaces. */
+  private rotateKey(device: DeviceRow, now: number): { key: string; issuedAt: number } {
+    let key = newDeviceKey();
+    while (key === device.device_key) key = newDeviceKey();
+    this.ctx.storage.sql.exec(
+      "UPDATE devices SET device_key = ?, key_issued_at = ? WHERE device_id = ?",
+      key,
+      now,
+      device.device_id,
+    );
+    return { key, issuedAt: now };
+  }
+
   /**
-   * Checks the key typed on the website. A wrong key counts against that device
-   * only, and too many of them shut the door for a while, so the key cannot be
-   * guessed by trying. Unknown devices and wrong keys get the same answer.
+   * Checks the key typed on the website and, when it is right, burns it on the
+   * spot and opens a session for that browser instead. A wrong key counts
+   * against that device only, and too many of them shut the door for a while,
+   * so the key cannot be guessed by trying. Unknown devices, wrong keys and
+   * expired or already used keys all get the same answer.
    */
-  private authorizeDevice(
+  private openWithKey(
     identifier: string,
     key: string,
-  ): { ok: true; device: DeviceRow } | { ok: false; error: string; retryInSeconds?: number } {
+    sessionHash: string,
+  ): { ok: true; device: DeviceRow } | AuthFailure {
     const device = this.deviceByIdentifier(identifier);
-    if (!device) return { ok: false, error: "wrong device or key" };
+    if (!device || !sessionHash) return { ok: false, error: "wrong device or key" };
     const now = Date.now();
     if (device.locked_until > now) {
       return {
@@ -586,6 +650,11 @@ export class Registry extends DurableObject {
       };
     }
     const typed = key.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (typed === device.device_key && !this.keyIsLive(device, now)) {
+      // The right key, just too late: not a guess, so it is not held against anyone.
+      this.rotateKey(device, now);
+      return { ok: false, error: "wrong device or key" };
+    }
     if (typed !== device.device_key) {
       const failures = device.key_failures + 1;
       const locked = failures >= MAX_KEY_FAILURES;
@@ -600,9 +669,54 @@ export class Registry extends DurableObject {
       }
       return { ok: false, error: "wrong device or key" };
     }
-    if (device.key_failures > 0) {
-      this.ctx.storage.sql.exec("UPDATE devices SET key_failures = 0 WHERE device_id = ?", device.device_id);
+
+    // Single use: the key dies the moment it opens the device.
+    this.rotateKey(device, now);
+    this.ctx.storage.sql.exec(
+      "UPDATE devices SET key_failures = 0, last_open_at = ? WHERE device_id = ?",
+      now,
+      device.device_id,
+    );
+    this.ctx.storage.sql.exec(
+      "DELETE FROM device_sessions WHERE device_id = ? OR expires_at < ? OR created_at < ?",
+      device.device_id,
+      now,
+      now - SESSION_MAX_MS,
+    );
+    this.ctx.storage.sql.exec(
+      `INSERT INTO device_sessions (token_hash, device_id, created_at, last_used_at, expires_at)
+       VALUES (?, ?, ?, ?, ?) ON CONFLICT(token_hash) DO NOTHING`,
+      sessionHash,
+      device.device_id,
+      now,
+      now,
+      now + SESSION_IDLE_MS,
+    );
+    return { ok: true, device };
+  }
+
+  /** Lets a browser that already used a key keep working until its session ends. */
+  private authorizeSession(identifier: string, sessionHash: string): { ok: true; device: DeviceRow } | AuthFailure {
+    const expired: AuthFailure = { ok: false, error: "session expired" };
+    if (!sessionHash) return expired;
+    const now = Date.now();
+    const row = this.ctx.storage.sql
+      .exec<DeviceSessionRow>("SELECT * FROM device_sessions WHERE token_hash = ?", sessionHash)
+      .toArray()[0];
+    if (!row) return expired;
+    if (row.expires_at < now || now - row.created_at > SESSION_MAX_MS) {
+      this.ctx.storage.sql.exec("DELETE FROM device_sessions WHERE token_hash = ?", sessionHash);
+      return expired;
     }
+    const device = this.deviceById(row.device_id);
+    if (!device) return expired;
+    if (identifier && identifier !== device.device_id && identifier !== device.mac) return expired;
+    this.ctx.storage.sql.exec(
+      "UPDATE device_sessions SET last_used_at = ?, expires_at = ? WHERE token_hash = ?",
+      now,
+      Math.min(now + SESSION_IDLE_MS, row.created_at + SESSION_MAX_MS),
+      sessionHash,
+    );
     return { ok: true, device };
   }
 
@@ -637,10 +751,15 @@ export class Registry extends DurableObject {
   ): {
     ok: boolean;
     key: string;
+    keyExpiresAt: number;
+    lastOpenAt: number;
+    serverTime: number;
     install: { id: string; sealed: string }[];
     remove: string[];
   } {
-    if (!deviceId) return { ok: false, key: "", install: [], remove: [] };
+    if (!deviceId) {
+      return { ok: false, key: "", keyExpiresAt: 0, lastOpenAt: 0, serverTime: Date.now(), install: [], remove: [] };
+    }
     const now = Date.now();
     let device = this.deviceById(deviceId);
     if (!device) {
@@ -649,7 +768,7 @@ export class Registry extends DurableObject {
          ON CONFLICT(device_id) DO NOTHING`,
         deviceId,
         mac,
-        newDeviceKey(),
+        "",
         now,
         now,
       );
@@ -718,20 +837,41 @@ export class Registry extends DurableObject {
       .filter((row) => row.status === "deleting" && reportedIds.has(row.id))
       .map((row) => row.id);
 
-    return { ok: true, key: device.device_key, install, remove };
-  }
+    // Five minutes are up (or it has never had one): the screen gets a new key.
+    const current = this.keyIsLive(device, now)
+      ? { key: device.device_key, issuedAt: device.key_issued_at }
+      : this.rotateKey(device, now);
 
-  private deviceOpen(identifier: string, key: string):
-    | { ok: true; lastSeenAt: number; playlists: DevicePlaylistView[]; limit: number }
-    | { ok: false; error: string; retryInSeconds?: number } {
-    const auth = this.authorizeDevice(identifier, key);
-    if (!auth.ok) return auth;
     return {
       ok: true,
-      lastSeenAt: auth.device.last_seen_at,
-      playlists: this.devicePlaylists(auth.device.device_id),
+      key: current.key,
+      keyExpiresAt: current.issuedAt + KEY_TTL_MS,
+      lastOpenAt: device.last_open_at,
+      serverTime: now,
+      install,
+      remove,
+    };
+  }
+
+  private viewOf(device: DeviceRow): { ok: true; lastSeenAt: number; playlists: DevicePlaylistView[]; limit: number } {
+    return {
+      ok: true,
+      lastSeenAt: device.last_seen_at,
+      playlists: this.devicePlaylists(device.device_id),
       limit: MAX_DEVICE_PLAYLISTS,
     };
+  }
+
+  private deviceOpen(identifier: string, key: string, sessionHash: string) {
+    const auth = this.openWithKey(identifier, key, sessionHash);
+    if (!auth.ok) return auth;
+    return { ...this.viewOf(auth.device), sessionExpiresAt: Date.now() + SESSION_IDLE_MS };
+  }
+
+  private deviceView(identifier: string, sessionHash: string) {
+    const auth = this.authorizeSession(identifier, sessionHash);
+    if (!auth.ok) return auth;
+    return this.viewOf(auth.device);
   }
 
   private devicePlaylistAdd(body: Record<string, unknown>): {
@@ -740,7 +880,7 @@ export class Registry extends DurableObject {
     retryInSeconds?: number;
     playlists?: DevicePlaylistView[];
   } {
-    const auth = this.authorizeDevice(String(body.identifier ?? ""), String(body.key ?? ""));
+    const auth = this.authorizeSession(String(body.identifier ?? ""), String(body.sessionHash ?? ""));
     if (!auth.ok) return auth;
     const deviceId = auth.device.device_id;
     const count =
@@ -768,13 +908,13 @@ export class Registry extends DurableObject {
    * A playlist the device has not collected yet simply disappears. One already
    * on the device is flagged, and the app removes it at its next check.
    */
-  private devicePlaylistRemove(identifier: string, key: string, id: string): {
+  private devicePlaylistRemove(identifier: string, sessionHash: string, id: string): {
     ok: boolean;
     error?: string;
     retryInSeconds?: number;
     playlists?: DevicePlaylistView[];
   } {
-    const auth = this.authorizeDevice(identifier, key);
+    const auth = this.authorizeSession(identifier, sessionHash);
     if (!auth.ok) return auth;
     const deviceId = auth.device.device_id;
     const row = this.ctx.storage.sql

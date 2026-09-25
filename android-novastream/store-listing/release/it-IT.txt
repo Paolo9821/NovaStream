@@ -1,6 +1,7 @@
 Aggiungi e cancella le playlist dal sito, senza telecomando.
 
 • Nuova pagina novastream.rork.app/playlist: inserisci MAC e chiave del dispositivo
+• Chiave monouso: cambia ogni 5 minuti e appena viene usata
 • Carica i dati in formato M3U oppure Xtream Codes
 • Verifica di sicurezza contro i bot
 • Le playlist compaiono o spariscono da sole sul dispositivo

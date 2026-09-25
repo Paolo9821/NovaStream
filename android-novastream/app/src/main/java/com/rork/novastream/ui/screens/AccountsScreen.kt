@@ -86,10 +86,20 @@ fun AccountsScreen(
     val activeId by viewModel.activeAccountId.collectAsStateWithLifecycle()
     val syncState by viewModel.syncState.collectAsStateWithLifecycle()
     val deviceKey by viewModel.deviceKey.collectAsStateWithLifecycle()
+    val deviceKeyExpiresAt by viewModel.deviceKeyExpiresAt.collectAsStateWithLifecycle()
     val storeUrl by viewModel.storeUrl.collectAsStateWithLifecycle()
 
     // Opening this screen is a good moment to pick up changes made on the site.
-    androidx.compose.runtime.LaunchedEffect(Unit) { viewModel.syncWebPlaylists() }
+    // While it stays open, the key is renewed the moment it expires, and a key
+    // spent on the website is replaced within a few seconds.
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        while (true) {
+            viewModel.syncWebPlaylists()
+            val untilExpiry = viewModel.deviceKeyExpiresAt.value - System.currentTimeMillis()
+            val wait = if (untilExpiry > 0L) minOf(untilExpiry + 500L, WEB_KEY_POLL_MS) else WEB_KEY_POLL_MS
+            kotlinx.coroutines.delay(wait)
+        }
+    }
 
     var formOpen by remember { mutableStateOf(accounts.isEmpty()) }
     var pendingSwitch by remember { mutableStateOf<PlaylistAccount?>(null) }
@@ -144,6 +154,7 @@ fun AccountsScreen(
                 WebManageCard(
                     identity = viewModel.deviceIdentity,
                     deviceKey = deviceKey,
+                    deviceKeyExpiresAt = deviceKeyExpiresAt,
                     storeUrl = storeUrl,
                     strings = strings,
                 )
@@ -487,6 +498,9 @@ private fun AccountForm(
         }
     }
 }
+
+/** How often the open Accounts screen asks whether its website key was used. */
+private const val WEB_KEY_POLL_MS: Long = 8_000L
 
 private fun lastSyncLabel(epochMs: Long, strings: Strings): String {
     if (epochMs <= 0L) return strings.neverSynced

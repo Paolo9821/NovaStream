@@ -105,7 +105,8 @@ class MainActivity : ComponentActivity() {
             // Short notice when the website added or removed a playlist here.
             LaunchedEffect(webPlaylistEvent) {
                 val event = webPlaylistEvent ?: return@LaunchedEffect
-                val lines = event.added.map { strings.webPlaylistAdded.format(it) } +
+                val lines = listOfNotNull(strings.webManageKeyUsed.takeIf { event.keyUsed }) +
+                    event.added.map { strings.webPlaylistAdded.format(it) } +
                     event.removed.map { strings.webPlaylistRemoved.format(it) }
                 if (lines.isNotEmpty()) {
                     android.widget.Toast.makeText(

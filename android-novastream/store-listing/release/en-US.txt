@@ -1,6 +1,7 @@
 Add and delete playlists from the website, no remote needed.
 
 • New page novastream.rork.app/playlist: enter the device MAC and key
+• Single-use key: it changes every 5 minutes and as soon as it is used
 • Upload the details as M3U or Xtream Codes
 • Security check against bots
 • Playlists appear on or disappear from the device by themselves

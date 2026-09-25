@@ -394,12 +394,14 @@ data class ExtraStrings(
     val webManageDeviceLabel: String = "Device",
     val webManageKeyLabel: String = "Website key",
     val webManageKeyLoading: String = "Connecting to the server…",
-    val webManageKeyHint: String = "Keep this key to yourself: whoever has it can change the playlists on this device.",
+    val webManageKeyHint: String = "Single use: it changes every 5 minutes and as soon as it is used on the website. Do not share it.",
     val webManageQrTitle: String = "Scan to manage playlists",
     val webManageQrCaption: String = "Device and key are filled in for you.",
     val webManageOpen: String = "Open the website",
     val webPlaylistAdded: String = "Playlist added from the website: %s",
     val webPlaylistRemoved: String = "Playlist removed from the website: %s",
+    val webManageKeyExpires: String = "New key in %s",
+    val webManageKeyUsed: String = "The website key was used: a new one is ready.",
 )
 
 /**
@@ -770,6 +772,8 @@ class Strings(
     val webManageOpen: String get() = extra.webManageOpen
     val webPlaylistAdded: String get() = extra.webPlaylistAdded
     val webPlaylistRemoved: String get() = extra.webPlaylistRemoved
+    val webManageKeyExpires: String get() = extra.webManageKeyExpires
+    val webManageKeyUsed: String get() = extra.webManageKeyUsed
 }
 
 private val English = Strings()
@@ -1116,12 +1120,14 @@ private val Italian = Strings(
         webManageDeviceLabel = "Dispositivo",
         webManageKeyLabel = "Chiave per il sito",
         webManageKeyLoading = "Collegamento al server…",
-        webManageKeyHint = "Non condividere questa chiave: chi la possiede può cambiare le playlist di questo dispositivo.",
+        webManageKeyHint = "Monouso: cambia ogni 5 minuti e appena viene usata sul sito. Non condividerla.",
         webManageQrTitle = "Inquadra per gestire le playlist",
         webManageQrCaption = "Dispositivo e chiave vengono compilati da soli.",
         webManageOpen = "Apri il sito",
         webPlaylistAdded = "Playlist aggiunta dal sito: %s",
         webPlaylistRemoved = "Playlist rimossa dal sito: %s",
+        webManageKeyExpires = "Nuova chiave tra %s",
+        webManageKeyUsed = "La chiave per il sito è stata usata: ne è pronta una nuova.",
     ),
 )
 
@@ -1459,12 +1465,14 @@ private val Spanish = Strings(
         webManageDeviceLabel = "Dispositivo",
         webManageKeyLabel = "Clave para la web",
         webManageKeyLoading = "Conectando con el servidor…",
-        webManageKeyHint = "No compartas esta clave: quien la tenga puede cambiar las listas de este dispositivo.",
+        webManageKeyHint = "De un solo uso: cambia cada 5 minutos y en cuanto se usa en la web. No la compartas.",
         webManageQrTitle = "Escanea para gestionar las listas",
         webManageQrCaption = "El dispositivo y la clave se rellenan solos.",
         webManageOpen = "Abrir la web",
         webPlaylistAdded = "Lista añadida desde la web: %s",
         webPlaylistRemoved = "Lista eliminada desde la web: %s",
+        webManageKeyExpires = "Nueva clave en %s",
+        webManageKeyUsed = "Se ha usado la clave para la web: ya hay una nueva.",
     ),
 )
 
@@ -1802,12 +1810,14 @@ private val French = Strings(
         webManageDeviceLabel = "Appareil",
         webManageKeyLabel = "Clé pour le site",
         webManageKeyLoading = "Connexion au serveur…",
-        webManageKeyHint = "Gardez cette clé pour vous : qui la possède peut modifier les playlists de cet appareil.",
+        webManageKeyHint = "À usage unique : elle change toutes les 5 minutes et dès qu'elle est utilisée sur le site. Ne la partagez pas.",
         webManageQrTitle = "Scannez pour gérer les playlists",
         webManageQrCaption = "L'appareil et la clé sont remplis pour vous.",
         webManageOpen = "Ouvrir le site",
         webPlaylistAdded = "Playlist ajoutée depuis le site : %s",
         webPlaylistRemoved = "Playlist supprimée depuis le site : %s",
+        webManageKeyExpires = "Nouvelle clé dans %s",
+        webManageKeyUsed = "La clé pour le site a été utilisée : une nouvelle est prête.",
     ),
 )
 
@@ -2145,12 +2155,14 @@ private val German = Strings(
         webManageDeviceLabel = "Gerät",
         webManageKeyLabel = "Website-Schlüssel",
         webManageKeyLoading = "Verbindung zum Server…",
-        webManageKeyHint = "Behalte diesen Schlüssel für dich: Wer ihn hat, kann die Playlists dieses Geräts ändern.",
+        webManageKeyHint = "Einmalig: Er wechselt alle 5 Minuten und sobald er auf der Website benutzt wird. Nicht weitergeben.",
         webManageQrTitle = "Scannen, um Playlists zu verwalten",
         webManageQrCaption = "Gerät und Schlüssel werden automatisch ausgefüllt.",
         webManageOpen = "Website öffnen",
         webPlaylistAdded = "Playlist über die Website hinzugefügt: %s",
         webPlaylistRemoved = "Playlist über die Website entfernt: %s",
+        webManageKeyExpires = "Neuer Schlüssel in %s",
+        webManageKeyUsed = "Der Website-Schlüssel wurde benutzt: ein neuer ist bereit.",
     ),
 )
 
@@ -2488,12 +2500,14 @@ private val Portuguese = Strings(
         webManageDeviceLabel = "Dispositivo",
         webManageKeyLabel = "Chave para o site",
         webManageKeyLoading = "A ligar ao servidor…",
-        webManageKeyHint = "Não partilhe esta chave: quem a tiver pode alterar as listas deste dispositivo.",
+        webManageKeyHint = "De uso único: muda a cada 5 minutos e assim que é usada no site. Não a partilhe.",
         webManageQrTitle = "Leia para gerir as listas",
         webManageQrCaption = "O dispositivo e a chave são preenchidos automaticamente.",
         webManageOpen = "Abrir o site",
         webPlaylistAdded = "Lista adicionada pelo site: %s",
         webPlaylistRemoved = "Lista removida pelo site: %s",
+        webManageKeyExpires = "Nova chave dentro de %s",
+        webManageKeyUsed = "A chave para o site foi usada: já há uma nova.",
     ),
 )
 
@@ -2831,12 +2845,14 @@ private val Romanian = Strings(
         webManageDeviceLabel = "Dispozitiv",
         webManageKeyLabel = "Cheie pentru site",
         webManageKeyLoading = "Conectare la server…",
-        webManageKeyHint = "Nu împărți această cheie: cine o are poate schimba playlisturile acestui dispozitiv.",
+        webManageKeyHint = "De unică folosință: se schimbă la fiecare 5 minute și imediat ce e folosită pe site. Nu o împărți.",
         webManageQrTitle = "Scanează pentru a gestiona playlisturile",
         webManageQrCaption = "Dispozitivul și cheia se completează singure.",
         webManageOpen = "Deschide site-ul",
         webPlaylistAdded = "Playlist adăugat de pe site: %s",
         webPlaylistRemoved = "Playlist eliminat de pe site: %s",
+        webManageKeyExpires = "Cheie nouă în %s",
+        webManageKeyUsed = "Cheia pentru site a fost folosită: una nouă e gata.",
     ),
 )
 
@@ -3174,12 +3190,14 @@ private val Turkish = Strings(
         webManageDeviceLabel = "Cihaz",
         webManageKeyLabel = "Site anahtarı",
         webManageKeyLoading = "Sunucuya bağlanılıyor…",
-        webManageKeyHint = "Bu anahtarı kimseyle paylaşma: ona sahip olan bu cihazın listelerini değiştirebilir.",
+        webManageKeyHint = "Tek kullanımlık: her 5 dakikada ve sitede kullanıldığı anda değişir. Kimseyle paylaşma.",
         webManageQrTitle = "Listeleri yönetmek için tara",
         webManageQrCaption = "Cihaz ve anahtar otomatik doldurulur.",
         webManageOpen = "Siteyi aç",
         webPlaylistAdded = "Siteden liste eklendi: %s",
         webPlaylistRemoved = "Siteden liste kaldırıldı: %s",
+        webManageKeyExpires = "Yeni anahtar: %s sonra",
+        webManageKeyUsed = "Site anahtarı kullanıldı: yenisi hazır.",
     ),
 )
 

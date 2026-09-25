@@ -42,18 +42,21 @@ import {
   fetchCaptcha,
   formatDateTime,
   formatMac,
+  isSessionExpired,
   isValidDeviceId,
   openDevice,
   removeDevicePlaylist,
+  viewDevice,
   type DevicePlaylist,
   type NewPlaylist,
 } from "@/lib/api";
 import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
-type Session = { identifier: string; key: string };
+/** The key is spent on arrival: from then on the browser only holds a session token. */
+type Session = { identifier: string; token: string };
 
-const SESSION_KEY = "novastream_playlist_device";
+const SESSION_KEY = "novastream_playlist_session";
 
 const EMPTY_FORM: NewPlaylist = {
   name: "",
@@ -67,20 +70,22 @@ const EMPTY_FORM: NewPlaylist = {
 
 const isHttpUrl = (value: string): boolean => /^https?:\/\/\S+\.\S+/i.test(value.trim());
 
+type Start = { identifier: string; key: string; auto: boolean; saved: Session | null };
+
 /** The app's QR code opens this page with the device and key already filled in. */
-function initialSession(): { identifier: string; key: string; auto: boolean } {
+function initialSession(): Start {
   const params = new URLSearchParams(window.location.search);
   const identifier = params.get("device") ?? "";
   const key = params.get("key") ?? "";
-  if (identifier && key) return { identifier, key, auto: true };
+  if (identifier && key) return { identifier, key, auto: true, saved: null };
   try {
     // Kept for this browser tab only, so a refresh does not log the visitor out.
     const saved = JSON.parse(sessionStorage.getItem(SESSION_KEY) ?? "null") as Session | null;
-    if (saved?.identifier && saved.key) return { ...saved, auto: true };
+    if (saved?.identifier && saved.token) return { identifier: saved.identifier, key: "", auto: false, saved };
   } catch {
     /* nothing saved */
   }
-  return { identifier, key, auto: false };
+  return { identifier, key, auto: false, saved: null };
 }
 
 export default function Playlists() {
@@ -88,7 +93,7 @@ export default function Playlists() {
   const [start] = useState(initialSession);
   const [identifier, setIdentifier] = useState<string>(start.identifier);
   const [key, setKey] = useState<string>(start.key);
-  const [session, setSession] = useState<Session | null>(null);
+  const [session, setSession] = useState<Session | null>(start.saved);
   const [openError, setOpenError] = useState<string>("");
 
   useEffect(() => {
@@ -98,14 +103,18 @@ export default function Playlists() {
   }, []);
 
   const open = useMutation({
-    mutationFn: (input: Session) => openDevice(input.identifier, input.key),
-    onSuccess: (_data, input) => {
-      setSession(input);
+    mutationFn: (input: { identifier: string; key: string }) => openDevice(input.identifier, input.key),
+    onSuccess: (data, input) => {
+      const next: Session = { identifier: input.identifier, token: data.session };
+      setSession(next);
       setOpenError("");
-      sessionStorage.setItem(SESSION_KEY, JSON.stringify(input));
+      // The key has just been used up: nothing of it stays on the page.
+      setKey("");
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify(next));
     },
     onError: (err: unknown) => {
       sessionStorage.removeItem(SESSION_KEY);
+      setKey("");
       if (err instanceof ApiError && err.retryInSeconds > 0) {
         setOpenError(t("pl.errLocked", { min: String(Math.ceil(err.retryInSeconds / 60)) }));
       } else if (err instanceof ApiError && (err.status === 403 || err.status === 400)) {
@@ -132,12 +141,17 @@ export default function Playlists() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const logout = (): void => {
+  const logout = useCallback((): void => {
     sessionStorage.removeItem(SESSION_KEY);
     setSession(null);
     setKey("");
     open.reset();
-  };
+  }, [open]);
+
+  const expired = useCallback((): void => {
+    logout();
+    setOpenError(t("pl.errSession"));
+  }, [logout, t]);
 
   return (
     <div className="relative min-h-screen">
@@ -173,7 +187,7 @@ export default function Playlists() {
         </div>
 
         {session ? (
-          <DeviceManager session={session} onLogout={logout} />
+          <DeviceManager session={session} onLogout={logout} onExpired={expired} />
         ) : (
           <form
             onSubmit={(event) => {
@@ -206,6 +220,7 @@ export default function Playlists() {
               onChange={(event) => setKey(event.target.value.toUpperCase())}
               placeholder="ABC 123"
               maxLength={8}
+              autoFocus={!start.auto && Boolean(start.identifier)}
               autoComplete="off"
               spellCheck={false}
               className="mono mt-2 h-12 max-w-[220px] border-border/80 bg-secondary/60 text-lg uppercase tracking-[0.3em]"
@@ -234,28 +249,41 @@ export default function Playlists() {
   );
 }
 
-function DeviceManager({ session, onLogout }: { session: Session; onLogout: () => void }) {
+function DeviceManager({
+  session,
+  onLogout,
+  onExpired,
+}: {
+  session: Session;
+  onLogout: () => void;
+  onExpired: () => void;
+}) {
   const { t, locale } = useI18n();
   const [pendingDelete, setPendingDelete] = useState<DevicePlaylist | null>(null);
   const [notice, setNotice] = useState<string>("");
 
   const device = useQuery({
-    queryKey: ["device-playlists", session.identifier, session.key],
-    queryFn: () => openDevice(session.identifier, session.key),
+    queryKey: ["device-playlists", session.identifier, session.token],
+    queryFn: () => viewDevice(session.identifier, session.token),
     // The device confirms installs and removals by itself: keep the list fresh.
     refetchInterval: 15_000,
+    retry: (count, err) => !isSessionExpired(err) && count < 1,
   });
+
+  useEffect(() => {
+    if (isSessionExpired(device.error)) onExpired();
+  }, [device.error, onExpired]);
 
   const playlists: DevicePlaylist[] = device.data?.playlists ?? [];
   const full = device.data ? playlists.length >= device.data.limit : false;
 
   const remove = useMutation({
-    mutationFn: (item: DevicePlaylist) => removeDevicePlaylist(session.identifier, session.key, item.id),
+    mutationFn: (item: DevicePlaylist) => removeDevicePlaylist(session.identifier, session.token, item.id),
     onSuccess: () => {
       setNotice(t("pl.deleted"));
       void device.refetch();
     },
-    onError: () => setNotice(t("pl.errGeneric")),
+    onError: (err: unknown) => (isSessionExpired(err) ? onExpired() : setNotice(t("pl.errGeneric"))),
   });
 
   return (
@@ -321,6 +349,7 @@ function DeviceManager({ session, onLogout }: { session: Session; onLogout: () =
       <AddPlaylistForm
         session={session}
         disabled={full}
+        onExpired={onExpired}
         onAdded={(message) => {
           setNotice(message);
           void device.refetch();
@@ -407,10 +436,12 @@ function PlaylistRow({ item, onDelete }: { item: DevicePlaylist; onDelete: () =>
 function AddPlaylistForm({
   session,
   disabled,
+  onExpired,
   onAdded,
 }: {
   session: Session;
   disabled: boolean;
+  onExpired: () => void;
   onAdded: (message: string) => void;
 }) {
   const { t } = useI18n();
@@ -439,7 +470,7 @@ function AddPlaylistForm({
     mutationFn: () =>
       addDevicePlaylist({
         identifier: session.identifier,
-        key: session.key,
+        session: session.token,
         playlist: { ...form, name: form.name.trim() },
         captchaToken: captcha.data?.token ?? "",
         captchaAnswer: answer,
@@ -452,6 +483,7 @@ function AddPlaylistForm({
     onError: (err: unknown) => {
       // Every challenge is good for one try: a new one is ready either way.
       newCaptcha();
+      if (isSessionExpired(err)) return onExpired();
       const message = err instanceof Error ? err.message : "";
       if (message.startsWith("captcha")) setError(t("pl.errCaptcha"));
       else if (message === "too many playlists") setError(t("pl.errLimit"));

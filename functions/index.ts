@@ -105,6 +105,20 @@ type LoginGuard = { blocked: boolean; retryInSeconds: number; failures: number }
 const loginGuard = (env: Env, action: "check" | "fail" | "reset"): Promise<LoginGuard> =>
   registryJson<LoginGuard>(env, "/login-guard", { action });
 
+/** Random token handed to one browser after it used a device key. */
+function newSessionToken(): string {
+  const bytes = new Uint8Array(32);
+  crypto.getRandomValues(bytes);
+  return [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+/** Only this hash is stored, so a copy of the registry opens no session. */
+async function sessionHashOf(token: string): Promise<string> {
+  if (!/^[a-f0-9]{64}$/.test(token)) return "";
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(token));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 /** Reads a generated secret, creating it the very first time it is needed. */
 async function generatedSecret(env: Env, key: string): Promise<string> {
   const existing = await setting(env, key);
@@ -239,6 +253,9 @@ export default {
         const result = await registryJson<{
           ok: boolean;
           key: string;
+          keyExpiresAt: number;
+          lastOpenAt: number;
+          serverTime: number;
           install: { id: string; sealed: string }[];
           remove: string[];
         }>(env, "/device-sync", { deviceId, mac, playlists: body.playlists });
@@ -254,7 +271,14 @@ export default {
             console.warn("device playlist payload unreadable", item.id);
           }
         }
-        return json({ key: result.key, install, remove: result.remove });
+        return json({
+          key: result.key,
+          keyExpiresAt: result.keyExpiresAt,
+          lastOpenAt: result.lastOpenAt,
+          serverTime: result.serverTime,
+          install,
+          remove: result.remove,
+        });
       }
 
       if (path === "/api/captcha") {
@@ -265,12 +289,25 @@ export default {
         const body = await readBody(request);
         const identifier = normalizeDeviceId(String(body.identifier ?? ""));
         if (!isValidDeviceId(identifier)) return fail("invalid device id");
+        // The key is single use: a right one is burnt and swapped for a session.
+        const session = newSessionToken();
         const result = await registryJson<{ ok: boolean; error?: string; retryInSeconds?: number }>(
           env,
           "/device-open",
-          { identifier, key: String(body.key ?? "") },
+          { identifier, key: String(body.key ?? ""), sessionHash: await sessionHashOf(session) },
         );
         if (!result.ok) return json(result, result.retryInSeconds ? 429 : 403);
+        return json({ ...result, session });
+      }
+
+      if (path === "/api/device/view" && request.method === "POST") {
+        const body = await readBody(request);
+        const identifier = normalizeDeviceId(String(body.identifier ?? ""));
+        const result = await registryJson<{ ok: boolean; error?: string }>(env, "/device-view", {
+          identifier,
+          sessionHash: await sessionHashOf(String(body.session ?? "")),
+        });
+        if (!result.ok) return json(result, 401);
         return json(result);
       }
 
@@ -305,7 +342,7 @@ export default {
           "/device-playlist-add",
           {
             identifier,
-            key: String(body.key ?? ""),
+            sessionHash: await sessionHashOf(String(body.session ?? "")),
             id: crypto.randomUUID(),
             name: playlist.name,
             type: playlist.type,
@@ -314,7 +351,8 @@ export default {
           },
         );
         if (!result.ok) {
-          const status = result.retryInSeconds ? 429 : result.error === "too many playlists" ? 409 : 403;
+          const status =
+            result.error === "session expired" ? 401 : result.error === "too many playlists" ? 409 : 403;
           return json(result, status);
         }
         return json(result);
@@ -327,9 +365,13 @@ export default {
         const result = await registryJson<{ ok: boolean; error?: string; retryInSeconds?: number }>(
           env,
           "/device-playlist-remove",
-          { identifier, key: String(body.key ?? ""), id: String(body.id ?? "") },
+          {
+            identifier,
+            sessionHash: await sessionHashOf(String(body.session ?? "")),
+            id: String(body.id ?? ""),
+          },
         );
-        if (!result.ok) return json(result, result.retryInSeconds ? 429 : 403);
+        if (!result.ok) return json(result, result.error === "session expired" ? 401 : 403);
         return json(result);
       }
 

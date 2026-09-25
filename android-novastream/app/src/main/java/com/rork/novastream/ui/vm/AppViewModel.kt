@@ -41,6 +41,8 @@ import java.util.concurrent.TimeUnit
 data class WebPlaylistEvent(
     val added: List<String> = emptyList(),
     val removed: List<String> = emptyList(),
+    /** The website key was just used: the screen already shows a new one. */
+    val keyUsed: Boolean = false,
     val stamp: Long = System.currentTimeMillis(),
 )
 
@@ -103,8 +105,19 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     // and Kotlin initialises properties strictly in source order.
     private val _deviceKey = MutableStateFlow("")
 
-    /** Key typed on the website to manage this device; empty until the server answers. */
+    /**
+     * Key typed on the website to manage this device; empty until the server
+     * answers. It works once and lives five minutes, then the server draws a new one.
+     */
     val deviceKey: StateFlow<String> = _deviceKey.asStateFlow()
+
+    private val _deviceKeyExpiresAt = MutableStateFlow(0L)
+
+    /** Local time at which [deviceKey] stops working; 0 while unknown. */
+    val deviceKeyExpiresAt: StateFlow<Long> = _deviceKeyExpiresAt.asStateFlow()
+
+    /** Last website opening seen, to tell the customer when the key was spent. */
+    private var lastWebOpenAt: Long = -1L
 
     private val _webPlaylistEvent = MutableStateFlow<WebPlaylistEvent?>(null)
 
@@ -152,8 +165,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 val identity = licenseStore.identity
                 val answer = licenseApi.syncDevice(identity.deviceId, identity.macAddress, accounts.value)
                     ?: return@withLock
-                if (answer.key.isNotBlank()) _deviceKey.value = answer.key
-                if (answer.install.isEmpty() && answer.remove.isEmpty()) return@withLock
+                if (answer.key.isNotBlank()) {
+                    _deviceKey.value = answer.key
+                    _deviceKeyExpiresAt.value = answer.keyExpiresAtMs
+                }
+                val keyUsed = lastWebOpenAt >= 0L && answer.lastOpenAtMs > lastWebOpenAt
+                lastWebOpenAt = answer.lastOpenAtMs
+                if (answer.install.isEmpty() && answer.remove.isEmpty()) {
+                    if (keyUsed) _webPlaylistEvent.value = WebPlaylistEvent(keyUsed = true)
+                    return@withLock
+                }
 
                 val removedNames = mutableListOf<String>()
                 var needsImport = false
@@ -170,6 +191,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
                 _webPlaylistEvent.value = WebPlaylistEvent(
                     added = installed.map { it.name },
                     removed = removedNames,
+                    keyUsed = keyUsed,
                 )
 
                 // Tell the site right away, so its page shows the new state.
