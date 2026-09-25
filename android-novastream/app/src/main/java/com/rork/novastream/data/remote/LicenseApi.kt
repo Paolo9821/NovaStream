@@ -11,8 +11,13 @@ import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import com.rork.novastream.data.model.AccountType
+import com.rork.novastream.data.model.PlaylistAccount
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.addJsonObject
+import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -60,6 +65,17 @@ data class RemoteLicense(
     val trialStartedAtMs: Long? = null,
     /** Server clock, used so a device cannot rewind its own trial. */
     val serverTimeMs: Long = 0L,
+)
+
+/**
+ * Answer of the website playlist manager: the key shown on screen, the
+ * playlists sent from the site that must be installed, and the ids of the ones
+ * the site asked to delete.
+ */
+data class DeviceSync(
+    val key: String,
+    val install: List<PlaylistAccount>,
+    val remove: List<String>,
 )
 
 /** Outcome of asking the server. Silence is never treated as a verdict. */
@@ -147,6 +163,72 @@ class LicenseApi(private val baseUrl: String = LICENSE_BACKEND_URL) {
             LicenseCheck.Unavailable(error.message ?: "network error")
         }
     }
+
+    /**
+     * Reconciles the playlists on this device with the website. Only the name,
+     * the kind and the server host of each playlist are reported, never an
+     * address with credentials in it. Returns null when the server is out of reach.
+     */
+    suspend fun syncDevice(
+        deviceId: String,
+        mac: String,
+        accounts: List<PlaylistAccount>,
+    ): DeviceSync? = withContext(Dispatchers.IO) {
+        runCatching {
+            val response = http.post("$baseUrl/api/device/sync") {
+                contentType(ContentType.Application.Json)
+                setBody(
+                    buildJsonObject {
+                        put("deviceId", deviceId)
+                        put("mac", mac)
+                        putJsonArray("playlists") {
+                            accounts.forEach { account ->
+                                val xtream = account.type == AccountType.XTREAM
+                                addJsonObject {
+                                    put("id", account.id)
+                                    put("name", account.name)
+                                    put("type", if (xtream) "xtream" else "m3u")
+                                    put("host", hostOf(if (xtream) account.server else account.m3uUrl))
+                                }
+                            }
+                        }
+                    }.toString(),
+                )
+            }
+            if (response.status.value !in 200..299) return@runCatching null
+            val body = json.parseToJsonElement(response.bodyAsText()) as? JsonObject
+                ?: return@runCatching null
+            val install = (body["install"] as? JsonArray).orEmpty().mapNotNull { element ->
+                val item = element as? JsonObject ?: return@mapNotNull null
+                fun text(key: String): String = item[key]?.jsonPrimitive?.contentOrNull.orEmpty()
+                val id = text("id").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                val type = if (text("type") == "xtream") AccountType.XTREAM else AccountType.M3U
+                PlaylistAccount(
+                    id = id,
+                    name = text("name").ifBlank { if (type == AccountType.XTREAM) "Xtream" else "m3u" },
+                    type = type,
+                    m3uUrl = text("m3uUrl"),
+                    server = text("server"),
+                    username = text("username"),
+                    password = text("password"),
+                    epgUrl = text("epgUrl"),
+                )
+            }
+            val remove = (body["remove"] as? JsonArray).orEmpty()
+                .mapNotNull { it.jsonPrimitive.contentOrNull?.takeIf { id -> id.isNotBlank() } }
+            DeviceSync(
+                key = body["key"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+                install = install,
+                remove = remove,
+            )
+        }.getOrElse { error ->
+            Log.d(TAG, "device sync unavailable: ${error.message}")
+            null
+        }
+    }
+
+    private fun hostOf(url: String): String =
+        runCatching { java.net.URI(url.trim()).host }.getOrNull().orEmpty()
 
     /** Where customers buy. Read from the server so the address can change later. */
     suspend fun storeUrl(): String = withContext(Dispatchers.IO) {

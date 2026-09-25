@@ -1,10 +1,10 @@
-Pick audio and subtitles, change picture format and playback speed.
+Add and delete playlists from the website, no remote needed.
 
-• New player panel: every audio track and subtitle of the title
-• The chosen language is remembered for the next film or episode
-• Picture format: Fit, Fill, Stretch, 16:9, 4:3
-• Speed from 0.5× to 2× for films and series
-• "Refresh the list" on Home now downloads everything from scratch
-• Version 1.2.8
+• New page novastream.rork.app/playlist: enter the device MAC and key
+• Upload the details as M3U or Xtream Codes
+• Security check against bots
+• Playlists appear on or disappear from the device by themselves
+• Credentials always encrypted
+• Version 1.2.9
 
 Thanks for using NovaStream.

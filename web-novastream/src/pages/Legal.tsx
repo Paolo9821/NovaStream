@@ -11,7 +11,7 @@ import { useI18n } from "@/lib/i18n";
  */
 type Section = { heading: string; body: string[]; list?: string[] };
 
-const LAST_UPDATED = "2026-08-24";
+const LAST_UPDATED = "2026-09-25";
 
 const CONTACT_LINE =
   "The fastest way to reach us is the support form on this site; every request lands directly in our management console.";
@@ -131,13 +131,14 @@ const PRIVACY: Section[] = [
       "the email address you optionally provide at checkout, used for the receipt and to reach you about that licence;",
       "the plan purchased, the amount paid, the payment reference returned by Stripe and the expiry date;",
       "the date and time of the last licence check made by the device, so we can tell an active device from an abandoned one;",
-      "the content of any support request you send us: your email address, the device identifier you type in, the topic, your message and the language of the site at that moment.",
+      "the content of any support request you send us: your email address, the device identifier you type in, the topic, your message and the language of the site at that moment;",
+      "if you use the playlist manager on this site: a device key generated for your device, and for each playlist its name, its kind (M3U or Xtream) and the host name of its server. The full link, username and password of a playlist you send from the site are kept encrypted only until your device collects them, and are deleted as soon as it has.",
     ],
   },
   {
     heading: "3. What we never store",
     body: [
-      "We do not record what you watch. Playlists, sources, channel names, viewing history, favourites and playback positions stay on your device and are never sent to us.",
+      "We do not record what you watch. Channel names, viewing history, favourites and playback positions stay on your device and are never sent to us. Playlist credentials entered inside the application never leave your device; only those you choose to send through the playlist manager pass through our server, encrypted and just long enough to be delivered.",
       "We do not use advertising networks, tracking pixels or third-party analytics on this site, and the application contains no advertising SDK.",
       "We never see your card number, expiry date or security code. Those are handled entirely by Stripe.",
     ],

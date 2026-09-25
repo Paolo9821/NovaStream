@@ -85,6 +85,11 @@ fun AccountsScreen(
     val accounts by viewModel.accounts.collectAsStateWithLifecycle()
     val activeId by viewModel.activeAccountId.collectAsStateWithLifecycle()
     val syncState by viewModel.syncState.collectAsStateWithLifecycle()
+    val deviceKey by viewModel.deviceKey.collectAsStateWithLifecycle()
+    val storeUrl by viewModel.storeUrl.collectAsStateWithLifecycle()
+
+    // Opening this screen is a good moment to pick up changes made on the site.
+    androidx.compose.runtime.LaunchedEffect(Unit) { viewModel.syncWebPlaylists() }
 
     var formOpen by remember { mutableStateOf(accounts.isEmpty()) }
     var pendingSwitch by remember { mutableStateOf<PlaylistAccount?>(null) }
@@ -133,6 +138,15 @@ fun AccountsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+            }
+
+            item("web-manage") {
+                WebManageCard(
+                    identity = viewModel.deviceIdentity,
+                    deviceKey = deviceKey,
+                    storeUrl = storeUrl,
+                    strings = strings,
+                )
             }
 
             item("sync") {

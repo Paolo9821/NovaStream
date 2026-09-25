@@ -60,6 +60,7 @@ class MainActivity : ComponentActivity() {
             val settings by viewModel.settings.collectAsStateWithLifecycle()
             val license by viewModel.license.collectAsStateWithLifecycle()
             val storeUrl by viewModel.storeUrl.collectAsStateWithLifecycle()
+            val webPlaylistEvent by viewModel.webPlaylistEvent.collectAsStateWithLifecycle()
             val startupChecking by viewModel.startupChecking.collectAsStateWithLifecycle()
             val darkTheme = when (settings.themeMode) {
                 ThemeMode.SYSTEM -> isSystemInDarkTheme()
@@ -99,6 +100,21 @@ class MainActivity : ComponentActivity() {
                 if (!readyToRate) return@LaunchedEffect
                 if (!ReviewPrompt.isDue(this@MainActivity)) return@LaunchedEffect
                 ReviewPrompt.request(this@MainActivity)
+            }
+
+            // Short notice when the website added or removed a playlist here.
+            LaunchedEffect(webPlaylistEvent) {
+                val event = webPlaylistEvent ?: return@LaunchedEffect
+                val lines = event.added.map { strings.webPlaylistAdded.format(it) } +
+                    event.removed.map { strings.webPlaylistRemoved.format(it) }
+                if (lines.isNotEmpty()) {
+                    android.widget.Toast.makeText(
+                        this@MainActivity,
+                        lines.joinToString("\n"),
+                        android.widget.Toast.LENGTH_LONG,
+                    ).show()
+                }
+                viewModel.consumeWebPlaylistEvent()
             }
 
             CompositionLocalProvider(

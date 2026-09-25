@@ -308,7 +308,7 @@ data class ExtraStrings(
     val buyLicenseWhere: String = "Where to buy",
     val buyLicenseFallback: String = "Ask the person or shop that gave you NovaStream for an activation code.",
     val buyLicenseAction: String = "Contact the seller",
-    val appVersionLine: String = "NovaStream 1.2.8",
+    val appVersionLine: String = "NovaStream 1.2.9",
     val licenseRevokedTitle: String = "License revoked",
     val licenseRevokedBody: String = "This license was disabled by the provider. Contact your seller to restore access.",
     val licenseSuspendedTitle: String = "License suspended",
@@ -389,6 +389,17 @@ data class ExtraStrings(
     val videoFit43: String = "Force 4:3",
     val playbackSpeedSection: String = "Speed",
     val speedNormal: String = "Normal",
+    val webManageTitle: String = "Manage playlists from the website",
+    val webManageBody: String = "Open %s on a phone or computer, type this device and the key below, then add or delete playlists without typing on the TV. Playlists added there appear here within moments of opening the app.",
+    val webManageDeviceLabel: String = "Device",
+    val webManageKeyLabel: String = "Website key",
+    val webManageKeyLoading: String = "Connecting to the server…",
+    val webManageKeyHint: String = "Keep this key to yourself: whoever has it can change the playlists on this device.",
+    val webManageQrTitle: String = "Scan to manage playlists",
+    val webManageQrCaption: String = "Device and key are filled in for you.",
+    val webManageOpen: String = "Open the website",
+    val webPlaylistAdded: String = "Playlist added from the website: %s",
+    val webPlaylistRemoved: String = "Playlist removed from the website: %s",
 )
 
 /**
@@ -748,6 +759,17 @@ class Strings(
     val videoFit43: String get() = extra.videoFit43
     val playbackSpeedSection: String get() = extra.playbackSpeedSection
     val speedNormal: String get() = extra.speedNormal
+    val webManageTitle: String get() = extra.webManageTitle
+    val webManageBody: String get() = extra.webManageBody
+    val webManageDeviceLabel: String get() = extra.webManageDeviceLabel
+    val webManageKeyLabel: String get() = extra.webManageKeyLabel
+    val webManageKeyLoading: String get() = extra.webManageKeyLoading
+    val webManageKeyHint: String get() = extra.webManageKeyHint
+    val webManageQrTitle: String get() = extra.webManageQrTitle
+    val webManageQrCaption: String get() = extra.webManageQrCaption
+    val webManageOpen: String get() = extra.webManageOpen
+    val webPlaylistAdded: String get() = extra.webPlaylistAdded
+    val webPlaylistRemoved: String get() = extra.webPlaylistRemoved
 }
 
 private val English = Strings()
@@ -1089,6 +1111,17 @@ private val Italian = Strings(
         videoFit43 = "Forza 4:3",
         playbackSpeedSection = "Velocità",
         speedNormal = "Normale",
+        webManageTitle = "Gestisci le playlist dal sito",
+        webManageBody = "Apri %s da telefono o computer, inserisci questo dispositivo e la chiave qui sotto, poi aggiungi o cancella le playlist senza scrivere sulla TV. Quelle aggiunte dal sito compaiono qui appena riapri l'app.",
+        webManageDeviceLabel = "Dispositivo",
+        webManageKeyLabel = "Chiave per il sito",
+        webManageKeyLoading = "Collegamento al server…",
+        webManageKeyHint = "Non condividere questa chiave: chi la possiede può cambiare le playlist di questo dispositivo.",
+        webManageQrTitle = "Inquadra per gestire le playlist",
+        webManageQrCaption = "Dispositivo e chiave vengono compilati da soli.",
+        webManageOpen = "Apri il sito",
+        webPlaylistAdded = "Playlist aggiunta dal sito: %s",
+        webPlaylistRemoved = "Playlist rimossa dal sito: %s",
     ),
 )
 
@@ -1421,6 +1454,17 @@ private val Spanish = Strings(
         videoFit43 = "Forzar 4:3",
         playbackSpeedSection = "Velocidad",
         speedNormal = "Normal",
+        webManageTitle = "Gestiona las listas desde la web",
+        webManageBody = "Abre %s en el móvil o el ordenador, escribe este dispositivo y la clave de abajo, y añade o borra listas sin escribir en la TV. Las añadidas en la web aparecen aquí al abrir la app.",
+        webManageDeviceLabel = "Dispositivo",
+        webManageKeyLabel = "Clave para la web",
+        webManageKeyLoading = "Conectando con el servidor…",
+        webManageKeyHint = "No compartas esta clave: quien la tenga puede cambiar las listas de este dispositivo.",
+        webManageQrTitle = "Escanea para gestionar las listas",
+        webManageQrCaption = "El dispositivo y la clave se rellenan solos.",
+        webManageOpen = "Abrir la web",
+        webPlaylistAdded = "Lista añadida desde la web: %s",
+        webPlaylistRemoved = "Lista eliminada desde la web: %s",
     ),
 )
 
@@ -1753,6 +1797,17 @@ private val French = Strings(
         videoFit43 = "Forcer 4:3",
         playbackSpeedSection = "Vitesse",
         speedNormal = "Normale",
+        webManageTitle = "Gérer les playlists depuis le site",
+        webManageBody = "Ouvrez %s sur un téléphone ou un ordinateur, saisissez cet appareil et la clé ci-dessous, puis ajoutez ou supprimez des playlists sans taper sur la TV. Celles ajoutées sur le site apparaissent ici à l'ouverture de l'app.",
+        webManageDeviceLabel = "Appareil",
+        webManageKeyLabel = "Clé pour le site",
+        webManageKeyLoading = "Connexion au serveur…",
+        webManageKeyHint = "Gardez cette clé pour vous : qui la possède peut modifier les playlists de cet appareil.",
+        webManageQrTitle = "Scannez pour gérer les playlists",
+        webManageQrCaption = "L'appareil et la clé sont remplis pour vous.",
+        webManageOpen = "Ouvrir le site",
+        webPlaylistAdded = "Playlist ajoutée depuis le site : %s",
+        webPlaylistRemoved = "Playlist supprimée depuis le site : %s",
     ),
 )
 
@@ -2085,6 +2140,17 @@ private val German = Strings(
         videoFit43 = "4:3 erzwingen",
         playbackSpeedSection = "Geschwindigkeit",
         speedNormal = "Normal",
+        webManageTitle = "Playlists über die Website verwalten",
+        webManageBody = "Öffne %s auf Handy oder Computer, gib dieses Gerät und den Schlüssel unten ein und füge Playlists hinzu oder lösche sie, ohne auf dem Fernseher zu tippen. Dort hinzugefügte Playlists erscheinen hier beim Öffnen der App.",
+        webManageDeviceLabel = "Gerät",
+        webManageKeyLabel = "Website-Schlüssel",
+        webManageKeyLoading = "Verbindung zum Server…",
+        webManageKeyHint = "Behalte diesen Schlüssel für dich: Wer ihn hat, kann die Playlists dieses Geräts ändern.",
+        webManageQrTitle = "Scannen, um Playlists zu verwalten",
+        webManageQrCaption = "Gerät und Schlüssel werden automatisch ausgefüllt.",
+        webManageOpen = "Website öffnen",
+        webPlaylistAdded = "Playlist über die Website hinzugefügt: %s",
+        webPlaylistRemoved = "Playlist über die Website entfernt: %s",
     ),
 )
 
@@ -2417,6 +2483,17 @@ private val Portuguese = Strings(
         videoFit43 = "Forçar 4:3",
         playbackSpeedSection = "Velocidade",
         speedNormal = "Normal",
+        webManageTitle = "Gerir as listas no site",
+        webManageBody = "Abra %s no telemóvel ou computador, escreva este dispositivo e a chave abaixo e adicione ou apague listas sem escrever na TV. As adicionadas no site aparecem aqui ao abrir a app.",
+        webManageDeviceLabel = "Dispositivo",
+        webManageKeyLabel = "Chave para o site",
+        webManageKeyLoading = "A ligar ao servidor…",
+        webManageKeyHint = "Não partilhe esta chave: quem a tiver pode alterar as listas deste dispositivo.",
+        webManageQrTitle = "Leia para gerir as listas",
+        webManageQrCaption = "O dispositivo e a chave são preenchidos automaticamente.",
+        webManageOpen = "Abrir o site",
+        webPlaylistAdded = "Lista adicionada pelo site: %s",
+        webPlaylistRemoved = "Lista removida pelo site: %s",
     ),
 )
 
@@ -2749,6 +2826,17 @@ private val Romanian = Strings(
         videoFit43 = "Forțează 4:3",
         playbackSpeedSection = "Viteză",
         speedNormal = "Normală",
+        webManageTitle = "Gestionează playlisturile de pe site",
+        webManageBody = "Deschide %s pe telefon sau calculator, introdu acest dispozitiv și cheia de mai jos, apoi adaugă sau șterge playlisturi fără să scrii pe TV. Cele adăugate pe site apar aici când deschizi aplicația.",
+        webManageDeviceLabel = "Dispozitiv",
+        webManageKeyLabel = "Cheie pentru site",
+        webManageKeyLoading = "Conectare la server…",
+        webManageKeyHint = "Nu împărți această cheie: cine o are poate schimba playlisturile acestui dispozitiv.",
+        webManageQrTitle = "Scanează pentru a gestiona playlisturile",
+        webManageQrCaption = "Dispozitivul și cheia se completează singure.",
+        webManageOpen = "Deschide site-ul",
+        webPlaylistAdded = "Playlist adăugat de pe site: %s",
+        webPlaylistRemoved = "Playlist eliminat de pe site: %s",
     ),
 )
 
@@ -3081,6 +3169,17 @@ private val Turkish = Strings(
         videoFit43 = "4:3'e zorla",
         playbackSpeedSection = "Hız",
         speedNormal = "Normal",
+        webManageTitle = "Listeleri web sitesinden yönet",
+        webManageBody = "%s adresini telefon veya bilgisayarda aç, bu cihazı ve aşağıdaki anahtarı gir; TV'de yazmadan liste ekle veya sil. Sitede eklenenler uygulamayı açtığında burada görünür.",
+        webManageDeviceLabel = "Cihaz",
+        webManageKeyLabel = "Site anahtarı",
+        webManageKeyLoading = "Sunucuya bağlanılıyor…",
+        webManageKeyHint = "Bu anahtarı kimseyle paylaşma: ona sahip olan bu cihazın listelerini değiştirebilir.",
+        webManageQrTitle = "Listeleri yönetmek için tara",
+        webManageQrCaption = "Cihaz ve anahtar otomatik doldurulur.",
+        webManageOpen = "Siteyi aç",
+        webPlaylistAdded = "Siteden liste eklendi: %s",
+        webPlaylistRemoved = "Siteden liste kaldırıldı: %s",
     ),
 )
 

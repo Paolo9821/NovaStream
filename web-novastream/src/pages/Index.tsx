@@ -8,6 +8,7 @@ import {
   CreditCard,
   Infinity as InfinityIcon,
   LifeBuoy,
+  ListVideo,
   Loader2,
   LockKeyhole,
   RefreshCw,
@@ -146,6 +147,13 @@ export default function Index() {
         </div>
         <div className="flex items-center gap-2">
           <LanguagePicker />
+          <Link
+            to="/playlist"
+            className="flex items-center gap-1.5 rounded-full border border-border/70 px-3.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-primary/50 hover:text-foreground"
+          >
+            <ListVideo className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">{t("nav.playlists")}</span>
+          </Link>
           <Link
             to="/assistenza"
             className="flex items-center gap-1.5 rounded-full border border-border/70 px-3.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-primary/50 hover:text-foreground"
@@ -306,6 +314,7 @@ export default function Index() {
         </section>
 
         <HowItWorks />
+        <PlaylistBanner />
         <StatusChecker />
         <HelpBanner />
         <LanguageSection />
@@ -313,6 +322,40 @@ export default function Index() {
 
       <SiteFooter />
     </div>
+  );
+}
+
+/** Points customers at the website playlist manager. */
+function PlaylistBanner() {
+  const { t } = useI18n();
+  return (
+    <section className="mt-20">
+      <div className="panel relative overflow-hidden p-6 sm:p-8">
+        <div
+          className="pointer-events-none absolute -left-16 -bottom-16 h-52 w-52 rounded-full bg-accent/15 blur-3xl"
+          aria-hidden
+        />
+        <div className="relative flex flex-col items-start gap-5 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-start gap-3.5">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-primary">
+              <ListVideo className="h-5 w-5" />
+            </div>
+            <div>
+              <h2 className="text-xl font-bold">{t("pl.banner.title")}</h2>
+              <p className="mt-1.5 max-w-lg text-sm leading-relaxed text-muted-foreground">
+                {t("pl.banner.body")}
+              </p>
+            </div>
+          </div>
+          <Button asChild variant="secondary" className="h-12 shrink-0 gap-2 px-6 text-sm font-semibold">
+            <Link to="/playlist">
+              <ListVideo className="h-4 w-4" />
+              {t("pl.banner.button")}
+            </Link>
+          </Button>
+        </div>
+      </div>
+    </section>
   );
 }
 

@@ -9,6 +9,7 @@ import Dashboard from "./pages/Dashboard";
 import Index from "./pages/Index";
 import { PrivacyPage, TermsPage } from "./pages/Legal";
 import NotFound from "./pages/NotFound";
+import Playlists from "./pages/Playlists";
 import Support from "./pages/Support";
 
 const queryClient = new QueryClient({
@@ -29,6 +30,8 @@ const App = () => (
             <Route path="/termini" element={<TermsPage />} />
             <Route path="/terms" element={<TermsPage />} />
             <Route path="/privacy" element={<PrivacyPage />} />
+            <Route path="/playlist" element={<Playlists />} />
+            <Route path="/playlists" element={<Playlists />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

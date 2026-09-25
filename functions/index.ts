@@ -19,6 +19,8 @@ import {
   type StripeEnv,
 } from "./_lib/stripe";
 import { PLANS, isPlanId, isValidDeviceId, normalizeDeviceId, priceString } from "./_lib/plans";
+import { checkChallenge, createChallenge } from "./_lib/captcha";
+import { importSealKey, newSealKeyMaterial, seal, unseal } from "./_lib/seal";
 
 export { Registry } from "./registry";
 
@@ -38,6 +40,10 @@ const adminUsername = (env: Env): string => env.ADMIN_USERNAME?.trim() || DEFAUL
 const TWOFA_SECRET = "twofa_secret";
 const TWOFA_PENDING = "twofa_pending";
 const TWOFA_LAST_STEP = "twofa_last_step";
+
+/** Secrets generated on first use and kept in the registry, never in the code. */
+const CAPTCHA_SECRET = "captcha_secret";
+const PLAYLIST_SEAL_KEY = "playlist_seal_key";
 
 /** Deliberately loose: enough to catch typos, not to police exotic addresses. */
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
@@ -99,6 +105,73 @@ type LoginGuard = { blocked: boolean; retryInSeconds: number; failures: number }
 const loginGuard = (env: Env, action: "check" | "fail" | "reset"): Promise<LoginGuard> =>
   registryJson<LoginGuard>(env, "/login-guard", { action });
 
+/** Reads a generated secret, creating it the very first time it is needed. */
+async function generatedSecret(env: Env, key: string): Promise<string> {
+  const existing = await setting(env, key);
+  if (existing) return existing;
+  const fresh = newSealKeyMaterial();
+  await putSetting(env, key, fresh);
+  return fresh;
+}
+
+/** Credentials of a playlist sent from the website, as the app will import them. */
+type PlaylistPayload = {
+  name: string;
+  type: "m3u" | "xtream";
+  m3uUrl: string;
+  server: string;
+  username: string;
+  password: string;
+  epgUrl: string;
+};
+
+const isHttpUrl = (value: string): boolean => {
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+};
+
+const hostOf = (value: string): string => {
+  try {
+    return new URL(value).host;
+  } catch {
+    return "";
+  }
+};
+
+/** Checks and trims what the website sent; returns an error code on bad input. */
+function readPlaylist(raw: unknown): { ok: true; value: PlaylistPayload } | { ok: false; error: string } {
+  const item = (raw ?? {}) as Record<string, unknown>;
+  const type = String(item.type ?? "") === "xtream" ? "xtream" : "m3u";
+  const value: PlaylistPayload = {
+    name: String(item.name ?? "").trim().slice(0, 60),
+    type,
+    m3uUrl: String(item.m3uUrl ?? "").trim().slice(0, 2000),
+    server: String(item.server ?? "").trim().replace(/\/+$/, "").slice(0, 300),
+    username: String(item.username ?? "").trim().slice(0, 200),
+    password: String(item.password ?? "").slice(0, 200),
+    epgUrl: String(item.epgUrl ?? "").trim().slice(0, 2000),
+  };
+  if (!value.name) value.name = type === "xtream" ? "Xtream" : "M3U";
+  if (type === "m3u" && !isHttpUrl(value.m3uUrl)) return { ok: false, error: "invalid m3u url" };
+  if (type === "xtream") {
+    if (!isHttpUrl(value.server)) return { ok: false, error: "invalid server" };
+    if (!value.username || !value.password) return { ok: false, error: "missing credentials" };
+  }
+  if (value.epgUrl && !isHttpUrl(value.epgUrl)) return { ok: false, error: "invalid epg url" };
+  if (type === "m3u") {
+    value.server = "";
+    value.username = "";
+    value.password = "";
+  } else {
+    value.m3uUrl = "";
+  }
+  return { ok: true, value };
+}
+
 async function readBody(request: Request): Promise<Record<string, unknown>> {
   try {
     return (await request.json()) as Record<string, unknown>;
@@ -152,6 +225,111 @@ export default {
           identifiers: [deviceId, mac],
           fresh,
         });
+        return json(result);
+      }
+
+      // ---- Playlists managed from the website ------------------------------
+      // Called by the app at launch, on resume and after each change: the answer
+      // carries the key shown on screen and what the website asked for.
+      if (path === "/api/device/sync" && request.method === "POST") {
+        const body = await readBody(request);
+        const deviceId = normalizeDeviceId(String(body.deviceId ?? ""));
+        const mac = normalizeDeviceId(String(body.mac ?? ""));
+        if (!isValidDeviceId(deviceId)) return fail("invalid device id");
+        const result = await registryJson<{
+          ok: boolean;
+          key: string;
+          install: { id: string; sealed: string }[];
+          remove: string[];
+        }>(env, "/device-sync", { deviceId, mac, playlists: body.playlists });
+        if (!result.ok) return fail("sync failed", 500);
+        const key = await importSealKey(await generatedSecret(env, PLAYLIST_SEAL_KEY));
+        const install: (PlaylistPayload & { id: string })[] = [];
+        for (const item of result.install) {
+          const plain = await unseal(key, item.sealed);
+          if (!plain) continue;
+          try {
+            install.push({ id: item.id, ...(JSON.parse(plain) as PlaylistPayload) });
+          } catch {
+            console.warn("device playlist payload unreadable", item.id);
+          }
+        }
+        return json({ key: result.key, install, remove: result.remove });
+      }
+
+      if (path === "/api/captcha") {
+        return json(await createChallenge(await generatedSecret(env, CAPTCHA_SECRET)));
+      }
+
+      if (path === "/api/device/open" && request.method === "POST") {
+        const body = await readBody(request);
+        const identifier = normalizeDeviceId(String(body.identifier ?? ""));
+        if (!isValidDeviceId(identifier)) return fail("invalid device id");
+        const result = await registryJson<{ ok: boolean; error?: string; retryInSeconds?: number }>(
+          env,
+          "/device-open",
+          { identifier, key: String(body.key ?? "") },
+        );
+        if (!result.ok) return json(result, result.retryInSeconds ? 429 : 403);
+        return json(result);
+      }
+
+      if (path === "/api/device/playlist-add" && request.method === "POST") {
+        const body = await readBody(request);
+        const identifier = normalizeDeviceId(String(body.identifier ?? ""));
+        if (!isValidDeviceId(identifier)) return fail("invalid device id");
+
+        // The CAPTCHA is checked before anything else and is good for one try.
+        const check = await checkChallenge(
+          await generatedSecret(env, CAPTCHA_SECRET),
+          String(body.captchaToken ?? ""),
+          String(body.captchaAnswer ?? ""),
+        );
+        if (check.nonce) {
+          const burn = await registryJson<{ fresh: boolean }>(env, "/captcha-burn", {
+            nonce: check.nonce,
+            expiresAt: check.expiresAt,
+          });
+          if (!burn.fresh) return json({ error: "captcha used", captcha: true }, 400);
+        }
+        if (!check.ok) {
+          return json({ error: check.reason === "expired" ? "captcha expired" : "captcha wrong", captcha: true }, 400);
+        }
+
+        const parsed = readPlaylist(body.playlist);
+        if (!parsed.ok) return fail(parsed.error);
+        const playlist = parsed.value;
+        const sealKey = await importSealKey(await generatedSecret(env, PLAYLIST_SEAL_KEY));
+        const result = await registryJson<{ ok: boolean; error?: string; retryInSeconds?: number }>(
+          env,
+          "/device-playlist-add",
+          {
+            identifier,
+            key: String(body.key ?? ""),
+            id: crypto.randomUUID(),
+            name: playlist.name,
+            type: playlist.type,
+            host: hostOf(playlist.type === "xtream" ? playlist.server : playlist.m3uUrl),
+            sealed: await seal(sealKey, JSON.stringify(playlist)),
+          },
+        );
+        if (!result.ok) {
+          const status = result.retryInSeconds ? 429 : result.error === "too many playlists" ? 409 : 403;
+          return json(result, status);
+        }
+        return json(result);
+      }
+
+      if (path === "/api/device/playlist-remove" && request.method === "POST") {
+        const body = await readBody(request);
+        const identifier = normalizeDeviceId(String(body.identifier ?? ""));
+        if (!isValidDeviceId(identifier)) return fail("invalid device id");
+        const result = await registryJson<{ ok: boolean; error?: string; retryInSeconds?: number }>(
+          env,
+          "/device-playlist-remove",
+          { identifier, key: String(body.key ?? ""), id: String(body.id ?? "") },
+        );
+        if (!result.ok) return json(result, result.retryInSeconds ? 429 : 403);
         return json(result);
       }
 

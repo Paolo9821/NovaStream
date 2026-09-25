@@ -246,3 +246,64 @@ export function formatMonth(year: number, month: number, locale = "it-IT"): stri
 export function daysUntil(ms: number): number {
   return Math.max(0, Math.ceil((ms - Date.now()) / 86_400_000));
 }
+
+// ---- Playlists managed from the website -----------------------------------
+
+export type DevicePlaylist = {
+  id: string;
+  name: string;
+  type: "m3u" | "xtream";
+  host: string;
+  /** pending: waiting for the device · installed: on it · deleting: being removed. */
+  status: "pending" | "installed" | "deleting";
+  origin: "web" | "app";
+  createdAt: number;
+};
+
+export type DeviceView = {
+  ok: true;
+  lastSeenAt: number;
+  playlists: DevicePlaylist[];
+  limit: number;
+};
+
+export type Captcha = { token: string; image: string; expiresAt: number };
+
+export type NewPlaylist = {
+  name: string;
+  type: "m3u" | "xtream";
+  m3uUrl: string;
+  server: string;
+  username: string;
+  password: string;
+  epgUrl: string;
+};
+
+export const fetchCaptcha = (): Promise<Captcha> => call<Captcha>("/api/captcha");
+
+/** Opens a device with its key; the key is shown inside the app. */
+export const openDevice = (identifier: string, key: string): Promise<DeviceView> =>
+  post<DeviceView>("/api/device/open", { identifier: normalizeDeviceId(identifier), key });
+
+export const addDevicePlaylist = (input: {
+  identifier: string;
+  key: string;
+  playlist: NewPlaylist;
+  captchaToken: string;
+  captchaAnswer: string;
+}): Promise<{ ok: true; playlists: DevicePlaylist[] }> =>
+  post<{ ok: true; playlists: DevicePlaylist[] }>("/api/device/playlist-add", {
+    ...input,
+    identifier: normalizeDeviceId(input.identifier),
+  });
+
+export const removeDevicePlaylist = (
+  identifier: string,
+  key: string,
+  id: string,
+): Promise<{ ok: true; playlists: DevicePlaylist[] }> =>
+  post<{ ok: true; playlists: DevicePlaylist[] }>("/api/device/playlist-remove", {
+    identifier: normalizeDeviceId(identifier),
+    key,
+    id,
+  });

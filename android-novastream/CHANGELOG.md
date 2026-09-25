@@ -4,6 +4,63 @@ Da 1.2.7 ogni versione ha anche un file dedicato nella cartella `changelogs`
 (`changelogs/1.2.7.md`, `changelogs/1.2.6.md`, …), scritto in tutte e otto le
 lingue dell'app. Questo file resta lo storico completo in ordine di rilascio.
 
+## 1.2.9
+
+Dettaglio completo in 8 lingue: `changelogs/1.2.9.md`.
+
+### Italiano
+
+- Nuova pagina del sito `/playlist`: con MAC (o ID) e chiave del dispositivo si
+  aggiungono o cancellano le playlist senza usare il telecomando.
+- Il modulo accetta M3U oppure Xtream Codes e termina con un CAPTCHA di lettere e
+  numeri contro i bot.
+- In Account: riquadro con dispositivo, chiave di 6 caratteri e QR code (su TV).
+- L'app si allinea al sito da sola e avvisa quando una playlist viene aggiunta o
+  rimossa da lì. Credenziali cifrate e cancellate dal server appena consegnate.
+- Versione 1.2.9.
+
+### English
+
+- New `/playlist` website page: with the device MAC (or ID) and key, playlists can be
+  added or deleted without using the remote.
+- The form takes M3U or Xtream Codes and ends with a letters-and-numbers CAPTCHA
+  against bots.
+- In Accounts: card with device, 6-character key and QR code (on TV).
+- The app lines up with the website by itself and shows a notice when a playlist is
+  added or removed there. Credentials encrypted and deleted from the server once
+  delivered.
+- Version 1.2.9.
+
+### Español
+
+- Gestión de listas desde la web (M3U o Xtream) con clave del dispositivo y CAPTCHA;
+  la app se sincroniza sola.
+
+### Français
+
+- Gestion des playlists depuis le site (M3U ou Xtream) avec clé d'appareil et
+  CAPTCHA ; l'app se synchronise toute seule.
+
+### Deutsch
+
+- Playlist-Verwaltung über die Website (M3U oder Xtream) mit Geräteschlüssel und
+  CAPTCHA; die App gleicht sich selbst ab.
+
+### Português
+
+- Gestão de listas no site (M3U ou Xtream) com chave do dispositivo e CAPTCHA; a app
+  sincroniza sozinha.
+
+### Română
+
+- Gestionarea playlisturilor de pe site (M3U sau Xtream) cu cheia dispozitivului și
+  CAPTCHA; aplicația se sincronizează singură.
+
+### Türkçe
+
+- Web sitesinden liste yönetimi (M3U veya Xtream), cihaz anahtarı ve CAPTCHA ile;
+  uygulama kendiliğinden eşitlenir.
+
 ## 1.2.8
 
 Dettaglio completo in 8 lingue: `changelogs/1.2.8.md`.

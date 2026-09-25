@@ -130,6 +130,82 @@ const MAX_TICKETS_PER_MINUTE = 12;
 /** Oldest requests are dropped past this, so storage cannot grow without bound. */
 const MAX_TICKETS_KEPT = 500;
 
+/** Playlists one device can hold through the website, a guard against abuse. */
+const MAX_DEVICE_PLAYLISTS = 20;
+
+/** Wrong device keys tolerated before that device refuses the website for a while. */
+const MAX_KEY_FAILURES = 8;
+
+const KEY_LOCKOUT_MS = 15 * 60 * 1000;
+
+/** Same look-alike-free alphabet as the CAPTCHA: nothing to confuse on a TV. */
+const KEY_ALPHABET = "ACDEFHJKLMNPQRTUVWXY23456789";
+
+const KEY_LENGTH = 6;
+
+type DeviceRow = {
+  device_id: string;
+  mac: string;
+  device_key: string;
+  created_at: number;
+  last_seen_at: number;
+  key_failures: number;
+  locked_until: number;
+};
+
+type DevicePlaylistRow = {
+  id: string;
+  device_id: string;
+  name: string;
+  type: string;
+  host: string;
+  sealed: string;
+  origin: string;
+  status: string;
+  created_at: number;
+  updated_at: number;
+};
+
+/**
+ * A playlist as the website shows it. Credentials are never part of this: the
+ * page only ever sees a name, the kind and the server host.
+ */
+export type DevicePlaylistView = {
+  id: string;
+  name: string;
+  type: "m3u" | "xtream";
+  host: string;
+  /** pending: waiting for the device · installed: on it · deleting: being removed. */
+  status: "pending" | "installed" | "deleting";
+  origin: "web" | "app";
+  createdAt: number;
+};
+
+/** What the app reports about a playlist it holds, never with credentials. */
+type ReportedPlaylist = { id: string; name: string; type: string; host: string };
+
+function newDeviceKey(): string {
+  const bytes = new Uint8Array(KEY_LENGTH);
+  crypto.getRandomValues(bytes);
+  return [...bytes].map((b) => KEY_ALPHABET[b % KEY_ALPHABET.length]).join("");
+}
+
+function reportedOf(body: Record<string, unknown>): ReportedPlaylist[] {
+  if (!Array.isArray(body.playlists)) return [];
+  return body.playlists
+    .slice(0, 100)
+    .map((raw) => {
+      const item = (raw ?? {}) as Record<string, unknown>;
+      return {
+        id: String(item.id ?? "").trim().slice(0, 64),
+        name: String(item.name ?? "").trim().slice(0, 80),
+        type: String(item.type ?? "").toLowerCase() === "xtream" ? "xtream" : "m3u",
+        host: String(item.host ?? "").trim().slice(0, 120),
+      };
+    })
+    .filter((item) => item.id.length > 0);
+}
+
 /** Drops blanks and duplicates while keeping the caller's order of preference. */
 function unique(values: string[]): string[] {
   return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
@@ -244,6 +320,45 @@ export class Registry extends DurableObject {
         reply_note TEXT NOT NULL DEFAULT ''
       )
     `);
+    // Devices that can be managed from the website. The key is shown inside the
+    // app and asked for on the site, so knowing a MAC alone opens nothing.
+    this.ctx.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS devices (
+        device_id TEXT PRIMARY KEY,
+        mac TEXT NOT NULL DEFAULT '',
+        device_key TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        last_seen_at INTEGER NOT NULL,
+        key_failures INTEGER NOT NULL DEFAULT 0,
+        locked_until INTEGER NOT NULL DEFAULT 0
+      )
+    `);
+    this.ctx.storage.sql.exec("CREATE INDEX IF NOT EXISTS idx_devices_mac ON devices (mac)");
+    // `sealed` holds the encrypted credentials of a playlist sent from the site
+    // only until the device has collected it; it is blanked right after.
+    this.ctx.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS device_playlists (
+        id TEXT PRIMARY KEY,
+        device_id TEXT NOT NULL,
+        name TEXT NOT NULL DEFAULT '',
+        type TEXT NOT NULL DEFAULT 'm3u',
+        host TEXT NOT NULL DEFAULT '',
+        sealed TEXT NOT NULL DEFAULT '',
+        origin TEXT NOT NULL DEFAULT 'web',
+        status TEXT NOT NULL DEFAULT 'pending',
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    `);
+    this.ctx.storage.sql.exec(
+      "CREATE INDEX IF NOT EXISTS idx_device_playlists_device ON device_playlists (device_id)",
+    );
+    this.ctx.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS captcha_used (
+        nonce TEXT PRIMARY KEY,
+        expires_at INTEGER NOT NULL
+      )
+    `);
     this.ctx.storage.sql.exec(`
       CREATE TABLE IF NOT EXISTS orders (
         order_id TEXT PRIMARY KEY,
@@ -314,6 +429,26 @@ export class Registry extends DurableObject {
       case "/ticket-remove":
         this.ctx.storage.sql.exec("DELETE FROM tickets WHERE id = ?", String(body.id ?? ""));
         return Response.json({ ok: true });
+      case "/device-sync":
+        return Response.json(
+          this.deviceSync(String(body.deviceId ?? ""), String(body.mac ?? ""), reportedOf(body)),
+        );
+      case "/device-open":
+        return Response.json(this.deviceOpen(String(body.identifier ?? ""), String(body.key ?? "")));
+      case "/device-playlist-add":
+        return Response.json(this.devicePlaylistAdd(body));
+      case "/device-playlist-remove":
+        return Response.json(
+          this.devicePlaylistRemove(
+            String(body.identifier ?? ""),
+            String(body.key ?? ""),
+            String(body.id ?? ""),
+          ),
+        );
+      case "/captcha-burn":
+        return Response.json({
+          fresh: this.burnCaptcha(String(body.nonce ?? ""), Number(body.expiresAt ?? 0)),
+        });
       default:
         return new Response("not found", { status: 404 });
     }
@@ -407,6 +542,271 @@ export class Registry extends DurableObject {
       MAX_TICKETS_KEPT,
     );
     return { ok: true, id };
+  }
+
+  // ---- Playlists managed from the website ---------------------------------
+
+  private deviceById(deviceId: string): DeviceRow | null {
+    if (!deviceId) return null;
+    return (
+      this.ctx.storage.sql.exec<DeviceRow>("SELECT * FROM devices WHERE device_id = ?", deviceId).toArray()[0] ??
+      null
+    );
+  }
+
+  /** Customers type whichever name they have: the MAC or the device id. */
+  private deviceByIdentifier(identifier: string): DeviceRow | null {
+    if (!identifier) return null;
+    return (
+      this.deviceById(identifier) ??
+      this.ctx.storage.sql
+        .exec<DeviceRow>("SELECT * FROM devices WHERE mac = ? ORDER BY last_seen_at DESC LIMIT 1", identifier)
+        .toArray()[0] ??
+      null
+    );
+  }
+
+  /**
+   * Checks the key typed on the website. A wrong key counts against that device
+   * only, and too many of them shut the door for a while, so the key cannot be
+   * guessed by trying. Unknown devices and wrong keys get the same answer.
+   */
+  private authorizeDevice(
+    identifier: string,
+    key: string,
+  ): { ok: true; device: DeviceRow } | { ok: false; error: string; retryInSeconds?: number } {
+    const device = this.deviceByIdentifier(identifier);
+    if (!device) return { ok: false, error: "wrong device or key" };
+    const now = Date.now();
+    if (device.locked_until > now) {
+      return {
+        ok: false,
+        error: "too many attempts",
+        retryInSeconds: Math.ceil((device.locked_until - now) / 1000),
+      };
+    }
+    const typed = key.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (typed !== device.device_key) {
+      const failures = device.key_failures + 1;
+      const locked = failures >= MAX_KEY_FAILURES;
+      this.ctx.storage.sql.exec(
+        "UPDATE devices SET key_failures = ?, locked_until = ? WHERE device_id = ?",
+        locked ? 0 : failures,
+        locked ? now + KEY_LOCKOUT_MS : 0,
+        device.device_id,
+      );
+      if (locked) {
+        return { ok: false, error: "too many attempts", retryInSeconds: Math.ceil(KEY_LOCKOUT_MS / 1000) };
+      }
+      return { ok: false, error: "wrong device or key" };
+    }
+    if (device.key_failures > 0) {
+      this.ctx.storage.sql.exec("UPDATE devices SET key_failures = 0 WHERE device_id = ?", device.device_id);
+    }
+    return { ok: true, device };
+  }
+
+  private devicePlaylists(deviceId: string): DevicePlaylistView[] {
+    return this.ctx.storage.sql
+      .exec<DevicePlaylistRow>(
+        "SELECT * FROM device_playlists WHERE device_id = ? ORDER BY created_at",
+        deviceId,
+      )
+      .toArray()
+      .map((row) => ({
+        id: row.id,
+        name: row.name,
+        type: row.type === "xtream" ? "xtream" : "m3u",
+        host: row.host,
+        status: row.status === "installed" || row.status === "deleting" ? row.status : "pending",
+        origin: row.origin === "app" ? "app" : "web",
+        createdAt: row.created_at,
+      }));
+  }
+
+  /**
+   * Called by the app. Registers the device on first contact, reconciles what
+   * it holds with what the website asked for, and hands back the playlists to
+   * install and the ones to remove. The app calls it again after applying the
+   * answer, which is what confirms the delivery and wipes the credentials here.
+   */
+  private deviceSync(
+    deviceId: string,
+    mac: string,
+    reported: ReportedPlaylist[],
+  ): {
+    ok: boolean;
+    key: string;
+    install: { id: string; sealed: string }[];
+    remove: string[];
+  } {
+    if (!deviceId) return { ok: false, key: "", install: [], remove: [] };
+    const now = Date.now();
+    let device = this.deviceById(deviceId);
+    if (!device) {
+      this.ctx.storage.sql.exec(
+        `INSERT INTO devices (device_id, mac, device_key, created_at, last_seen_at) VALUES (?, ?, ?, ?, ?)
+         ON CONFLICT(device_id) DO NOTHING`,
+        deviceId,
+        mac,
+        newDeviceKey(),
+        now,
+        now,
+      );
+      device = this.deviceById(deviceId) as DeviceRow;
+    } else {
+      this.ctx.storage.sql.exec(
+        "UPDATE devices SET last_seen_at = ?, mac = CASE WHEN ? <> '' THEN ? ELSE mac END WHERE device_id = ?",
+        now,
+        mac,
+        mac,
+        deviceId,
+      );
+    }
+
+    const rows = this.ctx.storage.sql
+      .exec<DevicePlaylistRow>("SELECT * FROM device_playlists WHERE device_id = ?", deviceId)
+      .toArray();
+    const known = new Map(rows.map((row) => [row.id, row]));
+    const reportedIds = new Set(reported.map((item) => item.id));
+
+    for (const item of reported) {
+      const row = known.get(item.id);
+      if (!row) {
+        // Added by hand inside the app: listed on the site so it can be removed there too.
+        this.ctx.storage.sql.exec(
+          `INSERT INTO device_playlists (id, device_id, name, type, host, sealed, origin, status, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, '', 'app', 'installed', ?, ?) ON CONFLICT(id) DO NOTHING`,
+          item.id,
+          deviceId,
+          item.name,
+          item.type,
+          item.host,
+          now,
+          now,
+        );
+      } else if (row.status === "pending") {
+        // The device has it now: the credentials have nothing left to do here.
+        this.ctx.storage.sql.exec(
+          "UPDATE device_playlists SET status = 'installed', sealed = '', updated_at = ? WHERE id = ?",
+          now,
+          item.id,
+        );
+      } else if (row.status === "installed" && (row.name !== item.name || row.host !== item.host)) {
+        this.ctx.storage.sql.exec(
+          "UPDATE device_playlists SET name = ?, host = ?, updated_at = ? WHERE id = ?",
+          item.name,
+          item.host,
+          now,
+          item.id,
+        );
+      }
+    }
+
+    for (const row of rows) {
+      if (reportedIds.has(row.id)) continue;
+      // Removed on the device (by hand, or because the site asked): forget it.
+      if (row.status === "installed" || row.status === "deleting") {
+        this.ctx.storage.sql.exec("DELETE FROM device_playlists WHERE id = ?", row.id);
+      }
+    }
+
+    const install = rows
+      .filter((row) => row.status === "pending" && !reportedIds.has(row.id) && row.sealed)
+      .map((row) => ({ id: row.id, sealed: row.sealed }));
+    const remove = rows
+      .filter((row) => row.status === "deleting" && reportedIds.has(row.id))
+      .map((row) => row.id);
+
+    return { ok: true, key: device.device_key, install, remove };
+  }
+
+  private deviceOpen(identifier: string, key: string):
+    | { ok: true; lastSeenAt: number; playlists: DevicePlaylistView[]; limit: number }
+    | { ok: false; error: string; retryInSeconds?: number } {
+    const auth = this.authorizeDevice(identifier, key);
+    if (!auth.ok) return auth;
+    return {
+      ok: true,
+      lastSeenAt: auth.device.last_seen_at,
+      playlists: this.devicePlaylists(auth.device.device_id),
+      limit: MAX_DEVICE_PLAYLISTS,
+    };
+  }
+
+  private devicePlaylistAdd(body: Record<string, unknown>): {
+    ok: boolean;
+    error?: string;
+    retryInSeconds?: number;
+    playlists?: DevicePlaylistView[];
+  } {
+    const auth = this.authorizeDevice(String(body.identifier ?? ""), String(body.key ?? ""));
+    if (!auth.ok) return auth;
+    const deviceId = auth.device.device_id;
+    const count =
+      this.ctx.storage.sql
+        .exec<{ n: number }>("SELECT COUNT(*) AS n FROM device_playlists WHERE device_id = ?", deviceId)
+        .toArray()[0]?.n ?? 0;
+    if (count >= MAX_DEVICE_PLAYLISTS) return { ok: false, error: "too many playlists" };
+    const now = Date.now();
+    this.ctx.storage.sql.exec(
+      `INSERT INTO device_playlists (id, device_id, name, type, host, sealed, origin, status, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, 'web', 'pending', ?, ?)`,
+      String(body.id ?? ""),
+      deviceId,
+      String(body.name ?? ""),
+      String(body.type ?? "m3u") === "xtream" ? "xtream" : "m3u",
+      String(body.host ?? ""),
+      String(body.sealed ?? ""),
+      now,
+      now,
+    );
+    return { ok: true, playlists: this.devicePlaylists(deviceId) };
+  }
+
+  /**
+   * A playlist the device has not collected yet simply disappears. One already
+   * on the device is flagged, and the app removes it at its next check.
+   */
+  private devicePlaylistRemove(identifier: string, key: string, id: string): {
+    ok: boolean;
+    error?: string;
+    retryInSeconds?: number;
+    playlists?: DevicePlaylistView[];
+  } {
+    const auth = this.authorizeDevice(identifier, key);
+    if (!auth.ok) return auth;
+    const deviceId = auth.device.device_id;
+    const row = this.ctx.storage.sql
+      .exec<DevicePlaylistRow>("SELECT * FROM device_playlists WHERE id = ? AND device_id = ?", id, deviceId)
+      .toArray()[0];
+    if (row) {
+      if (row.status === "pending") {
+        this.ctx.storage.sql.exec("DELETE FROM device_playlists WHERE id = ?", id);
+      } else {
+        this.ctx.storage.sql.exec(
+          "UPDATE device_playlists SET status = 'deleting', updated_at = ? WHERE id = ?",
+          Date.now(),
+          id,
+        );
+      }
+    }
+    return { ok: true, playlists: this.devicePlaylists(deviceId) };
+  }
+
+  /** True the first time a CAPTCHA is used; any later attempt with it is refused. */
+  private burnCaptcha(nonce: string, expiresAt: number): boolean {
+    if (!nonce) return false;
+    const now = Date.now();
+    this.ctx.storage.sql.exec("DELETE FROM captcha_used WHERE expires_at < ?", now);
+    const seen = this.ctx.storage.sql.exec("SELECT nonce FROM captcha_used WHERE nonce = ?", nonce).toArray();
+    if (seen.length > 0) return false;
+    this.ctx.storage.sql.exec(
+      "INSERT INTO captcha_used (nonce, expires_at) VALUES (?, ?)",
+      nonce,
+      Number.isFinite(expiresAt) && expiresAt > now ? expiresAt : now + 15 * 60 * 1000,
+    );
+    return true;
   }
 
   private openTicketCount(): number {

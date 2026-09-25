@@ -32,8 +32,17 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.concurrent.TimeUnit
+
+/** Playlists the website just added to or removed from this device, for a short notice. */
+data class WebPlaylistEvent(
+    val added: List<String> = emptyList(),
+    val removed: List<String> = emptyList(),
+    val stamp: Long = System.currentTimeMillis(),
+)
 
 data class CatalogQuery(
     val search: String = "",
@@ -99,6 +108,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
             _startupChecking.value = false
         }
         viewModelScope.launch { _storeUrl.value = licenseApi.storeUrl() }
+        syncWebPlaylists()
         // The saved catalog opens instantly; the scheduled refresh, if one is due,
         // then runs quietly behind it.
         viewModelScope.launch { repository.autoRefreshIfDue() }
@@ -107,6 +117,71 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     /** Re-checks the update schedule, e.g. when the app returns to the foreground. */
     fun checkScheduledUpdate() {
         viewModelScope.launch { repository.autoRefreshIfDue() }
+        syncWebPlaylists()
+    }
+
+    private val _deviceKey = MutableStateFlow("")
+
+    /** Key typed on the website to manage this device; empty until the server answers. */
+    val deviceKey: StateFlow<String> = _deviceKey.asStateFlow()
+
+    private val _webPlaylistEvent = MutableStateFlow<WebPlaylistEvent?>(null)
+
+    /** Last change made from the website, shown once as a short notice. */
+    val webPlaylistEvent: StateFlow<WebPlaylistEvent?> = _webPlaylistEvent.asStateFlow()
+
+    fun consumeWebPlaylistEvent() {
+        _webPlaylistEvent.value = null
+    }
+
+    private val webSyncMutex = Mutex()
+
+    /**
+     * Asks the website what changed for this device: playlists sent from the
+     * site are installed, the ones deleted there are removed here. A second
+     * call confirms what was applied, so the server can forget the credentials
+     * it was holding for delivery. Offline is harmless: it simply tries again
+     * at the next launch, resume or change.
+     */
+    fun syncWebPlaylists() {
+        if (webSyncMutex.isLocked) return
+        viewModelScope.launch {
+            webSyncMutex.withLock {
+                val identity = licenseStore.identity
+                val answer = licenseApi.syncDevice(identity.deviceId, identity.macAddress, accounts.value)
+                    ?: return@withLock
+                if (answer.key.isNotBlank()) _deviceKey.value = answer.key
+                if (answer.install.isEmpty() && answer.remove.isEmpty()) return@withLock
+
+                val removedNames = mutableListOf<String>()
+                var needsImport = false
+                answer.remove.forEach { id ->
+                    val name = accounts.value.firstOrNull { it.id == id }?.name ?: return@forEach
+                    val wasActive = activeAccountId.value == id
+                    val next = repository.detachAccount(id)
+                    removedNames += name
+                    if (wasActive && next != null) needsImport = true
+                }
+
+                val hadActive = activeAccountId.value != null
+                val installed = repository.installRemoteAccounts(answer.install)
+                _webPlaylistEvent.value = WebPlaylistEvent(
+                    added = installed.map { it.name },
+                    removed = removedNames,
+                )
+
+                // Tell the site right away, so its page shows the new state.
+                licenseApi.syncDevice(identity.deviceId, identity.macAddress, accounts.value)
+
+                when {
+                    !hadActive && installed.isNotEmpty() -> repository.switchAccount(installed.first().id)
+                    needsImport -> {
+                        repository.refreshActive()
+                        repository.refreshEpg()
+                    }
+                }
+            }
+        }
     }
 
     fun setCatalogUpdateInterval(interval: CatalogUpdateInterval) {
@@ -328,7 +403,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun addAccount(account: PlaylistAccount, onDone: (Result<PlaylistAccount>) -> Unit) {
         viewModelScope.launch {
-            onDone(repository.addAccount(account))
+            val result = repository.addAccount(account)
+            onDone(result)
+            if (result.isSuccess) syncWebPlaylists()
         }
     }
 
@@ -337,7 +414,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun removeAccount(accountId: String) {
-        viewModelScope.launch { repository.removeAccount(accountId) }
+        viewModelScope.launch {
+            val next = repository.detachAccount(accountId)
+            // The website list updates at once, before the next list downloads.
+            syncWebPlaylists()
+            next?.let {
+                repository.refreshActive()
+                repository.refreshEpg()
+            }
+        }
     }
 
     fun refresh() {

@@ -1,10 +1,10 @@
-Scegli audio e sottotitoli, cambia formato e velocità dell'immagine.
+Aggiungi e cancella le playlist dal sito, senza telecomando.
 
-• Nuovo pannello nel player: tutte le tracce audio e i sottotitoli del contenuto
-• La lingua scelta viene ricordata per il film o l'episodio successivo
-• Formato immagine: Adatta, Riempi, Allarga, 16:9, 4:3
-• Velocità da 0,5× a 2× per film e serie
-• "Aggiorna la lista" in Home ora riscarica tutto da zero
-• Versione 1.2.8
+• Nuova pagina novastream.rork.app/playlist: inserisci MAC e chiave del dispositivo
+• Carica i dati in formato M3U oppure Xtream Codes
+• Verifica di sicurezza contro i bot
+• Le playlist compaiono o spariscono da sole sul dispositivo
+• Credenziali sempre cifrate
+• Versione 1.2.9
 
 Grazie per usare NovaStream.

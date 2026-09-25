@@ -284,22 +284,47 @@ class IptvRepository(context: Context) {
     }
 
     suspend fun removeAccount(accountId: String) {
+        detachAccount(accountId)?.let {
+            sync(it)
+            refreshEpg()
+        }
+    }
+
+    /**
+     * Deletes an account and its files straight away, without downloading
+     * anything. Returns the account that became active in its place, if the
+     * removed one was active, so the caller decides when to import it.
+     */
+    fun detachAccount(accountId: String): PlaylistAccount? {
+        if (_accounts.value.none { it.id == accountId }) return null
         catalogCache.delete(catalogFile(accountId))
         catalogCache.delete(epgFile(accountId))
         _accounts.value = _accounts.value.filterNot { it.id == accountId }
-        if (_activeAccountId.value == accountId) {
-            val next = _accounts.value.firstOrNull()
-            _activeAccountId.value = next?.id
-            _catalog.value = Catalog()
-            _epg.value = EpgGuide()
+        if (_activeAccountId.value != accountId) {
             persistAccounts()
-            next?.let {
-                sync(it)
-                refreshEpg()
-            }
-        } else {
-            persistAccounts()
+            return null
         }
+        val next = _accounts.value.firstOrNull()
+        _activeAccountId.value = next?.id
+        _catalog.value = Catalog()
+        _epg.value = EpgGuide()
+        persistAccounts()
+        return next
+    }
+
+    /**
+     * Saves playlists sent from the website, encrypted like any other. They
+     * are not checked against the provider first: the customer explicitly sent
+     * them, and a server briefly offline must not make them vanish. Returns the
+     * ones actually added (already-known ids are skipped).
+     */
+    fun installRemoteAccounts(incoming: List<PlaylistAccount>): List<PlaylistAccount> {
+        val known = _accounts.value.map { it.id }.toSet()
+        val fresh = incoming.filterNot { it.id in known }.distinctBy { it.id }
+        if (fresh.isEmpty()) return emptyList()
+        _accounts.value = _accounts.value + fresh
+        persistAccounts()
+        return fresh
     }
 
     suspend fun refreshActive() {
