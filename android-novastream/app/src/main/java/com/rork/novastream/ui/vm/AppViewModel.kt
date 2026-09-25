@@ -99,6 +99,20 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
      */
     val startupChecking: StateFlow<Boolean> = _startupChecking.asStateFlow()
 
+    // Declared before init on purpose: init already starts the website sync,
+    // and Kotlin initialises properties strictly in source order.
+    private val _deviceKey = MutableStateFlow("")
+
+    /** Key typed on the website to manage this device; empty until the server answers. */
+    val deviceKey: StateFlow<String> = _deviceKey.asStateFlow()
+
+    private val _webPlaylistEvent = MutableStateFlow<WebPlaylistEvent?>(null)
+
+    /** Last change made from the website, shown once as a short notice. */
+    val webPlaylistEvent: StateFlow<WebPlaylistEvent?> = _webPlaylistEvent.asStateFlow()
+
+    private val webSyncMutex = Mutex()
+
     init {
         licenseStore.refresh()
         // Every launch asks the registry again: revoked and expired devices lock
@@ -120,21 +134,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         syncWebPlaylists()
     }
 
-    private val _deviceKey = MutableStateFlow("")
-
-    /** Key typed on the website to manage this device; empty until the server answers. */
-    val deviceKey: StateFlow<String> = _deviceKey.asStateFlow()
-
-    private val _webPlaylistEvent = MutableStateFlow<WebPlaylistEvent?>(null)
-
-    /** Last change made from the website, shown once as a short notice. */
-    val webPlaylistEvent: StateFlow<WebPlaylistEvent?> = _webPlaylistEvent.asStateFlow()
-
     fun consumeWebPlaylistEvent() {
         _webPlaylistEvent.value = null
     }
-
-    private val webSyncMutex = Mutex()
 
     /**
      * Asks the website what changed for this device: playlists sent from the
