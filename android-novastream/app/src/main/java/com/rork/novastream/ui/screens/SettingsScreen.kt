@@ -97,6 +97,7 @@ import com.rork.novastream.ui.components.rememberFocusRequester
 import com.rork.novastream.ui.i18n.Language
 import com.rork.novastream.ui.i18n.LocalStrings
 import com.rork.novastream.ui.i18n.Strings
+import com.rork.novastream.ui.i18n.failureText
 import com.rork.novastream.ui.theme.LocalNovaAccents
 import com.rork.novastream.ui.vm.AppViewModel
 import java.text.SimpleDateFormat
@@ -419,7 +420,7 @@ fun SettingsScreen(
                     (syncState as? SyncState.Failed)?.let { failure ->
                         Spacer(Modifier.height(10.dp))
                         Text(
-                            text = failure.message,
+                            text = strings.failureText(failure),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.error,
                         )
@@ -483,7 +484,7 @@ fun SettingsScreen(
                         (epgState as? SyncState.Failed)?.let { failure ->
                             Spacer(Modifier.height(10.dp))
                             Text(
-                                text = failure.message,
+                                text = strings.failureText(failure),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.error,
                             )

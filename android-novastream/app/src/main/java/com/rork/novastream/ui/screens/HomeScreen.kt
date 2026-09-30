@@ -69,6 +69,7 @@ import com.rork.novastream.ui.components.TvTextField
 import com.rork.novastream.ui.components.accentFor
 import com.rork.novastream.ui.i18n.LocalStrings
 import com.rork.novastream.ui.i18n.Strings
+import com.rork.novastream.ui.i18n.failureText
 import com.rork.novastream.ui.theme.LocalNovaAccents
 import com.rork.novastream.ui.vm.AppViewModel
 import java.util.Calendar
@@ -570,14 +571,14 @@ private fun SyncBanner(syncState: SyncState, onRetry: () -> Unit, onDismiss: () 
                 Text(
                     text = when (syncState) {
                         is SyncState.Running -> syncState.message
-                        is SyncState.Failed -> syncState.message
+                        is SyncState.Failed -> strings.failureText(syncState)
                         else -> ""
                     },
                     style = MaterialTheme.typography.bodyMedium,
                     color = if (failed != null) MaterialTheme.colorScheme.onErrorContainer
                     else MaterialTheme.colorScheme.onPrimaryContainer,
                     modifier = Modifier.weight(1f),
-                    maxLines = 3,
+                    maxLines = 4,
                     overflow = TextOverflow.Ellipsis,
                 )
             }

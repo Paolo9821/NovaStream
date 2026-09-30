@@ -19,6 +19,9 @@ Dettaglio completo in 8 lingue: `changelogs/1.2.9.md`.
   usata; sul sito apre una sessione di al massimo un'ora.
 - L'app si allinea al sito da sola e avvisa quando una playlist viene aggiunta o
   rimossa da lì. Credenziali cifrate e cancellate dal server appena consegnate.
+- Download delle playlist più affidabile: se il server chiude la connessione
+  ("unexpected end of stream") l'app riprova da sola fino a 3 volte e mostra un
+  messaggio chiaro al posto del codice tecnico.
 - Versione 1.2.9.
 
 ### English
@@ -33,39 +36,51 @@ Dettaglio completo in 8 lingue: `changelogs/1.2.9.md`.
 - The app lines up with the website by itself and shows a notice when a playlist is
   added or removed there. Credentials encrypted and deleted from the server once
   delivered.
+- More reliable playlist downloads: if the server closes the connection ("unexpected
+  end of stream") the app retries on its own up to 3 times and shows a clear message
+  instead of the technical code.
 - Version 1.2.9.
 
 ### Español
 
 - Gestión de listas desde la web (M3U o Xtream) con clave monouso que cambia cada 5 minutos y CAPTCHA;
   la app se sincroniza sola.
+- Descarga de listas más fiable: hasta 3 reintentos automáticos y mensajes claros.
 
 ### Français
 
 - Gestion des playlists depuis le site (M3U ou Xtream) avec clé à usage unique
   renouvelée toutes les 5 minutes et CAPTCHA ; l'app se synchronise toute seule.
+- Téléchargement des playlists plus fiable : jusqu'à 3 essais automatiques et messages
+  clairs.
 
 ### Deutsch
 
 - Playlist-Verwaltung über die Website (M3U oder Xtream) mit Einmal-Schlüssel, der
   alle 5 Minuten wechselt, und CAPTCHA; die App gleicht sich selbst ab.
+- Zuverlässigerer Playlist-Download: bis zu 3 automatische Versuche und verständliche
+  Meldungen.
 
 ### Português
 
 - Gestão de listas no site (M3U ou Xtream) com chave de uso único que muda a cada 5 minutos e
   CAPTCHA; a app
   sincroniza sozinha.
+- Download das listas mais fiável: até 3 tentativas automáticas e mensagens claras.
 
 ### Română
 
 - Gestionarea playlisturilor de pe site (M3U sau Xtream) cu cheie de unică folosință
   schimbată la fiecare 5 minute și CAPTCHA; aplicația se sincronizează singură.
+- Descărcare mai fiabilă a playlisturilor: până la 3 reîncercări automate și mesaje
+  clare.
 
 ### Türkçe
 
 - Web sitesinden liste yönetimi (M3U veya Xtream), her 5 dakikada değişen tek kullanımlık anahtar ve CAPTCHA
   ile;
   uygulama kendiliğinden eşitlenir.
+- Daha güvenilir liste indirme: 3'e kadar otomatik deneme ve anlaşılır mesajlar.
 
 ## 1.2.8
 

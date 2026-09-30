@@ -6,10 +6,9 @@ import com.rork.novastream.data.model.MediaEntry
 import com.rork.novastream.data.model.MediaKind
 import com.rork.novastream.data.model.PlaylistAccount
 import com.rork.novastream.data.net.downloadToFile
+import com.rork.novastream.data.net.getProviderText
 import com.rork.novastream.data.parser.M3uParser
 import io.ktor.client.HttpClient
-import io.ktor.client.request.get
-import io.ktor.client.statement.bodyAsText
 import io.ktor.http.encodeURLParameter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -72,7 +71,7 @@ class XtreamClient(
      */
     suspend fun loadMovieDetails(account: PlaylistAccount, entryId: String, streamId: String): MediaDetails? =
         withContext(Dispatchers.IO) {
-            val body = http.get(apiUrl(account, "get_vod_info") + "&vod_id=$streamId").bodyAsText()
+            val body = http.getProviderText(apiUrl(account, "get_vod_info") + "&vod_id=$streamId")
             val root = json.parseToJsonElement(body) as? JsonObject ?: return@withContext null
             val info = root["info"] as? JsonObject
             val movie = root["movie_data"] as? JsonObject
@@ -97,7 +96,7 @@ class XtreamClient(
     /** The same for a series, read from the header of its season listing. */
     suspend fun loadSeriesDetails(account: PlaylistAccount, entryId: String, seriesId: String): MediaDetails? =
         withContext(Dispatchers.IO) {
-            val body = http.get(apiUrl(account, "get_series_info") + "&series_id=$seriesId").bodyAsText()
+            val body = http.getProviderText(apiUrl(account, "get_series_info") + "&series_id=$seriesId")
             val root = json.parseToJsonElement(body) as? JsonObject ?: return@withContext null
             val info = root["info"] as? JsonObject ?: return@withContext null
             val details = MediaDetails(
@@ -135,7 +134,7 @@ class XtreamClient(
      */
     suspend fun loadEpisodes(account: PlaylistAccount, seriesId: String): List<Episode> =
         withContext(Dispatchers.IO) {
-            val body = http.get(apiUrl(account, "get_series_info") + "&series_id=$seriesId").bodyAsText()
+            val body = http.getProviderText(apiUrl(account, "get_series_info") + "&series_id=$seriesId")
             val root = runCatching { json.parseToJsonElement(body) }.getOrNull()?.asObject()
                 ?: return@withContext emptyList()
             val buckets = root["episodes"].seasonBuckets()
@@ -174,7 +173,7 @@ class XtreamClient(
     /** Verifies the credentials before an account is saved. */
     suspend fun authenticate(account: PlaylistAccount): Result<String> = withContext(Dispatchers.IO) {
         runCatching {
-            val body = http.get(apiUrl(account, "")).bodyAsText()
+            val body = http.getProviderText(apiUrl(account, ""))
             val root = json.parseToJsonElement(body) as? JsonObject
                 ?: throw IllegalStateException("Risposta del server non valida")
             val userInfo = root["user_info"] as? JsonObject

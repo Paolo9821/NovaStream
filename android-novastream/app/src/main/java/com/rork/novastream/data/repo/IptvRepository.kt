@@ -20,6 +20,7 @@ import com.rork.novastream.data.net.DnsCheck
 import com.rork.novastream.data.net.DohResolver
 import com.rork.novastream.data.net.SpeedTester
 import com.rork.novastream.data.net.downloadToFile
+import com.rork.novastream.data.net.toSyncFailure
 import com.rork.novastream.data.parser.M3uParser
 import com.rork.novastream.data.parser.XmltvParser
 import com.rork.novastream.data.remote.XtreamClient
@@ -413,9 +414,10 @@ class IptvRepository(context: Context) {
             }
             _syncState.value = SyncState.Success(live = live, movies = movies, series = series)
         }.onFailure { error ->
-            Log.w(TAG, "Import della playlist non riuscito")
+            Log.w(TAG, "Import della playlist non riuscito: ${error.javaClass.simpleName}")
             _syncState.value = SyncState.Failed(
-                error.message?.takeIf { it.isNotBlank() } ?: "Impossibile raggiungere il server"
+                message = error.message?.takeIf { it.isNotBlank() } ?: "Impossibile raggiungere il server",
+                reason = error.toSyncFailure(),
             )
         }
     }
@@ -493,7 +495,8 @@ class IptvRepository(context: Context) {
         }.onFailure { error ->
             Log.w(TAG, "Download della guida EPG non riuscito")
             _epgState.value = SyncState.Failed(
-                error.message?.takeIf { it.isNotBlank() } ?: "Impossibile scaricare la guida"
+                message = error.message?.takeIf { it.isNotBlank() } ?: "Impossibile scaricare la guida",
+                reason = error.toSyncFailure(),
             )
         }
     }

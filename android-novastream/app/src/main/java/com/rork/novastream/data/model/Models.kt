@@ -166,9 +166,21 @@ enum class SortOption {
     PROVIDER_DEFAULT,
 }
 
+/** Why a download from the provider failed. */
+enum class SyncFailure {
+    CONNECTION_CLOSED,
+    UNREACHABLE,
+    TIMEOUT,
+    SECURE,
+    REFUSED,
+    NOT_FOUND,
+    SERVER_ERROR,
+}
+
 sealed interface SyncState {
     data object Idle : SyncState
     data class Running(val message: String) : SyncState
-    data class Failed(val message: String) : SyncState
+    /** [reason] is set for network failures, so the interface can explain them in the viewer's language. */
+    data class Failed(val message: String, val reason: SyncFailure? = null) : SyncState
     data class Success(val live: Int, val movies: Int, val series: Int) : SyncState
 }

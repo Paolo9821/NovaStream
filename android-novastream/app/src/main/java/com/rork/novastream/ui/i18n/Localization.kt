@@ -402,6 +402,13 @@ data class ExtraStrings(
     val webPlaylistRemoved: String = "Playlist removed from the website: %s",
     val webManageKeyExpires: String = "New key in %s",
     val webManageKeyUsed: String = "The website key was used: a new one is ready.",
+    val syncFailClosed: String = "The playlist server closed the connection. NovaStream retried 3 times: try again in a moment, and if it keeps happening check the link or contact your provider.",
+    val syncFailUnreachable: String = "The playlist server cannot be reached. Check the address and the Internet connection.",
+    val syncFailTimeout: String = "The playlist server is not answering in time. Try again in a moment.",
+    val syncFailSecure: String = "A secure connection to the playlist server could not be established.",
+    val syncFailRefused: String = "The server refused access: check username, password or the link.",
+    val syncFailNotFound: String = "Playlist not found on the server (error 404): check the link.",
+    val syncFailServer: String = "The playlist server returned an error. Try again later.",
 )
 
 /**
@@ -774,6 +781,13 @@ class Strings(
     val webPlaylistRemoved: String get() = extra.webPlaylistRemoved
     val webManageKeyExpires: String get() = extra.webManageKeyExpires
     val webManageKeyUsed: String get() = extra.webManageKeyUsed
+    val syncFailClosed: String get() = extra.syncFailClosed
+    val syncFailUnreachable: String get() = extra.syncFailUnreachable
+    val syncFailTimeout: String get() = extra.syncFailTimeout
+    val syncFailSecure: String get() = extra.syncFailSecure
+    val syncFailRefused: String get() = extra.syncFailRefused
+    val syncFailNotFound: String get() = extra.syncFailNotFound
+    val syncFailServer: String get() = extra.syncFailServer
 }
 
 private val English = Strings()
@@ -1128,6 +1142,13 @@ private val Italian = Strings(
         webPlaylistRemoved = "Playlist rimossa dal sito: %s",
         webManageKeyExpires = "Nuova chiave tra %s",
         webManageKeyUsed = "La chiave per il sito è stata usata: ne è pronta una nuova.",
+        syncFailClosed = "Il server della playlist ha chiuso la connessione. NovaStream ha riprovato 3 volte: riprova tra poco e, se succede ancora, controlla il link o contatta il tuo fornitore.",
+        syncFailUnreachable = "Il server della playlist non è raggiungibile. Controlla l'indirizzo e la connessione a Internet.",
+        syncFailTimeout = "Il server della playlist non risponde in tempo. Riprova tra poco.",
+        syncFailSecure = "Non è stato possibile stabilire una connessione sicura con il server della playlist.",
+        syncFailRefused = "Il server ha rifiutato l'accesso: controlla nome utente, password o il link.",
+        syncFailNotFound = "Playlist non trovata sul server (errore 404): controlla il link.",
+        syncFailServer = "Il server della playlist ha restituito un errore. Riprova più tardi.",
     ),
 )
 
@@ -1473,6 +1494,13 @@ private val Spanish = Strings(
         webPlaylistRemoved = "Lista eliminada desde la web: %s",
         webManageKeyExpires = "Nueva clave en %s",
         webManageKeyUsed = "Se ha usado la clave para la web: ya hay una nueva.",
+        syncFailClosed = "El servidor de la lista cerró la conexión. NovaStream lo intentó 3 veces: inténtalo de nuevo en un momento y, si sigue pasando, revisa el enlace o contacta con tu proveedor.",
+        syncFailUnreachable = "No se puede acceder al servidor de la lista. Revisa la dirección y la conexión a Internet.",
+        syncFailTimeout = "El servidor de la lista no responde a tiempo. Inténtalo de nuevo en un momento.",
+        syncFailSecure = "No se pudo establecer una conexión segura con el servidor de la lista.",
+        syncFailRefused = "El servidor rechazó el acceso: revisa usuario, contraseña o el enlace.",
+        syncFailNotFound = "Lista no encontrada en el servidor (error 404): revisa el enlace.",
+        syncFailServer = "El servidor de la lista devolvió un error. Inténtalo más tarde.",
     ),
 )
 
@@ -1818,6 +1846,13 @@ private val French = Strings(
         webPlaylistRemoved = "Playlist supprimée depuis le site : %s",
         webManageKeyExpires = "Nouvelle clé dans %s",
         webManageKeyUsed = "La clé pour le site a été utilisée : une nouvelle est prête.",
+        syncFailClosed = "Le serveur de la playlist a fermé la connexion. NovaStream a réessayé 3 fois : réessayez dans un instant et, si cela continue, vérifiez le lien ou contactez votre fournisseur.",
+        syncFailUnreachable = "Le serveur de la playlist est injoignable. Vérifiez l'adresse et la connexion Internet.",
+        syncFailTimeout = "Le serveur de la playlist ne répond pas à temps. Réessayez dans un instant.",
+        syncFailSecure = "Impossible d'établir une connexion sécurisée avec le serveur de la playlist.",
+        syncFailRefused = "Le serveur a refusé l'accès : vérifiez l'identifiant, le mot de passe ou le lien.",
+        syncFailNotFound = "Playlist introuvable sur le serveur (erreur 404) : vérifiez le lien.",
+        syncFailServer = "Le serveur de la playlist a renvoyé une erreur. Réessayez plus tard.",
     ),
 )
 
@@ -2163,6 +2198,13 @@ private val German = Strings(
         webPlaylistRemoved = "Playlist über die Website entfernt: %s",
         webManageKeyExpires = "Neuer Schlüssel in %s",
         webManageKeyUsed = "Der Website-Schlüssel wurde benutzt: ein neuer ist bereit.",
+        syncFailClosed = "Der Playlist-Server hat die Verbindung geschlossen. NovaStream hat es 3 Mal versucht: gleich noch einmal probieren und, falls es wieder passiert, den Link prüfen oder den Anbieter kontaktieren.",
+        syncFailUnreachable = "Der Playlist-Server ist nicht erreichbar. Adresse und Internetverbindung prüfen.",
+        syncFailTimeout = "Der Playlist-Server antwortet nicht rechtzeitig. Gleich noch einmal versuchen.",
+        syncFailSecure = "Es konnte keine sichere Verbindung zum Playlist-Server hergestellt werden.",
+        syncFailRefused = "Der Server hat den Zugriff verweigert: Benutzername, Passwort oder Link prüfen.",
+        syncFailNotFound = "Playlist auf dem Server nicht gefunden (Fehler 404): Link prüfen.",
+        syncFailServer = "Der Playlist-Server hat einen Fehler gemeldet. Später erneut versuchen.",
     ),
 )
 
@@ -2508,6 +2550,13 @@ private val Portuguese = Strings(
         webPlaylistRemoved = "Lista removida pelo site: %s",
         webManageKeyExpires = "Nova chave dentro de %s",
         webManageKeyUsed = "A chave para o site foi usada: já há uma nova.",
+        syncFailClosed = "O servidor da lista fechou a ligação. O NovaStream tentou 3 vezes: tente de novo daqui a pouco e, se continuar, verifique o link ou contacte o seu fornecedor.",
+        syncFailUnreachable = "Não é possível contactar o servidor da lista. Verifique o endereço e a ligação à Internet.",
+        syncFailTimeout = "O servidor da lista não responde a tempo. Tente de novo daqui a pouco.",
+        syncFailSecure = "Não foi possível estabelecer uma ligação segura com o servidor da lista.",
+        syncFailRefused = "O servidor recusou o acesso: verifique utilizador, palavra-passe ou o link.",
+        syncFailNotFound = "Lista não encontrada no servidor (erro 404): verifique o link.",
+        syncFailServer = "O servidor da lista devolveu um erro. Tente mais tarde.",
     ),
 )
 
@@ -2853,6 +2902,13 @@ private val Romanian = Strings(
         webPlaylistRemoved = "Playlist eliminat de pe site: %s",
         webManageKeyExpires = "Cheie nouă în %s",
         webManageKeyUsed = "Cheia pentru site a fost folosită: una nouă e gata.",
+        syncFailClosed = "Serverul playlistului a închis conexiunea. NovaStream a încercat de 3 ori: reîncearcă peste puțin timp și, dacă se repetă, verifică linkul sau contactează furnizorul.",
+        syncFailUnreachable = "Serverul playlistului nu poate fi accesat. Verifică adresa și conexiunea la Internet.",
+        syncFailTimeout = "Serverul playlistului nu răspunde la timp. Reîncearcă peste puțin timp.",
+        syncFailSecure = "Nu s-a putut stabili o conexiune securizată cu serverul playlistului.",
+        syncFailRefused = "Serverul a refuzat accesul: verifică utilizatorul, parola sau linkul.",
+        syncFailNotFound = "Playlistul nu a fost găsit pe server (eroare 404): verifică linkul.",
+        syncFailServer = "Serverul playlistului a returnat o eroare. Reîncearcă mai târziu.",
     ),
 )
 
@@ -3198,6 +3254,13 @@ private val Turkish = Strings(
         webPlaylistRemoved = "Siteden liste kaldırıldı: %s",
         webManageKeyExpires = "Yeni anahtar: %s sonra",
         webManageKeyUsed = "Site anahtarı kullanıldı: yenisi hazır.",
+        syncFailClosed = "Liste sunucusu bağlantıyı kapattı. NovaStream 3 kez denedi: biraz sonra tekrar dene, yine olursa bağlantıyı kontrol et veya sağlayıcınla iletişime geç.",
+        syncFailUnreachable = "Liste sunucusuna ulaşılamıyor. Adresi ve İnternet bağlantısını kontrol et.",
+        syncFailTimeout = "Liste sunucusu zamanında yanıt vermiyor. Biraz sonra tekrar dene.",
+        syncFailSecure = "Liste sunucusuyla güvenli bağlantı kurulamadı.",
+        syncFailRefused = "Sunucu erişimi reddetti: kullanıcı adını, şifreyi veya bağlantıyı kontrol et.",
+        syncFailNotFound = "Liste sunucuda bulunamadı (hata 404): bağlantıyı kontrol et.",
+        syncFailServer = "Liste sunucusu bir hata döndürdü. Daha sonra tekrar dene.",
     ),
 )
 
