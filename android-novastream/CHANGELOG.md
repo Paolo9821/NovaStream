@@ -4,6 +4,41 @@ Da 1.2.7 ogni versione ha anche un file dedicato nella cartella `changelogs`
 (`changelogs/1.2.7.md`, `changelogs/1.2.6.md`, …), scritto in tutte e otto le
 lingue dell'app. Questo file resta lo storico completo in ordine di rilascio.
 
+## 1.3.0
+
+Dettaglio completo in 8 lingue: `changelogs/1.3.0.md`.
+
+### Italiano
+
+- Home: al posto del saluto, playlist in uso e scadenza dell'abbonamento del provider
+  (giorni rimasti, schermi consentiti; arancione nell'ultima settimana, rosso se scaduto).
+- Impostazioni divise in sotto-pagine con un menu breve che mostra il valore attuale.
+- Live TV: OK sul canale lo avvia subito; "Guida" apre il palinsesto con "Guarda ora".
+- Home su TV senza barra laterale.
+- Player: la barra del tempo non avanza più da sola con su/giù; destra/sinistra = ±10 s.
+- Evidenziazione del telecomando gialla e spessa in tutta l'app.
+- Guida TV riscaricata da sola ogni giorno (all'avvio e al ritorno nell'app).
+- Account scorrevole su TV; avviso "Privacy totale" spostato in Account.
+- Dati e cache: spazio diviso per tipo e spiegazione (i film non vengono scaricati).
+- Versione 1.3.0.
+
+### English
+
+- Home: playlist in use and provider subscription end date instead of the greeting.
+- Settings split into sub-pages behind a short menu.
+- Live TV: OK on a channel plays it at once; "Guide" shows the schedule with "Watch now".
+- No side rail on the TV home.
+- Player time bar no longer seeks on its own with up/down; left/right = ±10 s.
+- Thick yellow remote highlight everywhere.
+- TV guide downloaded again automatically every day.
+- Account page scrolls on TV; "Total privacy" notice moved to Account.
+- Data and cache: space split by kind, with an explanation.
+- Version 1.3.0.
+
+### Español / Français / Deutsch / Português / Română / Türkçe
+
+Ver / voir / siehe / ver / vezi / bkz. `changelogs/1.3.0.md`.
+
 ## 1.2.9
 
 Dettaglio completo in 8 lingue: `changelogs/1.2.9.md`.

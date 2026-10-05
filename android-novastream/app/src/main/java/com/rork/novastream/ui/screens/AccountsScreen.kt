@@ -63,7 +63,10 @@ import com.rork.novastream.data.model.AccountType
 import com.rork.novastream.data.model.PlaylistAccount
 import com.rork.novastream.data.model.SyncState
 import com.rork.novastream.data.repo.IptvRepository
+import com.rork.novastream.ui.components.PrivacyNote
 import com.rork.novastream.ui.components.RequestInitialFocus
+import com.rork.novastream.ui.components.tvFocusFrame
+import com.rork.novastream.ui.components.tvReadable
 import com.rork.novastream.ui.components.TvTextField
 import com.rork.novastream.ui.components.contentFocusZone
 import com.rork.novastream.ui.components.dpadDownTo
@@ -139,7 +142,7 @@ fun AccountsScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             item("header") {
-                Column {
+                Column(Modifier.tvReadable(cornerRadius = 14.dp).padding(4.dp)) {
                     Text(strings.yourAccounts, style = MaterialTheme.typography.headlineSmall)
                     Spacer(Modifier.height(6.dp))
                     Text(
@@ -151,12 +154,24 @@ fun AccountsScreen(
             }
 
             item("web-manage") {
+                // On a TV this card holds only text and a QR code: without a stop
+                // for the remote, up and down had nothing to land on and the page
+                // could not be scrolled at all.
                 WebManageCard(
                     identity = viewModel.deviceIdentity,
                     deviceKey = deviceKey,
                     deviceKeyExpiresAt = deviceKeyExpiresAt,
                     storeUrl = storeUrl,
                     strings = strings,
+                    modifier = Modifier.tvReadable(),
+                )
+            }
+
+            item("privacy") {
+                PrivacyNote(
+                    title = strings.privacyTotal,
+                    body = strings.privacySettingsBody.format(viewModel.encryptionLabel),
+                    modifier = Modifier.tvReadable(cornerRadius = 16.dp),
                 )
             }
 
@@ -196,7 +211,7 @@ fun AccountsScreen(
             item("add-toggle") {
                 Button(
                     onClick = { formOpen = !formOpen },
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().tvFocusFrame(cornerRadius = 24.dp),
                     contentPadding = PaddingValues(vertical = 16.dp),
                 ) {
                     Icon(Icons.Rounded.Add, contentDescription = null)
@@ -324,11 +339,11 @@ private fun AccountRow(
                     tint = MaterialTheme.colorScheme.primary,
                 )
             } else {
-                IconButton(onClick = onSwitch) {
+                IconButton(onClick = onSwitch, modifier = Modifier.tvFocusFrame(cornerRadius = 24.dp)) {
                     Icon(Icons.Rounded.SwapHoriz, contentDescription = strings.switchAccountAction)
                 }
             }
-            IconButton(onClick = onDelete) {
+            IconButton(onClick = onDelete, modifier = Modifier.tvFocusFrame(cornerRadius = 24.dp)) {
                 Icon(
                     imageVector = Icons.Rounded.Delete,
                     contentDescription = strings.deleteAccountAction,

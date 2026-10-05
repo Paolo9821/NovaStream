@@ -3,7 +3,8 @@ package com.rork.novastream.ui.components
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.focusGroup
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.focusable
+import com.rork.novastream.ui.theme.LocalNovaAccents
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -93,7 +94,7 @@ fun RequestInitialFocus(
 @Composable
 fun Modifier.tvFocusFrame(
     cornerRadius: Dp = 16.dp,
-    ringWidth: Dp = 3.dp,
+    ringWidth: Dp = 4.dp,
 ): Modifier {
     var focused by remember { mutableStateOf(false) }
     val progress by animateFloatAsState(
@@ -101,7 +102,7 @@ fun Modifier.tvFocusFrame(
         animationSpec = tween(durationMillis = 130),
         label = "tvFocusFrame",
     )
-    val ringColor = MaterialTheme.colorScheme.primary
+    val ringColor = LocalNovaAccents.current.focus
     return this
         .onFocusChanged { state -> focused = state.hasFocus }
         .drawWithContent {
@@ -109,7 +110,7 @@ fun Modifier.tvFocusFrame(
             if (progress < 0.01f) return@drawWithContent
             val radius = CornerRadius(cornerRadius.toPx())
             drawRoundRect(
-                color = ringColor.copy(alpha = 0.10f * progress),
+                color = ringColor.copy(alpha = 0.18f * progress),
                 cornerRadius = radius,
             )
             val stroke = ringWidth.toPx()
@@ -122,6 +123,15 @@ fun Modifier.tvFocusFrame(
             )
         }
 }
+
+/**
+ * Lets the remote stop on a block that has nothing to press, such as the QR code
+ * or a notice. Without a stop, a list made only of such blocks gives the D-pad
+ * nowhere to go and the page cannot be scrolled at all. Phones are untouched.
+ */
+@Composable
+fun Modifier.tvReadable(cornerRadius: Dp = 18.dp): Modifier =
+    if (LocalIsTv.current) this.tvFocusFrame(cornerRadius = cornerRadius).focusable() else this
 
 /**
  * Tints a settings section while the highlight is somewhere inside it, so the

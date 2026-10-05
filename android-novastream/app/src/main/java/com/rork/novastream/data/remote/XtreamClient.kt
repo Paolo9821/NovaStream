@@ -5,6 +5,7 @@ import com.rork.novastream.data.model.MediaDetails
 import com.rork.novastream.data.model.MediaEntry
 import com.rork.novastream.data.model.MediaKind
 import com.rork.novastream.data.model.PlaylistAccount
+import com.rork.novastream.data.model.ProviderInfo
 import com.rork.novastream.data.net.downloadToFile
 import com.rork.novastream.data.net.getProviderText
 import com.rork.novastream.data.parser.M3uParser
@@ -182,6 +183,28 @@ class XtreamClient(
             if (status == "0") throw IllegalStateException("Credenziali rifiutate dal server")
             userInfo.str("status") ?: "Active"
         }
+    }
+
+    /**
+     * Reads the subscription details of an Xtream line: end date, status and how
+     * many screens it allows. `exp_date` is a Unix time in seconds, or empty /
+     * null for lines that never expire.
+     */
+    suspend fun subscriptionInfo(account: PlaylistAccount): ProviderInfo = withContext(Dispatchers.IO) {
+        val body = http.getProviderText(apiUrl(account, ""))
+        val root = json.parseToJsonElement(body) as? JsonObject
+            ?: throw IllegalStateException("Risposta del server non valida")
+        val userInfo = root["user_info"] as? JsonObject
+            ?: return@withContext ProviderInfo(accountId = account.id, checkedAtMs = System.currentTimeMillis())
+        val expSeconds = userInfo.str("exp_date")?.toLongOrNull()?.takeIf { it > 0L }
+        ProviderInfo(
+            accountId = account.id,
+            known = true,
+            expiresAtMs = expSeconds?.let { it * 1000L },
+            status = userInfo.str("status"),
+            maxConnections = userInfo.str("max_connections")?.toIntOrNull(),
+            checkedAtMs = System.currentTimeMillis(),
+        )
     }
 
     /**

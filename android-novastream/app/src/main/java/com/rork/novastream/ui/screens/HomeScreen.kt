@@ -21,6 +21,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.AddCircleOutline
+import androidx.compose.material.icons.rounded.Event
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.LockOpen
 import androidx.compose.material.icons.rounded.Person
@@ -58,6 +59,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rork.novastream.data.local.LicenseStatus
 import com.rork.novastream.data.model.MediaKind
+import com.rork.novastream.data.model.ProviderInfo
+import com.rork.novastream.ui.i18n.Language
 import com.rork.novastream.data.model.SyncState
 import com.rork.novastream.ui.components.CategoryBadge
 import com.rork.novastream.ui.components.ContinueCard
@@ -72,7 +75,6 @@ import com.rork.novastream.ui.i18n.Strings
 import com.rork.novastream.ui.i18n.failureText
 import com.rork.novastream.ui.theme.LocalNovaAccents
 import com.rork.novastream.ui.vm.AppViewModel
-import java.util.Calendar
 
 @Composable
 fun HomeScreen(
@@ -97,6 +99,7 @@ fun HomeScreen(
     val storeUrl by viewModel.storeUrl.collectAsStateWithLifecycle()
     val restoring by viewModel.catalogRestoring.collectAsStateWithLifecycle()
     val recovering by viewModel.catalogRecovering.collectAsStateWithLifecycle()
+    val providerInfo by viewModel.providerInfo.collectAsStateWithLifecycle()
     /** Same full rebuild as in Settings, so it asks the same confirmation. */
     var rebuildDialogOpen by remember { mutableStateOf(false) }
 
@@ -125,11 +128,12 @@ fun HomeScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item("greeting") {
-            GreetingHeader(
-                greeting = greeting(strings),
-                playlistLabel = active?.let { strings.playlistPrefix.format(it.name) }
-                    ?: strings.noActivePlaylist,
-                connected = active != null,
+            ProviderHeader(
+                playlistName = active?.name,
+                playlistType = active?.typeLabel,
+                info = providerInfo?.takeIf { it.accountId == active?.id },
+                language = settings.language,
+                strings = strings,
             )
         }
 
@@ -205,7 +209,11 @@ fun HomeScreen(
                         // is done from the title's own page.
                         PosterCard(
                             entry = entry,
-                            onClick = { onOpenDetail(entry.id) },
+                            // Channels start straight away, like in Live TV.
+                            onClick = {
+                                if (entry.kind == MediaKind.LIVE) onResume(entry.id, entry.streamUrl)
+                                else onOpenDetail(entry.id)
+                            },
                             modifier = Modifier.width(118.dp),
                         )
                     }
@@ -384,18 +392,45 @@ private fun ParentalUnlockDialog(
 }
 
 /**
- * The masthead of the app: a colour wash that names the time of day and the
- * playlist on air. It is the one place where NovaStream is allowed to shout,
- * and it gives the rest of the screen something to sit under.
+ * The masthead of the app: the playlist on air and how long its subscription
+ * lasts, which is what a viewer actually needs to know at a glance. The end
+ * date turns amber in the last week and red once it has passed.
  */
 @Composable
-private fun GreetingHeader(
-    greeting: String,
-    playlistLabel: String,
-    connected: Boolean,
+private fun ProviderHeader(
+    playlistName: String?,
+    playlistType: String?,
+    info: ProviderInfo?,
+    language: Language,
+    strings: Strings,
     modifier: Modifier = Modifier,
 ) {
     val accents = LocalNovaAccents.current
+    val more = strings.more
+    val connected = playlistName != null
+    val now = System.currentTimeMillis()
+    val expiresAt = info?.expiresAtMs
+    val daysLeft = expiresAt?.let { ((it - now) / DAY_MS).toInt() }
+    val expiryColor = when {
+        expiresAt == null -> accents.live
+        expiresAt <= now -> MaterialTheme.colorScheme.error
+        (daysLeft ?: 0) <= 7 -> accents.warmAlt
+        else -> accents.live
+    }
+    val expiryTitle = when {
+        !connected -> null
+        info == null -> more.homeSubscriptionChecking
+        !info.known -> more.homeSubscriptionUnknown
+        expiresAt == null -> more.homeSubscriptionUnlimited
+        expiresAt <= now -> more.homeSubscriptionExpired.format(licenseDate(expiresAt, language))
+        else -> more.homeSubscriptionUntil.format(licenseDate(expiresAt, language))
+    }
+    val expiryDetail = when {
+        expiresAt == null || expiresAt <= now -> null
+        (daysLeft ?: 0) < 1 -> more.homeSubscriptionLastDay
+        else -> more.homeSubscriptionDaysLeft.format(daysLeft)
+    }
+
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -421,41 +456,83 @@ private fun GreetingHeader(
                 )
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    text = "NovaStream",
+                    text = if (connected) more.homePlaylistInUse else "NovaStream",
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.72f),
                 )
             }
             Spacer(Modifier.height(8.dp))
-            Text(
-                text = greeting,
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-            )
-            Spacer(Modifier.height(12.dp))
-            Surface(
-                shape = RoundedCornerShape(14.dp),
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.78f),
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Rounded.PlaylistPlay,
+                    contentDescription = null,
+                    tint = if (connected) accents.live else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(30.dp),
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(
+                    text = playlistName ?: strings.noActivePlaylist,
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (playlistType != null) {
+                    Spacer(Modifier.width(10.dp))
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+                    ) {
+                        Text(
+                            text = playlistType,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                        )
+                    }
+                }
+            }
+            if (expiryTitle != null) {
+                Spacer(Modifier.height(12.dp))
+                Surface(
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.78f),
                 ) {
-                    Icon(
-                        imageVector = Icons.Rounded.PlaylistPlay,
-                        contentDescription = null,
-                        tint = if (connected) accents.live else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        text = playlistLabel,
-                        style = MaterialTheme.typography.titleSmall,
-                        color = if (connected) accents.live
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    Row(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 9.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Event,
+                            contentDescription = null,
+                            tint = expiryColor,
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = expiryTitle,
+                            style = MaterialTheme.typography.titleSmall,
+                            color = expiryColor,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f, fill = false),
+                        )
+                        val extra = listOfNotNull(
+                            expiryDetail,
+                            info?.maxConnections?.takeIf { it > 0 }?.let { more.homeConnections.format(it) },
+                        ).joinToString(" · ")
+                        if (extra.isNotBlank()) {
+                            Spacer(Modifier.width(10.dp))
+                            Text(
+                                text = extra,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -655,11 +732,4 @@ internal fun unitOf(kind: MediaKind, strings: Strings): String = when (kind) {
     MediaKind.SERIES -> strings.unitSeries
 }
 
-private fun greeting(strings: Strings): String {
-    val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-    return when (hour) {
-        in 5..12 -> strings.greetingMorning
-        in 13..17 -> strings.greetingAfternoon
-        else -> strings.greetingEvening
-    }
-}
+private const val DAY_MS: Long = 24L * 60 * 60 * 1000

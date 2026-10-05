@@ -87,7 +87,12 @@ fun AppNavigation(viewModel: AppViewModel) {
 
     val configuration = LocalConfiguration.current
     val settings by viewModel.settings.collectAsStateWithLifecycle()
-    val useRail = settings.deviceProfile == DeviceProfile.TV || configuration.screenWidthDp >= 720
+    val isTvProfile = settings.deviceProfile == DeviceProfile.TV
+    val useRail = isTvProfile || configuration.screenWidthDp >= 720
+    // On a TV the home page already is the menu: its three big cards lead to
+    // Live, Movies and Series, so a rail repeating them only adds a column the
+    // remote has to walk through. It returns on the section pages.
+    val showRail = isTopLevel && useRail && !(isTvProfile && currentRoute == ROUTE_HOME)
 
     // Back on a remote sits right next to the D-pad and is easy to hit by
     // mistake. On the main menu there is nothing left to go back to, so the
@@ -125,7 +130,7 @@ fun AppNavigation(viewModel: AppViewModel) {
         },
     ) { padding ->
         Row(Modifier.fillMaxSize()) {
-            if (isTopLevel && useRail) {
+            if (showRail) {
                 NavigationRail(
                     containerColor = MaterialTheme.colorScheme.surface,
                     modifier = Modifier.padding(top = padding.calculateTopPadding()),
@@ -170,7 +175,7 @@ fun AppNavigation(viewModel: AppViewModel) {
                     LiveScreen(
                         viewModel = viewModel,
                         contentPadding = padding,
-                        onOpenDetail = { navController.navigate("detail/$it") },
+                        onPlay = { id, url -> navController.navigateToPlayer(id, url) },
                     )
                 }
 

@@ -90,7 +90,7 @@ fun FocusableSurface(
     modifier: Modifier = Modifier,
     shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(16.dp),
     color: Color = MaterialTheme.colorScheme.surface,
-    focusRingColor: Color = MaterialTheme.colorScheme.primary,
+    focusRingColor: Color = LocalNovaAccents.current.focus,
     content: @Composable () -> Unit,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -110,7 +110,7 @@ fun FocusableSurface(
         interactionSource = interactionSource,
         tonalElevation = if (focused) 4.dp else 0.dp,
         shadowElevation = if (focused) 10.dp else 0.dp,
-        border = if (focused) BorderStroke(2.dp, focusRingColor) else null,
+        border = if (focused) BorderStroke(4.dp, focusRingColor) else null,
         content = { content() }
     )
 }

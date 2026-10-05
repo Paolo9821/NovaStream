@@ -23,6 +23,13 @@ data class NovaAccents(
     /** Warm pair used by the home header and its highlight cards. */
     val warm: Color,
     val warmAlt: Color,
+    /**
+     * Colour of the remote-control highlight. It belongs to no section on
+     * purpose: a ring tinted like the card under it vanished on blue, green and
+     * violet surfaces alike, so the cursor uses a hue nothing else in the app
+     * wears.
+     */
+    val focus: Color,
 )
 
 private val LightAccents = NovaAccents(
@@ -37,6 +44,7 @@ private val LightAccents = NovaAccents(
     hairline = HairlineLight,
     warm = AccentCoral,
     warmAlt = AccentAmber,
+    focus = FocusRingLight,
 )
 
 private val DarkAccents = NovaAccents(
@@ -51,6 +59,7 @@ private val DarkAccents = NovaAccents(
     hairline = HairlineDark,
     warm = AccentCoralDark,
     warmAlt = AccentAmberDark,
+    focus = FocusRingDark,
 )
 
 val LocalNovaAccents = staticCompositionLocalOf { LightAccents }

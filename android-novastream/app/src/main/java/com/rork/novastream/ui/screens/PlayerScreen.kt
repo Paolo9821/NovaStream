@@ -72,6 +72,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
@@ -84,6 +85,7 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.contentDescription
@@ -1146,6 +1148,7 @@ fun PlayerScreen(
                         scrubbing = false
                         showControls()
                     },
+                    onKeySeek = { delta -> nudgeSeek(delta) },
                     modifier = Modifier.align(Alignment.BottomStart),
                 )
             }
@@ -1628,8 +1631,10 @@ private fun BottomBar(
     guideNotice: String?,
     onScrub: (Float) -> Unit,
     onScrubFinished: () -> Unit,
+    onKeySeek: (Long) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val focusManager = LocalFocusManager.current
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -1647,7 +1652,38 @@ private fun BottomBar(
                     activeTrackColor = MaterialTheme.colorScheme.primary,
                     inactiveTrackColor = Color.White.copy(alpha = 0.28f),
                 ),
-                modifier = Modifier.fillMaxWidth(),
+                // The stock slider answers every arrow key by moving its own
+                // value, by a hundredth of the film per press: walking onto it
+                // with up or down, or holding a key, sent playback racing
+                // ahead on its own. The remote is taken over here: up and down
+                // only move the highlight, left and right jump 10 seconds from
+                // the exact point on screen, and OK does nothing to the time.
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onPreviewKeyEvent { event ->
+                        when (event.key) {
+                            Key.DirectionUp, Key.DirectionDown -> {
+                                if (event.type == KeyEventType.KeyDown) {
+                                    focusManager.moveFocus(
+                                        if (event.key == Key.DirectionUp) FocusDirection.Up
+                                        else FocusDirection.Down
+                                    )
+                                }
+                                true
+                            }
+                            Key.DirectionLeft, Key.DirectionRight -> {
+                                if (event.type == KeyEventType.KeyDown) {
+                                    onKeySeek(
+                                        if (event.key == Key.DirectionLeft) -SEEK_STEP_MS else SEEK_STEP_MS
+                                    )
+                                }
+                                true
+                            }
+                            Key.DirectionCenter, Key.Enter, Key.NumPadEnter -> true
+                            else -> false
+                        }
+                    }
+                    .tvFocusFrame(cornerRadius = 20.dp),
             )
             Row(
                 modifier = Modifier.fillMaxWidth(),

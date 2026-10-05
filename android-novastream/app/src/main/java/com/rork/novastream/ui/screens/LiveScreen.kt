@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.LiveTv
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -40,6 +41,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -51,6 +53,9 @@ import com.rork.novastream.data.model.Programme
 import com.rork.novastream.ui.components.EmptyState
 import com.rork.novastream.ui.components.FavoriteHeart
 import com.rork.novastream.ui.components.FocusableSurface
+import com.rork.novastream.ui.components.RequestInitialFocus
+import com.rork.novastream.ui.components.rememberFocusRequester
+import com.rork.novastream.ui.components.tvFocusFrame
 import com.rork.novastream.ui.i18n.LocalStrings
 import com.rork.novastream.ui.theme.LocalNovaAccents
 import com.rork.novastream.ui.vm.AppViewModel
@@ -64,7 +69,7 @@ import java.util.Locale
 fun LiveScreen(
     viewModel: AppViewModel,
     contentPadding: PaddingValues,
-    onOpenDetail: (String) -> Unit,
+    onPlay: (String, String) -> Unit,
 ) {
     val strings = LocalStrings.current
     val catalog by viewModel.catalog.collectAsStateWithLifecycle()
@@ -177,7 +182,9 @@ fun LiveScreen(
                         isFavorite = favorites.contains(entry.id),
                         onToggleFavorite = { viewModel.toggleFavorite(entry.id) },
                         onOpenGuide = { guideEntryId = entry.id },
-                        onClick = { onOpenDetail(entry.id) },
+                        // A channel is meant to be watched: OK starts it straight
+                        // away instead of opening a page with a second button.
+                        onClick = { onPlay(entry.id, entry.streamUrl) },
                     )
                 }
             }
@@ -202,6 +209,7 @@ fun LiveScreen(
     }
 
     val guideEntry = guideEntryId?.let { viewModel.entryById(it) }
+    val watchFocus = rememberFocusRequester()
     if (guideEntry != null) {
         ModalBottomSheet(onDismissRequest = { guideEntryId = null }) {
             val programmes = viewModel.upcomingProgrammes(guideEntry, now)
@@ -211,12 +219,31 @@ fun LiveScreen(
                     .padding(horizontal = 20.dp)
                     .padding(bottom = 28.dp),
             ) {
-                Text(guideEntry.title, style = MaterialTheme.typography.titleLarge)
-                Text(
-                    text = strings.todaySchedule,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(guideEntry.title, style = MaterialTheme.typography.titleLarge)
+                        Text(
+                            text = strings.todaySchedule,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Spacer(Modifier.width(12.dp))
+                    Button(
+                        onClick = {
+                            guideEntryId = null
+                            onPlay(guideEntry.id, guideEntry.streamUrl)
+                        },
+                        modifier = Modifier
+                            .focusRequester(watchFocus)
+                            .tvFocusFrame(cornerRadius = 20.dp),
+                    ) {
+                        Icon(Icons.Rounded.PlayArrow, contentDescription = null)
+                        Spacer(Modifier.width(6.dp))
+                        Text(strings.watchNow)
+                    }
+                }
+                RequestInitialFocus(watchFocus, key = guideEntry.id)
                 Spacer(Modifier.height(12.dp))
 
                 if (programmes.isEmpty()) {
@@ -408,6 +435,7 @@ private fun NowPlayingStrip(
             onClick = onOpenGuide,
             shape = RoundedCornerShape(10.dp),
             color = MaterialTheme.colorScheme.surfaceVariant,
+            modifier = Modifier.tvFocusFrame(cornerRadius = 10.dp),
         ) {
             Row(
                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),

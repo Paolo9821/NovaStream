@@ -308,7 +308,7 @@ data class ExtraStrings(
     val buyLicenseWhere: String = "Where to buy",
     val buyLicenseFallback: String = "Ask the person or shop that gave you NovaStream for an activation code.",
     val buyLicenseAction: String = "Contact the seller",
-    val appVersionLine: String = "NovaStream 1.2.9",
+    val appVersionLine: String = "NovaStream 1.3.0",
     val licenseRevokedTitle: String = "License revoked",
     val licenseRevokedBody: String = "This license was disabled by the provider. Contact your seller to restore access.",
     val licenseSuspendedTitle: String = "License suspended",
@@ -421,6 +421,8 @@ data class ExtraStrings(
 class Strings(
     private val core: CoreStrings = CoreStrings(),
     private val extra: ExtraStrings = ExtraStrings(),
+    /** Strings added in 1.3.0, see [MoreStrings]. */
+    val more: MoreStrings = MoreStrings(),
 ) {
     val back: String get() = core.back
     val close: String get() = core.close
@@ -1150,6 +1152,7 @@ private val Italian = Strings(
         syncFailNotFound = "Playlist non trovata sul server (errore 404): controlla il link.",
         syncFailServer = "Il server della playlist ha restituito un errore. Riprova più tardi.",
     ),
+    MoreItalian,
 )
 
 private val Spanish = Strings(
@@ -1502,6 +1505,7 @@ private val Spanish = Strings(
         syncFailNotFound = "Lista no encontrada en el servidor (error 404): revisa el enlace.",
         syncFailServer = "El servidor de la lista devolvió un error. Inténtalo más tarde.",
     ),
+    MoreSpanish,
 )
 
 private val French = Strings(
@@ -1854,6 +1858,7 @@ private val French = Strings(
         syncFailNotFound = "Playlist introuvable sur le serveur (erreur 404) : vérifiez le lien.",
         syncFailServer = "Le serveur de la playlist a renvoyé une erreur. Réessayez plus tard.",
     ),
+    MoreFrench,
 )
 
 private val German = Strings(
@@ -2206,6 +2211,7 @@ private val German = Strings(
         syncFailNotFound = "Playlist auf dem Server nicht gefunden (Fehler 404): Link prüfen.",
         syncFailServer = "Der Playlist-Server hat einen Fehler gemeldet. Später erneut versuchen.",
     ),
+    MoreGerman,
 )
 
 private val Portuguese = Strings(
@@ -2558,6 +2564,7 @@ private val Portuguese = Strings(
         syncFailNotFound = "Lista não encontrada no servidor (erro 404): verifique o link.",
         syncFailServer = "O servidor da lista devolveu um erro. Tente mais tarde.",
     ),
+    MorePortuguese,
 )
 
 private val Romanian = Strings(
@@ -2910,6 +2917,7 @@ private val Romanian = Strings(
         syncFailNotFound = "Playlistul nu a fost găsit pe server (eroare 404): verifică linkul.",
         syncFailServer = "Serverul playlistului a returnat o eroare. Reîncearcă mai târziu.",
     ),
+    MoreRomanian,
 )
 
 private val Turkish = Strings(
@@ -3262,6 +3270,7 @@ private val Turkish = Strings(
         syncFailNotFound = "Liste sunucuda bulunamadı (hata 404): bağlantıyı kontrol et.",
         syncFailServer = "Liste sunucusu bir hata döndürdü. Daha sonra tekrar dene.",
     ),
+    MoreTurkish,
 )
 
 fun stringsFor(language: Language): Strings = when (language) {

@@ -35,3 +35,7 @@ val AccentCoral = Color(0xFFFF6B5B)
 val AccentCoralDark = Color(0xFFFF8A7A)
 val AccentAmber = Color(0xFFF59E0B)
 val AccentAmberDark = Color(0xFFFBBF24)
+
+/** Remote-control highlight: sunny yellow on the dark theme, deep orange on the light one. */
+val FocusRingDark = Color(0xFFFFD23F)
+val FocusRingLight = Color(0xFFE8590C)

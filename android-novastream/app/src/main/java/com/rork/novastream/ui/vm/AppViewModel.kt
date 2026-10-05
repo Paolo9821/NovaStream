@@ -18,6 +18,8 @@ import com.rork.novastream.data.model.MediaEntry
 import com.rork.novastream.data.model.MediaKind
 import com.rork.novastream.data.model.PlaylistAccount
 import com.rork.novastream.data.model.Programme
+import com.rork.novastream.data.model.ProviderInfo
+import com.rork.novastream.data.model.StorageUsage
 import com.rork.novastream.data.model.SortOption
 import com.rork.novastream.data.model.SyncState
 import com.rork.novastream.data.model.WatchProgress
@@ -67,6 +69,9 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val favorites: StateFlow<Set<String>> = repository.favorites
     val epg: StateFlow<EpgGuide> = repository.epg
     val epgState: StateFlow<SyncState> = repository.epgState
+
+    /** Subscription end date and status of the active playlist, when the provider tells. */
+    val providerInfo: StateFlow<ProviderInfo?> = repository.providerInfo
 
     /** True while the saved catalog is being read back at launch. */
     val catalogRestoring: StateFlow<Boolean> = repository.restoring
@@ -138,12 +143,16 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         syncWebPlaylists()
         // The saved catalog opens instantly; the scheduled refresh, if one is due,
         // then runs quietly behind it.
-        viewModelScope.launch { repository.autoRefreshIfDue() }
+        viewModelScope.launch { repository.refreshAllIfDue() }
     }
 
-    /** Re-checks the update schedule, e.g. when the app returns to the foreground. */
+    /**
+     * Re-checks the update schedule, e.g. when the app returns to the foreground:
+     * catalog when due, TV guide when it no longer covers today, subscription
+     * details when they are a few hours old.
+     */
     fun checkScheduledUpdate() {
-        viewModelScope.launch { repository.autoRefreshIfDue() }
+        viewModelScope.launch { repository.refreshAllIfDue() }
         syncWebPlaylists()
     }
 
@@ -594,6 +603,15 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun vaultSizeBytes(): Long = repository.vaultSizeBytes()
+
+    /** Space used on the device, split by kind. Reads the disk: call off the main thread. */
+    fun storageUsage(): StorageUsage = repository.storageUsage()
+
+    fun clearTemporaryCache() = repository.clearTemporaryCache()
+
+    fun refreshProviderInfo() {
+        viewModelScope.launch { repository.refreshProviderInfo() }
+    }
 
     fun unlockParental(pin: String): Boolean {
         val ok = settingsStore.verifyPin(pin)

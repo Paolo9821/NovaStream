@@ -1,6 +1,18 @@
 package com.rork.novastream.ui.screens
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.graphics.vector.ImageVector
+import com.rork.novastream.data.model.StorageUsage
+import com.rork.novastream.ui.components.LocalIsTv
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -24,6 +36,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.Devices
+import androidx.compose.material.icons.rounded.Dns
+import androidx.compose.material.icons.rounded.Palette
+import androidx.compose.material.icons.rounded.PlayCircle
+import androidx.compose.material.icons.rounded.Storage
+import androidx.compose.material.icons.rounded.Sync
+import androidx.compose.material.icons.rounded.Translate
 import androidx.compose.material.icons.rounded.CalendarMonth
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.DeleteSweep
@@ -85,7 +105,6 @@ import com.rork.novastream.data.local.ThemeMode
 import com.rork.novastream.data.model.MediaKind
 import com.rork.novastream.data.model.SyncState
 import com.rork.novastream.ui.components.PickerSheet
-import com.rork.novastream.ui.components.PrivacyNote
 import com.rork.novastream.ui.components.RequestInitialFocus
 import com.rork.novastream.ui.components.TvTextField
 import com.rork.novastream.ui.components.dpadVerticalEscape
@@ -127,6 +146,7 @@ fun SettingsScreen(
     val license by viewModel.license.collectAsStateWithLifecycle()
     val accents = LocalNovaAccents.current
     val storeUrl by viewModel.storeUrl.collectAsStateWithLifecycle()
+    val isTvDevice = LocalIsTv.current
 
     /** What the PIN is being asked for, null while no dialog is up. */
     var pinRequest by remember { mutableStateOf<PinRequest?>(null) }
@@ -146,15 +166,77 @@ fun SettingsScreen(
         mutableStateOf(activeAccount?.epgUrl.orEmpty())
     }
 
+    /** The sub-page on screen, null for the main menu. */
+    var page by rememberSaveable { mutableStateOf<SettingsPage?>(null) }
+    /** The sub-page just left, so the highlight lands back on its row. */
+    var lastPage by rememberSaveable { mutableStateOf<SettingsPage?>(null) }
+    val menuFocus = remember { SettingsPage.entries.associateWith { FocusRequester() } }
+    val listState = rememberLazyListState()
+
+    // Back inside a sub-page returns to the menu, not out of Settings.
+    BackHandler(enabled = page != null) { page = null }
+    val goBack: () -> Unit = { if (page != null) page = null else onBack() }
+
+    /** Disk usage is read in the background once the storage page opens. */
+    var storage by remember { mutableStateOf<StorageUsage?>(null) }
+    var storageTick by remember { mutableIntStateOf(0) }
+    LaunchedEffect(page, storageTick) {
+        if (page != SettingsPage.DATA) return@LaunchedEffect
+        storage = withContext(Dispatchers.IO) { viewModel.storageUsage() }
+    }
+
+    fun menuSummary(target: SettingsPage): String = when (target) {
+        SettingsPage.LANGUAGE -> settings.language.nativeLabel
+        SettingsPage.LICENSE -> when (val status = license.status) {
+            is LicenseStatus.Licensed -> status.expiresAtMs
+                ?.let { strings.licenseActiveUntil.format(licenseDate(it, settings.language)) }
+                ?: strings.licenseLifetime
+            is LicenseStatus.Trial -> strings.licenseStatusTrial.format(status.daysRemaining)
+            is LicenseStatus.Expired -> strings.licenseExpiredTitle
+            is LicenseStatus.Blocked -> strings.licenseRevokedTitle
+        }
+        SettingsPage.DEVICE -> if (settings.deviceProfile == DeviceProfile.TV) strings.deviceTvTitle
+        else strings.devicePhoneTitle
+        SettingsPage.APPEARANCE -> themeLabel(settings.themeMode, strings)
+        SettingsPage.UPDATES -> intervalLabel(settings.catalogUpdateInterval, strings)
+        SettingsPage.EPG -> if (epg.isEmpty) strings.epgNever
+        else strings.epgLoaded.format(epg.programmeCount, epg.channelCount)
+        SettingsPage.DNS -> dnsLabel(settings.dnsPreset, strings)
+        SettingsPage.SPEED -> speedResult?.let { "%.1f Mbps".format(it.downloadMbps) } ?: strings.speedSubtitle
+        SettingsPage.PLAYER -> strings.bufferLabel.format(settings.bufferSeconds)
+        SettingsPage.PARENTAL -> if (settings.parentalEnabled) strings.more.settingsOn
+        else strings.more.settingsOff
+        SettingsPage.DATA -> strings.vaultHint
+    }
+
     val contentFocus = rememberFocusRequester()
-    RequestInitialFocus(contentFocus)
+    // Entering a page puts the highlight on its first control; coming back puts
+    // it on the row of the page just left, so the remote never starts over.
+    LaunchedEffect(page) {
+        listState.scrollToItem(0)
+        if (!isTvDevice) return@LaunchedEffect
+        withFrameNanos { }
+        val target = if (page == null) lastPage?.let { menuFocus[it] } else null
+        if (target != null) {
+            listState.scrollToItem(SettingsPage.entries.indexOf(lastPage).coerceAtLeast(0))
+            withFrameNanos { }
+            runCatching { target.requestFocus() }
+        } else {
+            runCatching { contentFocus.requestFocus() }
+        }
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(strings.settingsTitle) },
+                title = { Text(page?.title(strings) ?: strings.settingsTitle) },
                 navigationIcon = {
-                    IconButton(onClick = onBack, modifier = Modifier.dpadDownTo(contentFocus)) {
+                    IconButton(
+                        onClick = goBack,
+                        modifier = Modifier
+                            .dpadDownTo(contentFocus)
+                            .tvFocusFrame(cornerRadius = 24.dp),
+                    ) {
                         Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = strings.back)
                     }
                 },
@@ -166,6 +248,7 @@ fun SettingsScreen(
         containerColor = MaterialTheme.colorScheme.background,
     ) { padding ->
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxSize()
                 .contentFocusZone(contentFocus),
@@ -175,9 +258,24 @@ fun SettingsScreen(
                 top = padding.calculateTopPadding() + 4.dp,
                 bottom = padding.calculateBottomPadding() + 40.dp,
             ),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            verticalArrangement = Arrangement.spacedBy(if (page == null) 10.dp else 14.dp),
         ) {
-            item("language") {
+            if (page == null) {
+                items(SettingsPage.entries.toList(), key = { "menu-${it.name}" }) { target ->
+                    SettingsMenuRow(
+                        icon = target.icon,
+                        title = target.title(strings),
+                        summary = menuSummary(target),
+                        onClick = {
+                            lastPage = target
+                            page = target
+                        },
+                        modifier = Modifier.focusRequester(menuFocus.getValue(target)),
+                    )
+                }
+            }
+
+            if (page == SettingsPage.LANGUAGE) item("language") {
                 SettingsCard(title = strings.languageSection) {
                     Text(
                         text = strings.languageSubtitle,
@@ -205,7 +303,7 @@ fun SettingsScreen(
                 }
             }
 
-            item("license") {
+            if (page == SettingsPage.LICENSE) item("license") {
                 SettingsCard(title = strings.licenseSection) {
                     val status = license.status
                     Text(
@@ -260,7 +358,7 @@ fun SettingsScreen(
                 }
             }
 
-            item("device") {
+            if (page == SettingsPage.DEVICE) item("device") {
                 SettingsCard(title = strings.deviceSection) {
                     Text(
                         text = strings.deviceSectionSubtitle,
@@ -298,7 +396,7 @@ fun SettingsScreen(
                 }
             }
 
-            item("appearance") {
+            if (page == SettingsPage.APPEARANCE) item("appearance") {
                 SettingsCard(title = strings.appearance) {
                     Text(
                         text = strings.themeLabel,
@@ -321,7 +419,7 @@ fun SettingsScreen(
                 }
             }
 
-            item("autoupdate") {
+            if (page == SettingsPage.UPDATES) item("autoupdate") {
                 SettingsCard(title = strings.autoUpdateSection) {
                     Text(
                         text = strings.autoUpdateSubtitle,
@@ -428,12 +526,19 @@ fun SettingsScreen(
                 }
             }
 
-            item("epg") {
+            if (page == SettingsPage.EPG) item("epg") {
                 SettingsCard(title = strings.epgSection) {
                     Text(
                         text = strings.epgSubtitle,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    ToggleRow(
+                        title = strings.more.epgAutoDaily,
+                        subtitle = strings.more.epgAutoDailySub,
+                        checked = settings.autoUpdateGuide,
+                        onCheckedChange = { viewModel.setAutoUpdateGuide(it) },
                     )
                     Spacer(Modifier.height(12.dp))
 
@@ -505,7 +610,7 @@ fun SettingsScreen(
                 }
             }
 
-            item("dns") {
+            if (page == SettingsPage.DNS) item("dns") {
                 SettingsCard(title = strings.dnsSection) {
                     Text(
                         text = strings.dnsSubtitle,
@@ -580,7 +685,7 @@ fun SettingsScreen(
                 }
             }
 
-            item("speedtest") {
+            if (page == SettingsPage.SPEED) item("speedtest") {
                 SettingsCard(title = strings.speedSection) {
                     Text(
                         text = strings.speedSubtitle,
@@ -618,7 +723,7 @@ fun SettingsScreen(
                 }
             }
 
-            item("player") {
+            if (page == SettingsPage.PLAYER) item("player") {
                 SettingsCard(title = strings.playerSection) {
                     Text(
                         text = strings.bufferLabel.format(settings.bufferSeconds),
@@ -678,7 +783,7 @@ fun SettingsScreen(
                 }
             }
 
-            item("parental") {
+            if (page == SettingsPage.PARENTAL) item("parental") {
                 SettingsCard(title = strings.parentalSection) {
                     ToggleRow(
                         title = strings.parentalToggle,
@@ -735,14 +840,7 @@ fun SettingsScreen(
                 }
             }
 
-            item("privacy") {
-                PrivacyNote(
-                    title = strings.privacyTotal,
-                    body = strings.privacySettingsBody.format(viewModel.encryptionLabel),
-                )
-            }
-
-            item("buy") {
+            if (page == SettingsPage.LICENSE) item("buy") {
                 if (license.status !is LicenseStatus.Licensed) {
                     BuyLicenseCard(
                         identity = license.identity,
@@ -751,19 +849,54 @@ fun SettingsScreen(
                 }
             }
 
-            item("data") {
+            if (page == SettingsPage.DATA) item("data") {
                 SettingsCard(title = strings.dataSection) {
-                    ResultRow(
-                        title = strings.vaultLabel,
-                        value = "${viewModel.vaultSizeBytes() / 1024} KB",
-                        hint = strings.vaultHint,
+                    val usage = storage
+                    if (usage == null) {
+                        Text(
+                            text = strings.more.storageCalculating,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        ResultRow(
+                            title = strings.more.storageTotal,
+                            value = formatBytes(usage.totalBytes),
+                            hint = "",
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        StorageLine(strings.more.storageCatalog, usage.catalogBytes)
+                        StorageLine(strings.more.storageImages, usage.imageCacheBytes)
+                        StorageLine(strings.more.storageTemp, usage.otherCacheBytes.coerceAtLeast(0L))
+                        StorageLine(strings.more.storageSettings, usage.settingsBytes)
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        text = strings.more.storageExplain,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Spacer(Modifier.height(12.dp))
                     OutlinedButton(
-                        onClick = { viewModel.clearCatalogCache() },
+                        onClick = {
+                            viewModel.clearTemporaryCache()
+                            storageTick += 1
+                        },
                         modifier = Modifier.fillMaxWidth().tvFocusFrame(cornerRadius = 20.dp),
                     ) {
                         Icon(Icons.Rounded.DeleteSweep, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(strings.more.storageClearTemp)
+                    }
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = {
+                            viewModel.clearCatalogCache()
+                            storageTick += 1
+                        },
+                        modifier = Modifier.fillMaxWidth().tvFocusFrame(cornerRadius = 20.dp),
+                    ) {
+                        Icon(Icons.Rounded.RestartAlt, contentDescription = null)
                         Spacer(Modifier.width(8.dp))
                         Text(strings.clearCacheAction)
                     }
@@ -775,7 +908,7 @@ fun SettingsScreen(
                 }
             }
 
-            item("version") {
+            if (page == null) item("version") {
                 Text(
                     text = strings.appVersionLine,
                     style = MaterialTheme.typography.bodySmall,
@@ -892,6 +1025,126 @@ fun SettingsScreen(
             },
         )
     }
+}
+
+/** The sub-pages of Settings, in the order they appear in the menu. */
+private enum class SettingsPage(val icon: ImageVector) {
+    LANGUAGE(Icons.Rounded.Translate),
+    LICENSE(Icons.Rounded.VpnKey),
+    DEVICE(Icons.Rounded.Devices),
+    APPEARANCE(Icons.Rounded.Palette),
+    UPDATES(Icons.Rounded.Sync),
+    EPG(Icons.Rounded.CalendarMonth),
+    PLAYER(Icons.Rounded.PlayCircle),
+    PARENTAL(Icons.Rounded.Lock),
+    DNS(Icons.Rounded.Dns),
+    SPEED(Icons.Rounded.Speed),
+    DATA(Icons.Rounded.Storage);
+
+    fun title(strings: Strings): String = when (this) {
+        LANGUAGE -> strings.languageSection
+        LICENSE -> strings.licenseSection
+        DEVICE -> strings.deviceSection
+        APPEARANCE -> strings.appearance
+        UPDATES -> strings.autoUpdateSection
+        EPG -> strings.epgSection
+        PLAYER -> strings.playerSection
+        PARENTAL -> strings.parentalSection
+        DNS -> strings.dnsSection
+        SPEED -> strings.speedSection
+        DATA -> strings.dataSection
+    }
+}
+
+/**
+ * One entry of the Settings menu: icon, name and the current value, so most
+ * questions ("which language am I on?") are answered without even opening it.
+ */
+@Composable
+private fun SettingsMenuRow(
+    icon: ImageVector,
+    title: String,
+    summary: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier
+            .fillMaxWidth()
+            .tvFocusFrame(cornerRadius = 18.dp),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(22.dp),
+                )
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = summary,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Icon(
+                imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun StorageLine(label: String, bytes: Long) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        Spacer(Modifier.width(10.dp))
+        Text(text = formatBytes(bytes), style = MaterialTheme.typography.titleSmall)
+    }
+}
+
+/** Human-readable size: KB below one megabyte, then MB with one decimal. */
+private fun formatBytes(bytes: Long): String = when {
+    bytes < 1024L * 1024L -> "${(bytes + 1023L) / 1024L} KB"
+    bytes < 1024L * 1024L * 1024L -> "%.1f MB".format(bytes / (1024.0 * 1024.0))
+    else -> "%.2f GB".format(bytes / (1024.0 * 1024.0 * 1024.0))
 }
 
 @Composable
