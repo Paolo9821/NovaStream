@@ -19,7 +19,7 @@ import com.rork.novastream.data.model.StorageUsage
 import com.rork.novastream.data.model.SyncState
 import com.rork.novastream.data.model.WatchProgress
 import com.rork.novastream.data.net.DnsCheck
-import com.rork.novastream.data.net.DohResolver
+import com.rork.novastream.data.net.ProviderNetwork
 import com.rork.novastream.data.net.SpeedTester
 import com.rork.novastream.data.net.downloadToFile
 import com.rork.novastream.data.net.toSyncFailure
@@ -27,7 +27,7 @@ import com.rork.novastream.data.parser.M3uParser
 import com.rork.novastream.data.parser.XmltvParser
 import com.rork.novastream.data.remote.XtreamClient
 import io.ktor.client.HttpClient
-import io.ktor.client.engine.android.Android
+import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.http.encodeURLParameter
 import kotlinx.coroutines.CoroutineScope
@@ -60,7 +60,10 @@ class IptvRepository(context: Context) {
     private val appContext = context.applicationContext
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
-    private val http = HttpClient(Android) {
+    // OkHttp engine on the shared provider client, so lists and guide use the
+    // DNS chosen in Settings and get past operator DNS blocks.
+    private val http = HttpClient(OkHttp) {
+        engine { preconfigured = ProviderNetwork.client }
         expectSuccess = false
         install(HttpTimeout) {
             requestTimeoutMillis = 180_000
@@ -71,10 +74,9 @@ class IptvRepository(context: Context) {
 
     val secureStore = SecureStore(appContext)
     private val catalogCache = CatalogCache(appContext)
-    val settingsStore = SettingsStore(appContext)
+    val settingsStore = SettingsStore(appContext).also { ProviderNetwork.attach(it.settings) }
     private val downloadDir: File = File(appContext.cacheDir, "downloads").apply { mkdirs() }
     private val xtream = XtreamClient(http, downloadDir)
-    private val resolver = DohResolver(http)
     private val speedTester = SpeedTester(http)
 
     private val _accounts = MutableStateFlow<List<PlaylistAccount>>(emptyList())
@@ -787,8 +789,9 @@ class IptvRepository(context: Context) {
         downloadDir.mkdirs()
     }
 
-    suspend fun checkDns(host: String): DnsCheck =
-        resolver.resolve(host, settingsStore.settings.value)
+    suspend fun checkDns(host: String): DnsCheck = withContext(Dispatchers.IO) {
+        ProviderNetwork.dns.diagnose(host)
+    }
 
     suspend fun runSpeedTest() = speedTester.run()
 

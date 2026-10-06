@@ -27,6 +27,11 @@ data class MoreStrings(
     val storageExplain: String = "Films and series are never downloaded: they are streamed from your provider. Only the list of titles (compressed) and the TV guide are kept on the device, which is why the size stays small.",
     val storageClearTemp: String = "Clear covers and temporary files",
     val storageCalculating: String = "Calculating…",
+    val dnsAutoTitle: String = "Automatic (recommended)",
+    val dnsAutoDesc: String = "Your network's DNS, switching to encrypted DNS when the operator blocks the server",
+    val dnsAppliesNote: String = "Used for playlists, TV guide, covers and video. If your operator blocks the server through its DNS, the app switches by itself to encrypted DNS (DNS-over-HTTPS).",
+    val dnsBlockedNotice: String = "Your operator's DNS does not find this server: the app reaches it through encrypted DNS.",
+    val dnsStillBlockedHint: String = "If it still cannot connect, the operator may also block the server's address: try another network (for example the phone hotspot).",
 )
 
 internal val MoreItalian = MoreStrings(
@@ -51,6 +56,11 @@ internal val MoreItalian = MoreStrings(
     storageExplain = "Film e serie non vengono mai scaricati: si guardano in streaming dal provider. Sul dispositivo restano solo la lista dei titoli (compressa) e la guida TV, per questo lo spazio occupato è poco.",
     storageClearTemp = "Svuota copertine e file temporanei",
     storageCalculating = "Calcolo in corso…",
+    dnsAutoTitle = "Automatico (consigliato)",
+    dnsAutoDesc = "DNS della tua rete, con passaggio al DNS cifrato se l'operatore blocca il server",
+    dnsAppliesNote = "Vale per playlist, guida TV, copertine e video. Se l'operatore blocca il server tramite il suo DNS, l'app passa da sola al DNS cifrato (DNS-over-HTTPS).",
+    dnsBlockedNotice = "Il DNS del tuo operatore non trova questo server: l'app lo raggiunge con il DNS cifrato.",
+    dnsStillBlockedHint = "Se ancora non si collega, l'operatore potrebbe bloccare anche l'indirizzo del server: prova un'altra rete (per esempio l'hotspot del telefono).",
 )
 
 internal val MoreSpanish = MoreStrings(
@@ -75,6 +85,11 @@ internal val MoreSpanish = MoreStrings(
     storageExplain = "Las películas y series nunca se descargan: se ven en streaming desde tu proveedor. En el dispositivo solo quedan la lista de títulos (comprimida) y la guía, por eso ocupa poco.",
     storageClearTemp = "Vaciar carátulas y archivos temporales",
     storageCalculating = "Calculando…",
+    dnsAutoTitle = "Automático (recomendado)",
+    dnsAutoDesc = "DNS de tu red, con cambio a DNS cifrado si el operador bloquea el servidor",
+    dnsAppliesNote = "Se usa para listas, guía TV, carátulas y vídeo. Si tu operador bloquea el servidor mediante su DNS, la app cambia sola al DNS cifrado (DNS-over-HTTPS).",
+    dnsBlockedNotice = "El DNS de tu operador no encuentra este servidor: la app lo alcanza con DNS cifrado.",
+    dnsStillBlockedHint = "Si sigue sin conectar, el operador puede bloquear también la dirección del servidor: prueba otra red (por ejemplo el hotspot del móvil).",
 )
 
 internal val MoreFrench = MoreStrings(
@@ -99,6 +114,11 @@ internal val MoreFrench = MoreStrings(
     storageExplain = "Les films et séries ne sont jamais téléchargés : ils sont lus en streaming depuis votre fournisseur. Seuls la liste des titres (compressée) et le guide TV restent sur l'appareil, d'où la petite taille.",
     storageClearTemp = "Vider affiches et fichiers temporaires",
     storageCalculating = "Calcul en cours…",
+    dnsAutoTitle = "Automatique (recommandé)",
+    dnsAutoDesc = "DNS de votre réseau, avec passage au DNS chiffré si l'opérateur bloque le serveur",
+    dnsAppliesNote = "Utilisé pour les playlists, le guide TV, les affiches et la vidéo. Si votre opérateur bloque le serveur via son DNS, l'app passe d'elle-même au DNS chiffré (DNS-over-HTTPS).",
+    dnsBlockedNotice = "Le DNS de votre opérateur ne trouve pas ce serveur : l'app le joint via le DNS chiffré.",
+    dnsStillBlockedHint = "Si la connexion échoue encore, l'opérateur bloque peut-être aussi l'adresse du serveur : essayez un autre réseau (par exemple le partage de connexion du téléphone).",
 )
 
 internal val MoreGerman = MoreStrings(
@@ -123,6 +143,11 @@ internal val MoreGerman = MoreStrings(
     storageExplain = "Filme und Serien werden nie heruntergeladen: Sie werden vom Anbieter gestreamt. Auf dem Gerät bleiben nur die komprimierte Titelliste und die Programmzeitung, deshalb ist der Platzbedarf gering.",
     storageClearTemp = "Cover und temporäre Dateien leeren",
     storageCalculating = "Wird berechnet…",
+    dnsAutoTitle = "Automatisch (empfohlen)",
+    dnsAutoDesc = "DNS deines Netzwerks, mit Wechsel zu verschlüsseltem DNS, wenn der Anbieter den Server sperrt",
+    dnsAppliesNote = "Gilt für Playlists, Programmführer, Cover und Video. Sperrt dein Internetanbieter den Server über sein DNS, wechselt die App selbst zu verschlüsseltem DNS (DNS-over-HTTPS).",
+    dnsBlockedNotice = "Das DNS deines Anbieters findet diesen Server nicht: Die App erreicht ihn über verschlüsseltes DNS.",
+    dnsStillBlockedHint = "Klappt es weiterhin nicht, sperrt der Anbieter eventuell auch die Server-Adresse: Probiere ein anderes Netz (z. B. den Hotspot des Handys).",
 )
 
 internal val MorePortuguese = MoreStrings(
@@ -147,6 +172,11 @@ internal val MorePortuguese = MoreStrings(
     storageExplain = "Filmes e séries nunca são transferidos: são vistos em streaming a partir do fornecedor. No dispositivo ficam só a lista de títulos (comprimida) e o guia TV, por isso ocupa pouco.",
     storageClearTemp = "Limpar capas e ficheiros temporários",
     storageCalculating = "A calcular…",
+    dnsAutoTitle = "Automático (recomendado)",
+    dnsAutoDesc = "DNS da sua rede, com passagem para DNS cifrado se o operador bloquear o servidor",
+    dnsAppliesNote = "Usado para listas, guia TV, capas e vídeo. Se o operador bloquear o servidor através do seu DNS, a app muda sozinha para DNS cifrado (DNS-over-HTTPS).",
+    dnsBlockedNotice = "O DNS do seu operador não encontra este servidor: a app chega a ele com DNS cifrado.",
+    dnsStillBlockedHint = "Se ainda não ligar, o operador pode bloquear também o endereço do servidor: experimente outra rede (por exemplo o hotspot do telemóvel).",
 )
 
 internal val MoreRomanian = MoreStrings(
@@ -171,6 +201,11 @@ internal val MoreRomanian = MoreStrings(
     storageExplain = "Filmele și serialele nu se descarcă niciodată: se văd în streaming de la furnizor. Pe dispozitiv rămân doar lista titlurilor (comprimată) și ghidul TV, de aceea spațiul ocupat e mic.",
     storageClearTemp = "Golește coperțile și fișierele temporare",
     storageCalculating = "Se calculează…",
+    dnsAutoTitle = "Automat (recomandat)",
+    dnsAutoDesc = "DNS-ul rețelei tale, cu trecere la DNS criptat dacă operatorul blochează serverul",
+    dnsAppliesNote = "Folosit pentru playlisturi, ghid TV, coperți și video. Dacă operatorul blochează serverul prin DNS-ul său, aplicația trece singură la DNS criptat (DNS-over-HTTPS).",
+    dnsBlockedNotice = "DNS-ul operatorului nu găsește acest server: aplicația îl accesează prin DNS criptat.",
+    dnsStillBlockedHint = "Dacă tot nu se conectează, operatorul poate bloca și adresa serverului: încearcă altă rețea (de exemplu hotspotul telefonului).",
 )
 
 internal val MoreTurkish = MoreStrings(
@@ -195,4 +230,9 @@ internal val MoreTurkish = MoreStrings(
     storageExplain = "Filmler ve diziler asla indirilmez: sağlayıcından canlı izlenir. Cihazda yalnızca sıkıştırılmış başlık listesi ve yayın rehberi kalır, bu yüzden kapladığı alan küçüktür.",
     storageClearTemp = "Kapakları ve geçici dosyaları temizle",
     storageCalculating = "Hesaplanıyor…",
+    dnsAutoTitle = "Otomatik (önerilen)",
+    dnsAutoDesc = "Ağınızın DNS'i; operatör sunucuyu engellerse şifreli DNS'e geçer",
+    dnsAppliesNote = "Listeler, TV rehberi, kapaklar ve video için kullanılır. Operatör sunucuyu kendi DNS'iyle engellerse uygulama kendiliğinden şifreli DNS'e (DNS-over-HTTPS) geçer.",
+    dnsBlockedNotice = "Operatörünüzün DNS'i bu sunucuyu bulamıyor: uygulama sunucuya şifreli DNS ile ulaşıyor.",
+    dnsStillBlockedHint = "Yine bağlanamazsa operatör sunucunun adresini de engelliyor olabilir: başka bir ağ deneyin (örneğin telefonun erişim noktası).",
 )

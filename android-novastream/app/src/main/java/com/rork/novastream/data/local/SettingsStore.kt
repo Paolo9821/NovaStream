@@ -14,16 +14,22 @@ enum class ThemeMode { SYSTEM, LIGHT, DARK }
 /** Which kind of device the app is running on, chosen once during onboarding. */
 enum class DeviceProfile { PHONE, TV }
 
+/**
+ * DNS used for provider traffic. [SYSTEM] is the automatic mode: network DNS
+ * with encrypted DNS-over-HTTPS as the fallback. [dohUrl] is an RFC 8484
+ * endpoint, reached through the fixed [primary]/[secondary] addresses.
+ */
 enum class DnsPreset(
+    val displayName: String,
     val primary: String,
     val secondary: String,
     val dohUrl: String,
 ) {
-    SYSTEM("", "", ""),
-    GOOGLE("8.8.8.8", "8.8.4.4", "https://dns.google/resolve"),
-    CLOUDFLARE("1.1.1.1", "1.0.0.1", "https://cloudflare-dns.com/dns-query"),
-    QUAD9("9.9.9.9", "149.112.112.112", "https://dns.quad9.net:5053/dns-query"),
-    CUSTOM("", "", "");
+    SYSTEM("System", "", "", ""),
+    GOOGLE("Google", "8.8.8.8", "8.8.4.4", "https://dns.google/dns-query"),
+    CLOUDFLARE("Cloudflare", "1.1.1.1", "1.0.0.1", "https://cloudflare-dns.com/dns-query"),
+    QUAD9("Quad9", "9.9.9.9", "149.112.112.112", "https://dns.quad9.net/dns-query"),
+    CUSTOM("Custom", "", "", "");
 
     val addressLabel: String get() = if (primary.isEmpty()) "" else "$primary · $secondary"
 }

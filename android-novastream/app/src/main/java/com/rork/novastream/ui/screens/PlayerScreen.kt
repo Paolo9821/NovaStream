@@ -111,6 +111,10 @@ import androidx.media3.common.Tracks
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.okhttp.OkHttpDataSource
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import com.rork.novastream.data.net.ProviderNetwork
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
@@ -219,7 +223,14 @@ fun PlayerScreen(
             else DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
         )
 
+        // Streams go through the shared provider client, so the DNS chosen in
+        // Settings (and the bypass of operator DNS blocks) applies to video too.
+        val httpFactory = OkHttpDataSource.Factory(ProviderNetwork.mediaClient)
+            .setUserAgent("VLC/3.0.21 LibVLC/3.0.21")
+        val dataSourceFactory = DefaultDataSource.Factory(context, httpFactory)
+
         ExoPlayer.Builder(context, renderersFactory)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
             .setLoadControl(loadControl)
             .build()
             .apply {

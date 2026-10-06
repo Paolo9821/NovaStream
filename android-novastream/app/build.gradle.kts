@@ -62,6 +62,11 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.android)
+    // Provider traffic (lists, guide, covers, video) goes through one OkHttp
+    // client whose DNS can bypass operator blocks with DNS-over-HTTPS.
+    implementation(libs.ktor.client.okhttp)
+    implementation(libs.okhttp)
+    implementation(libs.okhttp.dnsoverhttps)
     implementation(libs.ktor.client.content.negotiation)
     implementation(libs.ktor.serialization.json)
     implementation(libs.coil.compose)
@@ -70,6 +75,7 @@ dependencies {
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.exoplayer.hls)
     implementation(libs.androidx.media3.ui)
+    implementation(libs.androidx.media3.datasource.okhttp)
     implementation(libs.zxing.core)
     // Google's own rating prompt: the store decides whether to show it, so the
     // app never nags and never asks a leading question first.

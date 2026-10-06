@@ -613,7 +613,7 @@ fun SettingsScreen(
             if (page == SettingsPage.DNS) item("dns") {
                 SettingsCard(title = strings.dnsSection) {
                     Text(
-                        text = strings.dnsSubtitle,
+                        text = strings.more.dnsAppliesNote,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -681,6 +681,22 @@ fun SettingsScreen(
                             else check.addresses.take(2).joinToString(", "),
                             hint = "${check.resolver} · ${check.latencyMs} ms",
                         )
+                        if (check.networkBlocked) {
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                text = strings.more.dnsBlockedNotice,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                        if (check.addresses.isEmpty() || check.networkBlocked) {
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                text = strings.more.dnsStillBlockedHint,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
             }
@@ -1551,7 +1567,7 @@ private fun themeLabel(mode: ThemeMode, strings: Strings): String = when (mode) 
 }
 
 private fun dnsLabel(preset: DnsPreset, strings: Strings): String = when (preset) {
-    DnsPreset.SYSTEM -> strings.dnsSystem
+    DnsPreset.SYSTEM -> strings.more.dnsAutoTitle
     DnsPreset.GOOGLE -> "Google"
     DnsPreset.CLOUDFLARE -> "Cloudflare"
     DnsPreset.QUAD9 -> "Quad9"
@@ -1559,7 +1575,7 @@ private fun dnsLabel(preset: DnsPreset, strings: Strings): String = when (preset
 }
 
 private fun dnsDescription(preset: DnsPreset, strings: Strings): String = when (preset) {
-    DnsPreset.SYSTEM -> strings.dnsSystemDesc
+    DnsPreset.SYSTEM -> strings.more.dnsAutoDesc
     DnsPreset.CUSTOM -> strings.dnsCustomDesc
     else -> preset.addressLabel
 }

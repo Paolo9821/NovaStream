@@ -18,6 +18,8 @@ Dettaglio completo in 8 lingue: `changelogs/1.3.0.md`.
 - Player: la barra del tempo non avanza più da sola con su/giù; destra/sinistra = ±10 s.
 - Evidenziazione del telecomando gialla e spessa in tutta l'app.
 - Guida TV riscaricata da sola ogni giorno (all'avvio e al ritorno nell'app).
+- "Server non raggiungibile": il DNS scelto ora vale per playlist, guida, copertine e
+  video; in Automatico, se l'operatore blocca il server via DNS, si passa al DNS cifrato.
 - Account scorrevole su TV; avviso "Privacy totale" spostato in Account.
 - Dati e cache: spazio diviso per tipo e spiegazione (i film non vengono scaricati).
 - Versione 1.3.0.
@@ -31,6 +33,8 @@ Dettaglio completo in 8 lingue: `changelogs/1.3.0.md`.
 - Player time bar no longer seeks on its own with up/down; left/right = ±10 s.
 - Thick yellow remote highlight everywhere.
 - TV guide downloaded again automatically every day.
+- "Server cannot be reached": the chosen DNS now covers playlists, guide, covers and
+  video; Automatic mode switches to encrypted DNS when the operator blocks the server.
 - Account page scrolls on TV; "Total privacy" notice moved to Account.
 - Data and cache: space split by kind, with an explanation.
 - Version 1.3.0.
