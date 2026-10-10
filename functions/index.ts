@@ -405,8 +405,19 @@ export default {
         const email = String(body.email ?? "").trim();
         if (!isPlanId(planId)) return fail("unknown plan");
         if (!isValidDeviceId(deviceId)) return fail("invalid device id");
+        const consent = readConsent(request, body.consent);
+        if (!consent) return fail("consent required");
         const storeUrl = (env.STORE_URL?.trim() || DEFAULT_STORE_URL).replace(/\/+$/, "");
-        const session = await createCheckoutSession(env, planId, deviceId, email, storeUrl);
+        const session = await createCheckoutSession(
+          env,
+          planId,
+          deviceId,
+          email,
+          storeUrl,
+          consent.acceptedAt,
+        );
+        // Kept against the Stripe session id, which becomes the order id once paid.
+        await registry(env, "/consent-save", { sessionId: session.id, deviceId, plan: planId, ...consent });
         return json({ id: session.id, url: session.url });
       }
 
@@ -623,6 +634,36 @@ export default {
     }
   },
 } satisfies ExportedHandler<Env>;
+
+type ConsentRecord = {
+  acceptedAt: number;
+  recordedAt: number;
+  ip: string;
+  userAgent: string;
+  lang: string;
+  text: string;
+};
+
+/**
+ * Reads the buyer's "I already tried the app" confirmation. The browser's tick
+ * time is kept only when plausible; the server clock is always stored next to it.
+ */
+function readConsent(request: Request, raw: unknown): ConsentRecord | null {
+  const input = (raw ?? {}) as Record<string, unknown>;
+  if (input.accepted !== true) return null;
+  const recordedAt = Date.now();
+  const claimed = Number(input.acceptedAt);
+  const plausible =
+    Number.isFinite(claimed) && claimed <= recordedAt + 60_000 && claimed >= recordedAt - 6 * 60 * 60 * 1000;
+  return {
+    acceptedAt: plausible ? Math.min(claimed, recordedAt) : recordedAt,
+    recordedAt,
+    ip: (request.headers.get("CF-Connecting-IP") ?? "").slice(0, 64),
+    userAgent: (request.headers.get("User-Agent") ?? "").slice(0, 300),
+    lang: String(input.lang ?? "").slice(0, 8),
+    text: String(input.text ?? "").trim().slice(0, 1000),
+  };
+}
 
 /** Verifies a paid Stripe session and writes the licence it paid for. */
 async function settle(

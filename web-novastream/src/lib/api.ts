@@ -76,6 +76,26 @@ export type OrderRecord = {
   currency: string;
   email: string;
   createdAt: number;
+  /** The pre-purchase "I tried the app" confirmation; null for manual or older orders. */
+  consent: OrderConsent | null;
+};
+
+/** Evidence of the confirmation ticked on the store, kept for payment disputes. */
+export type OrderConsent = {
+  acceptedAt: number;
+  recordedAt: number;
+  ip: string;
+  userAgent: string;
+  lang: string;
+  text: string;
+};
+
+/** What the buyer confirmed before paying; the server stamps its own time too. */
+export type CheckoutConsent = {
+  accepted: true;
+  acceptedAt: number;
+  lang: string;
+  text: string;
 };
 
 export type SecurityInfo = {
@@ -181,8 +201,9 @@ export const startCheckout = (
   plan: PlanId,
   deviceId: string,
   email: string,
+  consent: CheckoutConsent,
 ): Promise<{ id: string; url: string }> =>
-  post<{ id: string; url: string }>("/api/checkout/create-session", { plan, deviceId, email });
+  post<{ id: string; url: string }>("/api/checkout/create-session", { plan, deviceId, email, consent });
 
 export const confirmCheckout = (sessionId: string): Promise<CheckoutResult> =>
   post<CheckoutResult>("/api/checkout/confirm", { sessionId });

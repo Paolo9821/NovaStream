@@ -59,7 +59,25 @@ export type OrderView = {
   currency: string;
   email: string;
   createdAt: number;
+  /** The "I tried the app for 7 days" tick on the store, null for manual or older orders. */
+  consent: OrderConsent | null;
 };
+
+/** Evidence of the pre-purchase confirmation, kept for payment disputes. */
+export type OrderConsent = {
+  /** When the buyer ticked the box (browser time, sanity-checked by the server). */
+  acceptedAt: number;
+  /** When the server received it, on its own clock. */
+  recordedAt: number;
+  ip: string;
+  userAgent: string;
+  lang: string;
+  /** The exact sentence the buyer confirmed, in the language they read it. */
+  text: string;
+};
+
+/** Unpaid checkouts keep their confirmation this long, then it is dropped. */
+const PENDING_CONSENT_MS = 30 * 24 * 60 * 60 * 1000;
 
 /** Lifecycle of a support request as seen in the dashboard. */
 export type TicketStatus = "new" | "open" | "closed";
@@ -410,6 +428,49 @@ export class Registry extends DurableObject {
         created_at INTEGER NOT NULL
       )
     `);
+    // One row per checkout opened on the store; it becomes part of the order
+    // once Stripe confirms the payment (session id = order id).
+    this.ctx.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS checkout_consents (
+        session_id TEXT PRIMARY KEY,
+        device_id TEXT NOT NULL DEFAULT '',
+        plan TEXT NOT NULL DEFAULT '',
+        accepted_at INTEGER NOT NULL,
+        recorded_at INTEGER NOT NULL,
+        ip TEXT NOT NULL DEFAULT '',
+        user_agent TEXT NOT NULL DEFAULT '',
+        lang TEXT NOT NULL DEFAULT '',
+        text TEXT NOT NULL DEFAULT ''
+      )
+    `);
+  }
+
+  /** Stores a checkout confirmation and forgets the ones whose checkout was never paid. */
+  private saveConsent(body: Record<string, unknown>): { ok: boolean } {
+    const sessionId = String(body.sessionId ?? "").trim();
+    if (!sessionId) return { ok: false };
+    const now = Date.now();
+    this.ctx.storage.sql.exec(
+      `INSERT INTO checkout_consents
+         (session_id, device_id, plan, accepted_at, recorded_at, ip, user_agent, lang, text)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(session_id) DO NOTHING`,
+      sessionId,
+      String(body.deviceId ?? ""),
+      String(body.plan ?? ""),
+      Number(body.acceptedAt ?? now),
+      Number(body.recordedAt ?? now),
+      String(body.ip ?? ""),
+      String(body.userAgent ?? ""),
+      String(body.lang ?? ""),
+      String(body.text ?? ""),
+    );
+    this.ctx.storage.sql.exec(
+      `DELETE FROM checkout_consents
+       WHERE recorded_at < ? AND session_id NOT IN (SELECT order_id FROM orders)`,
+      now - PENDING_CONSENT_MS,
+    );
+    return { ok: true };
   }
 
   override async fetch(request: Request): Promise<Response> {
@@ -421,6 +482,8 @@ export class Registry extends DurableObject {
         return Response.json(this.status(identifiersOf(body), body.fresh === true));
       case "/issue":
         return Response.json(this.issue(body));
+      case "/consent-save":
+        return Response.json(this.saveConsent(body));
       case "/order-seen":
         return Response.json({ known: this.orderKnown(String(body.orderId ?? "")) });
       case "/list":
@@ -1185,7 +1248,19 @@ export class Registry extends DurableObject {
         currency: string;
         email: string;
         created_at: number;
-      }>("SELECT * FROM orders ORDER BY created_at")
+        accepted_at: number | null;
+        recorded_at: number | null;
+        ip: string | null;
+        user_agent: string | null;
+        lang: string | null;
+        text: string | null;
+      }>(
+        `SELECT o.order_id, o.device_id, o.plan, o.amount_cents, o.currency, o.email, o.created_at,
+                c.accepted_at, c.recorded_at, c.ip, c.user_agent, c.lang, c.text
+         FROM orders o
+         LEFT JOIN checkout_consents c ON c.session_id = o.order_id
+         ORDER BY o.created_at`,
+      )
       .toArray()
       .map((row) => ({
         orderId: row.order_id,
@@ -1195,6 +1270,17 @@ export class Registry extends DurableObject {
         currency: row.currency,
         email: row.email,
         createdAt: row.created_at,
+        consent:
+          row.accepted_at === null
+            ? null
+            : {
+                acceptedAt: row.accepted_at,
+                recordedAt: row.recorded_at ?? row.accepted_at,
+                ip: row.ip ?? "",
+                userAgent: row.user_agent ?? "",
+                lang: row.lang ?? "",
+                text: row.text ?? "",
+              },
       }));
   }
 

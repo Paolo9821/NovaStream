@@ -1247,30 +1247,121 @@ function RevenuePanel({
         ) : (
           <div className="mt-3 max-h-64 space-y-1.5 overflow-y-auto pr-1">
             {periodOrders.map((order) => (
-              <div
-                key={order.orderId}
-                className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-border/60 px-3 py-2 text-xs"
-              >
-                <span className="text-muted-foreground">{formatDateTime(order.createdAt)}</span>
-                <span
-                  className={cn(
-                    "rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider",
-                    order.plan === "lifetime"
-                      ? "border-warning/40 bg-warning/10 text-warning"
-                      : "border-accent/40 bg-accent/10 text-accent",
-                  )}
-                >
-                  {order.plan === "lifetime" ? "A vita" : "12 mesi"}
-                </span>
-                <span className="mono text-muted-foreground">{formatMac(order.deviceId)}</span>
-                {order.email && <span className="truncate text-muted-foreground">{order.email}</span>}
-                <span className="ml-auto font-bold">{formatMoney(order.amountCents)}</span>
-              </div>
+              <OrderRow key={order.orderId} order={order} />
             ))}
           </div>
         )}
       </div>
     </section>
+  );
+}
+
+/** Formats a timestamp down to the second, as needed when answering a dispute. */
+function formatPrecise(ms: number): string {
+  return new Date(ms).toLocaleString("it-IT", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    timeZoneName: "short",
+  });
+}
+
+/** One purchase; opens up to show the pre-purchase confirmation kept as evidence. */
+function OrderRow({ order }: { order: OrderRecord }) {
+  const [open, setOpen] = useState<boolean>(false);
+  const consent = order.consent;
+
+  const copyEvidence = useCallback((): void => {
+    if (!consent) return;
+    const lines = [
+      `Ordine: ${order.orderId}`,
+      `Dispositivo: ${formatMac(order.deviceId)}`,
+      `Importo: ${formatMoney(order.amountCents)}`,
+      `Pagato il: ${formatPrecise(order.createdAt)}`,
+      `Conferma spuntata il: ${formatPrecise(consent.acceptedAt)} (${new Date(consent.acceptedAt).toISOString()})`,
+      `Registrata dal server il: ${formatPrecise(consent.recordedAt)} (${new Date(consent.recordedAt).toISOString()})`,
+      `Indirizzo IP: ${consent.ip || "n/d"}`,
+      `Browser: ${consent.userAgent || "n/d"}`,
+      `Lingua: ${consent.lang || "n/d"}`,
+      `Testo accettato: "${consent.text}"`,
+    ];
+    void navigator.clipboard
+      .writeText(lines.join("\n"))
+      .then(() => toast.success("Prova di conferma copiata"))
+      .catch(() => toast.error("Copia non riuscita"));
+  }, [consent, order]);
+
+  return (
+    <div className="rounded-xl border border-border/60 text-xs">
+      <button
+        type="button"
+        onClick={() => setOpen((value) => !value)}
+        className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-left"
+      >
+        <span className="text-muted-foreground">{formatDateTime(order.createdAt)}</span>
+        <span
+          className={cn(
+            "rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider",
+            order.plan === "lifetime"
+              ? "border-warning/40 bg-warning/10 text-warning"
+              : "border-accent/40 bg-accent/10 text-accent",
+          )}
+        >
+          {order.plan === "lifetime" ? "A vita" : "12 mesi"}
+        </span>
+        <span className="mono text-muted-foreground">{formatMac(order.deviceId)}</span>
+        {order.email && <span className="truncate text-muted-foreground">{order.email}</span>}
+        <span
+          title={consent ? "Conferma prova registrata" : "Nessuna conferma registrata"}
+          className={cn(
+            "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
+            consent ? "bg-accent/10 text-accent" : "bg-muted text-muted-foreground",
+          )}
+        >
+          {consent ? <ShieldCheck className="h-3 w-3" /> : <ShieldAlert className="h-3 w-3" />}
+          {consent ? "Conferma" : "—"}
+        </span>
+        <span className="ml-auto font-bold">{formatMoney(order.amountCents)}</span>
+      </button>
+      {open && (
+        <div className="space-y-1.5 border-t border-border/60 px-3 py-2.5 text-muted-foreground">
+          {consent ? (
+            <>
+              <div>
+                <span className="text-foreground/80">Casella spuntata:</span> {formatPrecise(consent.acceptedAt)}
+              </div>
+              <div>
+                <span className="text-foreground/80">Ricevuta dal server:</span> {formatPrecise(consent.recordedAt)}
+              </div>
+              <div>
+                <span className="text-foreground/80">IP:</span> <span className="mono">{consent.ip || "n/d"}</span>
+                {consent.lang && <> · <span className="text-foreground/80">Lingua:</span> {consent.lang.toUpperCase()}</>}
+              </div>
+              <div className="break-words">
+                <span className="text-foreground/80">Browser:</span> {consent.userAgent || "n/d"}
+              </div>
+              <blockquote className="rounded-lg border-l-2 border-accent/60 bg-secondary/40 px-2.5 py-1.5 italic">
+                {consent.text || "Testo non disponibile"}
+              </blockquote>
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                <span className="mono text-[10px]">{order.orderId}</span>
+                <Button size="sm" variant="outline" className="ml-auto h-7 text-xs" onClick={copyEvidence}>
+                  Copia prova per contestazione
+                </Button>
+              </div>
+            </>
+          ) : (
+            <p>
+              Nessuna conferma registrata: ordine precedente all'introduzione della casella oppure licenza
+              inserita a mano. <span className="mono text-[10px]">{order.orderId}</span>
+            </p>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 

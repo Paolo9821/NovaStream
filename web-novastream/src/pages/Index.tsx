@@ -62,7 +62,7 @@ function initialDeviceId(): string {
 }
 
 export default function Index() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [deviceId, setDeviceId] = useState<string>(initialDeviceId);
   const [email, setEmail] = useState<string>("");
   const [plan, setPlan] = useState<PlanId>("annual");
@@ -71,6 +71,7 @@ export default function Index() {
   const [redirecting, setRedirecting] = useState<boolean>(false);
   /** The buyer confirms they tried the app first; payment stays locked until then. */
   const [consented, setConsented] = useState<boolean>(false);
+  const [consentAt, setConsentAt] = useState<number | null>(null);
   const [returning, setReturning] = useState<boolean>(() =>
     new URLSearchParams(window.location.search).has("session_id"),
   );
@@ -122,13 +123,18 @@ export default function Index() {
     setError("");
     setRedirecting(true);
     try {
-      const session = await startCheckout(plan, normalizeDeviceId(deviceId), email.trim());
+      const session = await startCheckout(plan, normalizeDeviceId(deviceId), email.trim(), {
+        accepted: true,
+        acceptedAt: consentAt ?? Date.now(),
+        lang,
+        text: t("consent.label"),
+      });
       window.location.assign(session.url);
     } catch (err) {
       setRedirecting(false);
       setError(err instanceof Error ? err.message : t("error.open"));
     }
-  }, [consented, deviceId, email, plan, t]);
+  }, [consentAt, consented, deviceId, email, lang, plan, t]);
 
   if (returning) {
     return <ConfirmingScreen />;
@@ -268,7 +274,11 @@ export default function Index() {
                     <Checkbox
                       id="consent"
                       checked={consented}
-                      onCheckedChange={(value) => setConsented(value === true)}
+                      onCheckedChange={(value) => {
+                        const checked = value === true;
+                        setConsented(checked);
+                        setConsentAt(checked ? Date.now() : null);
+                      }}
                       className="mt-0.5 h-5 w-5 shrink-0"
                     />
                     <span className="text-sm leading-relaxed text-foreground/85">

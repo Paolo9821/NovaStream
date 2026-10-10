@@ -83,6 +83,7 @@ export async function createCheckoutSession(
   deviceId: string,
   email: string,
   storeUrl: string,
+  consentAt?: number,
 ): Promise<{ id: string; url: string }> {
   const plan = PLANS[planId];
   const body = new URLSearchParams({
@@ -108,6 +109,13 @@ export async function createCheckoutSession(
     locale: "auto",
   });
   if (email) body.set("customer_email", email);
+  // Mirrors the buyer's "I tried the app first" confirmation on the Stripe side,
+  // so it shows up next to the payment when answering a dispute.
+  if (consentAt) {
+    const stamp = new Date(consentAt).toISOString();
+    body.set("metadata[trialConsentAt]", stamp);
+    body.set("payment_intent_data[metadata][trialConsentAt]", stamp);
+  }
 
   const session = await stripeFetch<RawSession & { url?: string }>(env, "/checkout/sessions", {
     method: "POST",
