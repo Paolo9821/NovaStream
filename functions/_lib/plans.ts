@@ -13,14 +13,14 @@ export const PLANS: Record<PlanId, Plan> = {
   annual: {
     id: "annual",
     label: "12 months",
-    priceCents: 399,
+    priceCents: 349,
     currency: "EUR",
     durationDays: 365,
   },
   lifetime: {
     id: "lifetime",
     label: "Lifetime",
-    priceCents: 1299,
+    priceCents: 999,
     currency: "EUR",
     durationDays: null,
   },

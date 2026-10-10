@@ -21,6 +21,7 @@ import {
 
 import { LanguagePicker, LanguageSection } from "@/components/LanguagePicker";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -68,6 +69,8 @@ export default function Index() {
   const [purchase, setPurchase] = useState<CheckoutResult | null>(null);
   const [error, setError] = useState<string>("");
   const [redirecting, setRedirecting] = useState<boolean>(false);
+  /** The buyer confirms they tried the app first; payment stays locked until then. */
+  const [consented, setConsented] = useState<boolean>(false);
   const [returning, setReturning] = useState<boolean>(() =>
     new URLSearchParams(window.location.search).has("session_id"),
   );
@@ -115,6 +118,7 @@ export default function Index() {
   }, []);
 
   const handleCheckout = useCallback(async (): Promise<void> => {
+    if (!consented) return;
     setError("");
     setRedirecting(true);
     try {
@@ -124,7 +128,7 @@ export default function Index() {
       setRedirecting(false);
       setError(err instanceof Error ? err.message : t("error.open"));
     }
-  }, [deviceId, email, plan, t]);
+  }, [consented, deviceId, email, plan, t]);
 
   if (returning) {
     return <ConfirmingScreen />;
@@ -252,9 +256,37 @@ export default function Index() {
               )}
               {config.data?.paymentsConfigured && (
                 <>
+                  <label
+                    htmlFor="consent"
+                    className={cn(
+                      "flex cursor-pointer items-start gap-3 rounded-xl border px-4 py-3.5 transition",
+                      consented
+                        ? "border-accent/40 bg-accent/[0.07]"
+                        : "border-border/80 bg-secondary/40 hover:border-primary/40",
+                    )}
+                  >
+                    <Checkbox
+                      id="consent"
+                      checked={consented}
+                      onCheckedChange={(value) => setConsented(value === true)}
+                      className="mt-0.5 h-5 w-5 shrink-0"
+                    />
+                    <span className="text-sm leading-relaxed text-foreground/85">
+                      {t("consent.label")}{" "}
+                      <Link
+                        to="/termini"
+                        target="_blank"
+                        rel="noopener"
+                        onClick={(event) => event.stopPropagation()}
+                        className="font-medium text-primary underline-offset-2 hover:underline"
+                      >
+                        {t("consent.terms")}
+                      </Link>
+                    </span>
+                  </label>
                   <Button
                     onClick={() => void handleCheckout()}
-                    disabled={!deviceValid || redirecting}
+                    disabled={!deviceValid || !consented || redirecting}
                     className="h-13 w-full gap-2.5 text-base font-semibold"
                   >
                     {redirecting ? (
@@ -269,7 +301,11 @@ export default function Index() {
                         : t("pay.buttonGeneric")}
                   </Button>
                   <p className="text-center text-xs text-muted-foreground">
-                    {deviceValid ? t("pay.hintReady") : t("pay.hintNoDevice")}
+                    {!deviceValid
+                      ? t("pay.hintNoDevice")
+                      : consented
+                        ? t("pay.hintReady")
+                        : t("consent.required")}
                   </p>
                   {config.data.mode === "test" && (
                     <p className="text-center text-[11px] uppercase tracking-widest text-warning/80">
