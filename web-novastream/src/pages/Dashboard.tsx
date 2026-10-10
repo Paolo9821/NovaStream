@@ -3,6 +3,9 @@ import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Ban,
+  ArrowDown,
+  ArrowUp,
+  ArrowUpDown,
   CalendarClock,
   CalendarPlus,
   CheckCircle2,
@@ -1094,10 +1097,31 @@ function RevenuePanel({
     return list;
   }, [orders, view, cursor]);
 
-  const periodOrders = useMemo(
-    () => orders.filter((order) => inPeriod(order.createdAt, view, cursor)).reverse(),
-    [orders, view, cursor],
-  );
+  const [orderSort, setOrderSort] = useState<OrderSort>({ key: "paid", dir: "desc" });
+  const periodOrders = useMemo(() => {
+    const list = orders.filter((order) => inPeriod(order.createdAt, view, cursor));
+    const sign = orderSort.dir === "asc" ? 1 : -1;
+    return [...list].sort((a, b) => {
+      if (orderSort.key === "consent") {
+        // Orders without a confirmation always sink to the bottom.
+        const ca = a.consent?.acceptedAt ?? null;
+        const cb = b.consent?.acceptedAt ?? null;
+        if (ca === null && cb === null) return b.createdAt - a.createdAt;
+        if (ca === null) return 1;
+        if (cb === null) return -1;
+        return (ca - cb) * sign;
+      }
+      return (a.createdAt - b.createdAt) * sign;
+    });
+  }, [orders, view, cursor, orderSort]);
+
+  const toggleSort = useCallback((key: OrderSortKey): void => {
+    setOrderSort((current) =>
+      current.key === key
+        ? { key, dir: current.dir === "desc" ? "asc" : "desc" }
+        : { key, dir: "desc" },
+    );
+  }, []);
 
   const periodCents = buckets.reduce((sum, bucket) => sum + bucket.cents, 0);
   const peakCents = buckets.reduce((max, bucket) => Math.max(max, bucket.cents), 0);
@@ -1245,14 +1269,63 @@ function RevenuePanel({
               : "Nessun acquisto in questo periodo. Usa le frecce per spostarti."}
           </p>
         ) : (
-          <div className="mt-3 max-h-64 space-y-1.5 overflow-y-auto pr-1">
-            {periodOrders.map((order) => (
-              <OrderRow key={order.orderId} order={order} />
-            ))}
+          <div className="mt-3">
+            <div className={cn(ORDER_GRID, "px-3 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground")}>
+              <SortHeader label="Pagato il" active={orderSort.key === "paid"} dir={orderSort.dir} onClick={() => toggleSort("paid")} />
+              <SortHeader
+                label="Conferma prova"
+                active={orderSort.key === "consent"}
+                dir={orderSort.dir}
+                onClick={() => toggleSort("consent")}
+              />
+              <span className="hidden sm:block">Piano</span>
+              <span className="hidden sm:block">Dispositivo</span>
+              <span className="hidden text-right sm:block">Importo</span>
+            </div>
+            <div className="max-h-80 space-y-1.5 overflow-y-auto pr-1">
+              {periodOrders.map((order) => (
+                <OrderRow key={order.orderId} order={order} />
+              ))}
+            </div>
           </div>
         )}
       </div>
     </section>
+  );
+}
+
+type OrderSortKey = "paid" | "consent";
+type OrderSort = { key: OrderSortKey; dir: "asc" | "desc" };
+
+/** Shared column layout of the purchases header and rows. */
+const ORDER_GRID =
+  "grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-center gap-x-3 gap-y-1 sm:grid-cols-[8.5rem_10rem_4.5rem_minmax(0,1fr)_4.5rem]";
+
+function SortHeader({
+  label,
+  active,
+  dir,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  dir: "asc" | "desc";
+  onClick: () => void;
+}) {
+  const Icon = !active ? ArrowUpDown : dir === "desc" ? ArrowDown : ArrowUp;
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={`Ordina per ${label.toLowerCase()}`}
+      className={cn(
+        "inline-flex items-center gap-1 text-left uppercase tracking-wider transition hover:text-foreground",
+        active && "text-foreground",
+      )}
+    >
+      {label}
+      <Icon className="h-3 w-3" />
+    </button>
   );
 }
 
@@ -1266,6 +1339,18 @@ function formatPrecise(ms: number): string {
     minute: "2-digit",
     second: "2-digit",
     timeZoneName: "short",
+  });
+}
+
+/** Compact date with seconds for the purchases column. */
+function formatSeconds(ms: number): string {
+  return new Date(ms).toLocaleString("it-IT", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
   });
 }
 
@@ -1299,12 +1384,22 @@ function OrderRow({ order }: { order: OrderRecord }) {
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-left"
+        className={cn(ORDER_GRID, "w-full px-3 py-2 text-left")}
       >
         <span className="text-muted-foreground">{formatDateTime(order.createdAt)}</span>
         <span
+          title={consent ? `Spuntata il ${formatPrecise(consent.acceptedAt)}` : "Nessuna conferma registrata"}
           className={cn(
-            "rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider",
+            "inline-flex min-w-0 items-center gap-1.5",
+            consent ? "text-accent" : "text-muted-foreground",
+          )}
+        >
+          {consent ? <ShieldCheck className="h-3.5 w-3.5 shrink-0" /> : <ShieldAlert className="h-3.5 w-3.5 shrink-0" />}
+          <span className="truncate">{consent ? formatSeconds(consent.acceptedAt) : "Non registrata"}</span>
+        </span>
+        <span
+          className={cn(
+            "w-fit rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider",
             order.plan === "lifetime"
               ? "border-warning/40 bg-warning/10 text-warning"
               : "border-accent/40 bg-accent/10 text-accent",
@@ -1312,19 +1407,11 @@ function OrderRow({ order }: { order: OrderRecord }) {
         >
           {order.plan === "lifetime" ? "A vita" : "12 mesi"}
         </span>
-        <span className="mono text-muted-foreground">{formatMac(order.deviceId)}</span>
-        {order.email && <span className="truncate text-muted-foreground">{order.email}</span>}
-        <span
-          title={consent ? "Conferma prova registrata" : "Nessuna conferma registrata"}
-          className={cn(
-            "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold",
-            consent ? "bg-accent/10 text-accent" : "bg-muted text-muted-foreground",
-          )}
-        >
-          {consent ? <ShieldCheck className="h-3 w-3" /> : <ShieldAlert className="h-3 w-3" />}
-          {consent ? "Conferma" : "—"}
+        <span className="min-w-0 truncate">
+          <span className="mono text-muted-foreground">{formatMac(order.deviceId)}</span>
+          {order.email && <span className="ml-2 text-muted-foreground/80">{order.email}</span>}
         </span>
-        <span className="ml-auto font-bold">{formatMoney(order.amountCents)}</span>
+        <span className="text-right font-bold">{formatMoney(order.amountCents)}</span>
       </button>
       {open && (
         <div className="space-y-1.5 border-t border-border/60 px-3 py-2.5 text-muted-foreground">

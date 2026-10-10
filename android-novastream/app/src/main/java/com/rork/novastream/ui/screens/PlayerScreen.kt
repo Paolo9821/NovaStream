@@ -100,6 +100,7 @@ import androidx.activity.ComponentActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import android.util.Log
 import androidx.media3.common.C
 import androidx.media3.common.Format
 import androidx.media3.common.MediaItem
@@ -149,6 +150,18 @@ private const val MAX_RECONNECT_ATTEMPTS = 6
 
 /** A stream stuck buffering this long is treated as dead and reopened. */
 private const val STALL_TIMEOUT_MS = 18_000L
+
+/** How far ahead of the switch point the up-next card appears. */
+private const val UP_NEXT_LEAD_MS = 5_000L
+
+/** Below this length a video is a trailer or a broken entry: no early switch. */
+private const val MIN_AUTO_SWITCH_DURATION_MS = 3 * 60_000L
+
+/** Playback time with sound but no new frame before the picture counts as frozen. */
+private const val FROZEN_VIDEO_TIMEOUT_MS = 3_000L
+
+/** A second freeze within this window gets the heavier recovery. */
+private const val FROZEN_RECOVERY_WINDOW_MS = 60_000L
 
 /** Backoff between attempts: 2s, 4s, 8s, then a steady 12s. */
 private fun reconnectDelayMs(attempt: Int): Long =
@@ -222,6 +235,9 @@ fun PlayerScreen(
             if (settings.hardwareDecoding) DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF
             else DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
         )
+            // A decoder that refuses the next episode's format hands over to
+            // another one instead of leaving the picture dead.
+            .setEnableDecoderFallback(true)
 
         // Streams go through the shared provider client, so the DNS chosen in
         // Settings (and the bypass of operator DNS blocks) applies to video too.
@@ -237,6 +253,9 @@ fun PlayerScreen(
                 // Keeps the box awake while a stream is running: without it a TV
                 // suspends the CPU and the picture dies mid-programme.
                 setWakeMode(C.WAKE_MODE_NETWORK)
+                // Asking the TV to switch refresh rate to each episode's frame rate
+                // froze the picture on several boxes while the sound went on.
+                videoChangeFrameRateStrategy = C.VIDEO_CHANGE_FRAME_RATE_STRATEGY_OFF
                 // The languages picked last time are asked for up front, so the
                 // next film or episode already starts in them.
                 trackSelectionParameters = trackSelectionParameters.withSavedLanguages(
@@ -264,6 +283,8 @@ fun PlayerScreen(
      * announced what came next. They are cleared whenever the source changes.
      */
     var playbackEnded by remember { mutableStateOf(false) }
+    /** The on-screen video view, so a frozen picture can be given a fresh surface. */
+    var playerViewRef by remember { mutableStateOf<PlayerView?>(null) }
     var upNextDismissed by remember { mutableStateOf(false) }
     var secondsLeft by remember { mutableIntStateOf(0) }
 
@@ -370,7 +391,17 @@ fun PlayerScreen(
         if (isLiveStream) viewModel.channelNeighbour(activeEntryId, -1) else null
     }
 
-    val upNextVisible = playbackEnded && !upNextDismissed && nextEpisode != null
+    // "Switch N seconds before the end": the card comes up a few seconds ahead
+    // of that point and counts down to it, so the credits are skipped.
+    val switchBeforeEndMs = settings.nextEpisodeDelaySeconds.coerceIn(3, 60) * 1000L
+    val remainingMs = if (durationMs > 0L) (durationMs - positionMs).coerceAtLeast(0L) else Long.MAX_VALUE
+    val nearEnd = isSeries && nextEpisode != null && !playbackEnded &&
+        durationMs >= MIN_AUTO_SWITCH_DURATION_MS && !scrubbing && pendingSeekMs == null &&
+        remainingMs <= switchBeforeEndMs + UP_NEXT_LEAD_MS
+    val nearEndSecondsLeft = if (nearEnd) {
+        ((remainingMs - switchBeforeEndMs + 999L) / 1000L).toInt().coerceAtLeast(0)
+    } else 0
+    val upNextVisible = (playbackEnded || nearEnd) && !upNextDismissed && nextEpisode != null
     val endOfSeriesVisible = playbackEnded && !upNextDismissed && isSeries && nextEpisode == null
 
     // A television turns itself off after its own idle timeout, and watching a
@@ -560,6 +591,18 @@ fun PlayerScreen(
     // The end of an episode is announced rather than sprung on the viewer: the
     // card names what comes next and counts down the delay set in Settings, and
     // anyone who does not want it can stop the countdown.
+    // Normal case: the next episode starts the moment the set number of seconds
+    // before the end is reached, while the credits are still rolling.
+    val switchPointReached = nearEnd && nearEndSecondsLeft == 0
+    LaunchedEffect(switchPointReached, upNextDismissed, settings.autoplayNextEpisode) {
+        val next = nextEpisode
+        if (!switchPointReached || upNextDismissed || next == null) return@LaunchedEffect
+        if (!settings.autoplayNextEpisode || !player.playWhenReady) return@LaunchedEffect
+        playEpisode(next)
+    }
+
+    // Fallback for streams whose length is unknown or that end early: a short
+    // countdown once playback has really finished.
     LaunchedEffect(playbackEnded, nextEpisode, upNextDismissed, settings.autoplayNextEpisode) {
         val next = nextEpisode
         if (!playbackEnded || upNextDismissed || next == null) return@LaunchedEffect
@@ -567,12 +610,64 @@ fun PlayerScreen(
             secondsLeft = 0
             return@LaunchedEffect
         }
-        secondsLeft = settings.nextEpisodeDelaySeconds.coerceIn(3, 60)
+        secondsLeft = (UP_NEXT_LEAD_MS / 1000L).toInt()
         while (secondsLeft > 0) {
             delay(1_000)
             secondsLeft -= 1
         }
         playEpisode(next)
+    }
+
+    // Frozen-picture guard. Some boxes stop drawing frames after a source switch
+    // while the sound (and so the clock) keeps going: no error is raised and the
+    // stall watchdog sees the position moving. Here we check that frames are
+    // actually reaching the screen and, if not, wake the video path up again.
+    LaunchedEffect(player, activeStreamUrl) {
+        var lastRendered = -1
+        var lastFrameAtPosition = -1L
+        var recoveries = 0
+        var lastRecoveryAtMs = 0L
+        while (true) {
+            delay(1_000)
+            val counters = player.videoDecoderCounters
+            val hasVideo = player.videoFormat != null && counters != null
+            if (!hasVideo || !player.isPlaying || player.playbackState != Player.STATE_READY) {
+                lastRendered = -1
+                continue
+            }
+            counters!!.ensureUpdated()
+            val rendered = counters.renderedOutputBufferCount
+            val position = player.currentPosition
+            if (rendered != lastRendered || lastRendered < 0) {
+                lastRendered = rendered
+                lastFrameAtPosition = position
+                continue
+            }
+            if (position - lastFrameAtPosition < FROZEN_VIDEO_TIMEOUT_MS) continue
+
+            val now = System.currentTimeMillis()
+            if (now - lastRecoveryAtMs > FROZEN_RECOVERY_WINDOW_MS) recoveries = 0
+            recoveries += 1
+            lastRecoveryAtMs = now
+            Log.w("NovaPlayer", "video frozen at ${position}ms, recovery #$recoveries")
+            if (recoveries == 1) {
+                // A seek to the same spot flushes the decoders: usually enough.
+                player.seekTo(position)
+            } else {
+                // Still stuck: hand the picture a fresh surface and reopen the
+                // stream at the same second.
+                playerViewRef?.let { view ->
+                    view.player = null
+                    view.player = player
+                }
+                player.stop()
+                player.setMediaItem(MediaItem.fromUri(activeStreamUrl))
+                player.prepare()
+                player.seekTo(position)
+                player.playWhenReady = true
+            }
+            lastRendered = -1
+        }
     }
 
     // Reopens the stream after the backoff delay and restores the position.
@@ -984,6 +1079,7 @@ fun PlayerScreen(
         AndroidView(
             factory = { viewContext ->
                 PlayerView(viewContext).apply {
+                    playerViewRef = this
                     this.player = player
                     useController = false
                     // The video surface must never hold the highlight, or the
@@ -1166,14 +1262,15 @@ fun PlayerScreen(
         }
 
         if (upNextVisible && nextEpisode != null && error == null) {
-            val total = settings.nextEpisodeDelaySeconds.coerceIn(3, 60).toFloat()
+            val total = (UP_NEXT_LEAD_MS / 1000L).toFloat()
+            val shownSeconds = if (playbackEnded) secondsLeft else nearEndSecondsLeft
             UpNextCard(
                 title = strings.upNextTitle,
                 episodeLabel = "S${nextEpisode.season}E${nextEpisode.number} · ${nextEpisode.title}",
                 countdownLabel = if (settings.autoplayNextEpisode) {
-                    strings.upNextCountdown.format(secondsLeft)
+                    strings.upNextCountdown.format(shownSeconds)
                 } else null,
-                progress = if (total > 0f) (secondsLeft / total).coerceIn(0f, 1f) else 0f,
+                progress = if (total > 0f) (shownSeconds / total).coerceIn(0f, 1f) else 0f,
                 playNowLabel = strings.upNextPlayNow,
                 cancelLabel = strings.cancel,
                 onPlayNow = { playEpisode(nextEpisode) },

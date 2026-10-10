@@ -774,8 +774,8 @@ fun SettingsScreen(
                             viewModel.settingsStore.update { it.copy(autoplayNextEpisode = value) }
                         },
                     )
-                    // How long the "up next" card stays on screen before the
-                    // following episode starts by itself.
+                    // How many seconds before the end the following episode
+                    // starts by itself, so the closing credits are skipped.
                     if (settings.autoplayNextEpisode) {
                         Spacer(Modifier.height(6.dp))
                         Text(

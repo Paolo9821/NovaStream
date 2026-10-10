@@ -4,6 +4,28 @@ Da 1.2.7 ogni versione ha anche un file dedicato nella cartella `changelogs`
 (`changelogs/1.2.7.md`, `changelogs/1.2.6.md`, …), scritto in tutte e otto le
 lingue dell'app. Questo file resta lo storico completo in ordine di rilascio.
 
+## 1.3.1
+
+Dettaglio completo in 8 lingue: `changelogs/1.3.1.md`.
+
+### Italiano
+
+- Player: risolta l'immagine bloccata (audio che continua) dopo il cambio episodio;
+  controllo dei fotogrammi con sblocco automatico, cambio frequenza schermo disattivato.
+- "Cambia episodio N secondi prima della fine": il nuovo episodio parte durante i
+  titoli di coda, con scheda e conto alla rovescia negli ultimi secondi.
+
+### English
+
+- Player: fixed the frozen picture (sound carrying on) after moving to the next episode;
+  frame check with automatic recovery, display refresh-rate switching turned off.
+- "Switch N seconds before the end": the next episode starts during the closing
+  credits, with a card and countdown in the last seconds.
+
+### Español / Français / Deutsch / Português / Română / Türkçe
+
+Vedi `changelogs/1.3.1.md`.
+
 ## 1.3.0
 
 Dettaglio completo in 8 lingue: `changelogs/1.3.0.md`.
