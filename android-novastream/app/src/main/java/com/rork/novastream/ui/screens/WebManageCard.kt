@@ -55,7 +55,8 @@ private const val KEY_LIFETIME_MS: Long = 5 * 60 * 1000L
 internal fun playlistManagerLink(storeUrl: String, identity: DeviceIdentity, key: String): String = buildString {
     val base = (if (storeUrl.startsWith("http")) storeUrl else "https://$storeUrl").trimEnd('/')
     append(base)
-    append("/playlist?device=")
+    // app=1: the page hides every link to the shop (Google Play payments policy).
+    append("/playlist?app=1&device=")
     append(Uri.encode(identity.macAddress))
     if (key.isNotBlank()) {
         append("&key=")

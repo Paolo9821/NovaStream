@@ -145,7 +145,6 @@ fun SettingsScreen(
     val accounts by viewModel.accounts.collectAsStateWithLifecycle()
     val license by viewModel.license.collectAsStateWithLifecycle()
     val accents = LocalNovaAccents.current
-    val storeUrl by viewModel.storeUrl.collectAsStateWithLifecycle()
     val isTvDevice = LocalIsTv.current
 
     /** What the PIN is being asked for, null while no dialog is up. */
@@ -352,7 +351,7 @@ fun SettingsScreen(
                         Spacer(Modifier.width(8.dp))
                         Text(
                             if (license.verifying) strings.licenseChecking
-                            else strings.alreadyPaidCheck,
+                            else strings.more.licenseCheckAction,
                         )
                     }
                 }
@@ -856,11 +855,15 @@ fun SettingsScreen(
                 }
             }
 
-            if (page == SettingsPage.LICENSE) item("buy") {
+            // Google Play payments policy: no purchase links, QR codes or prices in
+            // the app, only a neutral note on how a licence gets recognised.
+            if (page == SettingsPage.LICENSE) item("license-hint") {
                 if (license.status !is LicenseStatus.Licensed) {
-                    BuyLicenseCard(
-                        identity = license.identity,
-                        storeUrl = storeUrl,
+                    Text(
+                        text = strings.more.licenseGateHint,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 6.dp),
                     )
                 }
             }

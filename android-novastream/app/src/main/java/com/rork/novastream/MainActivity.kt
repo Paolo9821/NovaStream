@@ -59,7 +59,6 @@ class MainActivity : ComponentActivity() {
             val viewModel: AppViewModel = viewModel()
             val settings by viewModel.settings.collectAsStateWithLifecycle()
             val license by viewModel.license.collectAsStateWithLifecycle()
-            val storeUrl by viewModel.storeUrl.collectAsStateWithLifecycle()
             val webPlaylistEvent by viewModel.webPlaylistEvent.collectAsStateWithLifecycle()
             val startupChecking by viewModel.startupChecking.collectAsStateWithLifecycle()
             val darkTheme = when (settings.themeMode) {
@@ -159,8 +158,6 @@ class MainActivity : ComponentActivity() {
                             wasPaid = status.wasPaid,
                             verifying = license.verifying,
                             language = settings.language,
-                            storeUrl = storeUrl,
-                            isTv = isTv,
                             onRetry = { viewModel.syncLicense(force = true) },
                         )
 
@@ -171,8 +168,6 @@ class MainActivity : ComponentActivity() {
                             verifying = license.verifying,
                             lastVerifiedAtMs = license.lastVerifiedAtMs,
                             language = settings.language,
-                            storeUrl = storeUrl,
-                            isTv = isTv,
                             onRetry = { viewModel.syncLicense(force = true) },
                         )
 

@@ -83,9 +83,12 @@ internal fun licenseDate(epochMs: Long, language: Language): String =
     DateFormat.getDateInstance(DateFormat.LONG, Locale(language.code)).format(Date(epochMs))
 
 /**
- * Hard gate shown once the trial is over, or once a paid period lapsed, and the
- * licence server has no valid purchase for this device. Nothing behind it is
- * reachable: the only way through is buying online.
+ * Hard gate shown once the trial is over, or once a licence period lapsed, and the
+ * licence server has no valid licence for this device.
+ *
+ * Google Play payments policy: this screen must not lead to any payment method
+ * outside Google Play (no buy buttons, store links, QR codes to a shop, prices or
+ * "pay" wording). It only shows the Device ID and lets the server be asked again.
  */
 @Composable
 fun LicenseLockedScreen(
@@ -94,12 +97,9 @@ fun LicenseLockedScreen(
     wasPaid: Boolean,
     verifying: Boolean,
     language: Language,
-    storeUrl: String,
-    isTv: Boolean,
     onRetry: () -> Unit,
 ) {
     val strings = LocalStrings.current
-    val context = LocalContext.current
 
     GateScaffold(
         icon = { tint ->
@@ -113,31 +113,14 @@ fun LicenseLockedScreen(
         accent = MaterialTheme.colorScheme.error,
         title = if (wasPaid) strings.licensePaidExpiredTitle else strings.licenseExpiredTitle,
         body = if (wasPaid) {
-            strings.licensePaidExpiredBody.format(licenseDate(expiredAtMs, language))
+            strings.more.licenseEndedBody.format(licenseDate(expiredAtMs, language))
         } else {
             strings.licenseExpiredBody.format(licenseDate(expiredAtMs, language))
         },
         identity = identity,
-        footnote = strings.storeSteps,
-        // A TV has no browser worth typing in: the phone finishes the purchase.
-        qrLink = if (isTv) storeLink(storeUrl, identity.deviceId) else null,
+        footnote = strings.more.licenseGateHint,
     ) {
-        Button(
-            onClick = { openStore(context, storeUrl, identity.deviceId) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(54.dp),
-            shape = RoundedCornerShape(14.dp),
-        ) {
-            Icon(Icons.Rounded.OpenInNew, contentDescription = null, modifier = Modifier.size(20.dp))
-            Spacer(Modifier.width(10.dp))
-            Text(
-                text = if (wasPaid) strings.licenseRenewAction else strings.activateOnline,
-                fontWeight = FontWeight.SemiBold,
-            )
-        }
-        Spacer(Modifier.height(12.dp))
-        RecheckButton(verifying = verifying, onRetry = onRetry)
+        RecheckButton(verifying = verifying, onRetry = onRetry, primary = true)
     }
 }
 
@@ -153,13 +136,10 @@ fun LicenseBlockedScreen(
     verifying: Boolean,
     lastVerifiedAtMs: Long,
     language: Language,
-    storeUrl: String,
-    isTv: Boolean,
     onRetry: () -> Unit,
 ) {
     val strings = LocalStrings.current
     val accents = LocalNovaAccents.current
-    val context = LocalContext.current
 
     val accent: Color = when (reason) {
         BlockReason.REVOKED -> MaterialTheme.colorScheme.error
@@ -199,32 +179,8 @@ fun LicenseBlockedScreen(
         } else {
             strings.licenseNeverChecked
         },
-        // Only a revoked licence can be solved by buying again from the phone.
-        qrLink = if (isTv && reason == BlockReason.REVOKED) {
-            storeLink(storeUrl, identity.deviceId)
-        } else {
-            null
-        },
     ) {
         RecheckButton(verifying = verifying, onRetry = onRetry, primary = true)
-        if (reason == BlockReason.REVOKED) {
-            Spacer(Modifier.height(12.dp))
-            OutlinedButton(
-                onClick = { openStore(context, storeUrl, identity.deviceId) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(54.dp),
-                shape = RoundedCornerShape(14.dp),
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.OpenInNew,
-                    contentDescription = null,
-                    modifier = Modifier.size(20.dp),
-                )
-                Spacer(Modifier.width(10.dp))
-                Text(strings.activateOnline, fontWeight = FontWeight.SemiBold)
-            }
-        }
     }
 }
 
@@ -238,10 +194,8 @@ private fun GateScaffold(
     identity: DeviceIdentity,
     footnote: String,
     note: String = "",
-    qrLink: String? = null,
     actions: @Composable () -> Unit,
 ) {
-    val strings = LocalStrings.current
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background,
@@ -293,16 +247,6 @@ private fun GateScaffold(
 
             Spacer(Modifier.height(26.dp))
             DeviceIdentityCard(identity = identity)
-
-            if (qrLink != null) {
-                Spacer(Modifier.height(18.dp))
-                QrCodePanel(
-                    content = qrLink,
-                    title = strings.qrScanTitle,
-                    caption = strings.qrScanCaption,
-                    modifier = Modifier.widthIn(max = 320.dp),
-                )
-            }
 
             Spacer(Modifier.height(24.dp))
             actions()
@@ -368,7 +312,7 @@ fun LicenseCheckScreen(identity: DeviceIdentity) {
     }
 }
 
-/** "I already paid" action: asks the server again straight away. */
+/** "Check license" action: asks the server again straight away. */
 @Composable
 private fun RecheckButton(verifying: Boolean, onRetry: () -> Unit, primary: Boolean = false) {
     val strings = LocalStrings.current
@@ -389,7 +333,7 @@ private fun RecheckButton(verifying: Boolean, onRetry: () -> Unit, primary: Bool
         }
         Spacer(Modifier.width(10.dp))
         Text(
-            text = if (verifying) strings.licenseChecking else strings.alreadyPaidCheck,
+            text = if (verifying) strings.licenseChecking else strings.more.licenseCheckAction,
             fontWeight = FontWeight.SemiBold,
         )
     }
@@ -412,62 +356,6 @@ private fun RecheckButton(verifying: Boolean, onRetry: () -> Unit, primary: Bool
                 .height(54.dp),
             shape = RoundedCornerShape(14.dp),
         ) { content() }
-    }
-}
-
-/**
- * Purchase entry point shown in Settings while no purchase covers this device.
- *
- * The button opens the storefront on a phone and shows a scannable QR code on a
- * television, where forcing a link onto a box without a browser leads nowhere.
- */
-@Composable
-fun BuyLicenseCard(
-    identity: DeviceIdentity,
-    storeUrl: String,
-    modifier: Modifier = Modifier,
-) {
-    val strings = LocalStrings.current
-    val isTv = LocalIsTv.current
-
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surface,
-    ) {
-        Column(Modifier.padding(18.dp)) {
-            Text(
-                text = strings.buyLicenseWhere,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                text = if (isTv) strings.storeStepsTv else strings.storeSteps,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(Modifier.height(14.dp))
-            StorePurchase(storeUrl = storeUrl, deviceId = identity.deviceId) { onBuy ->
-                Button(
-                    onClick = onBuy,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .tvFocusFrame(cornerRadius = 20.dp),
-                ) {
-                    Icon(
-                        imageVector = if (isTv) Icons.Rounded.QrCode2 else Icons.Rounded.OpenInNew,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp),
-                    )
-                    Spacer(Modifier.width(10.dp))
-                    Text(
-                        text = if (isTv) strings.showPurchaseQr else strings.activateOnline,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                }
-            }
-        }
     }
 }
 
@@ -542,12 +430,14 @@ fun DeviceIdentityCard(
     }
 }
 
-/** Amber trial strip shown at the top of Home while the free window is running. */
+/**
+ * Amber trial strip shown at the top of Home while the free window is running.
+ * Informational only: no purchase action (Google Play payments policy).
+ */
 @Composable
 fun TrialBanner(
     trial: LicenseStatus.Trial,
     language: Language,
-    onActivate: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val strings = LocalStrings.current
@@ -611,13 +501,6 @@ fun TrialBanner(
                         gapSize = 0.dp,
                         drawStopIndicator = {},
                     )
-                }
-                Spacer(Modifier.width(8.dp))
-                TextButton(
-                    onClick = onActivate,
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                ) {
-                    Text(strings.trialActivateAction, fontWeight = FontWeight.SemiBold)
                 }
             }
         }

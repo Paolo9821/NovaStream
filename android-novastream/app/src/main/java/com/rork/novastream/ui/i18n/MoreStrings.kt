@@ -32,6 +32,9 @@ data class MoreStrings(
     val dnsAppliesNote: String = "Used for playlists, TV guide, covers and video. If your operator blocks the server through its DNS, the app switches by itself to encrypted DNS (DNS-over-HTTPS).",
     val dnsBlockedNotice: String = "Your operator's DNS does not find this server: the app reaches it through encrypted DNS.",
     val dnsStillBlockedHint: String = "If it still cannot connect, the operator may also block the server's address: try another network (for example the phone hotspot).",
+    val licenseCheckAction: String = "Check license",
+    val licenseGateHint: String = "To continue, link an active license to this Device ID, then tap Check license.",
+    val licenseEndedBody: String = "The license for this device ended on %s.",
 )
 
 internal val MoreItalian = MoreStrings(
@@ -61,6 +64,9 @@ internal val MoreItalian = MoreStrings(
     dnsAppliesNote = "Vale per playlist, guida TV, copertine e video. Se l'operatore blocca il server tramite il suo DNS, l'app passa da sola al DNS cifrato (DNS-over-HTTPS).",
     dnsBlockedNotice = "Il DNS del tuo operatore non trova questo server: l'app lo raggiunge con il DNS cifrato.",
     dnsStillBlockedHint = "Se ancora non si collega, l'operatore potrebbe bloccare anche l'indirizzo del server: prova un'altra rete (per esempio l'hotspot del telefono).",
+    licenseCheckAction = "Verifica licenza",
+    licenseGateHint = "Per continuare, associa una licenza attiva a questo ID dispositivo, poi premi Verifica licenza.",
+    licenseEndedBody = "La licenza di questo dispositivo è scaduta il %s.",
 )
 
 internal val MoreSpanish = MoreStrings(
@@ -90,6 +96,9 @@ internal val MoreSpanish = MoreStrings(
     dnsAppliesNote = "Se usa para listas, guía TV, carátulas y vídeo. Si tu operador bloquea el servidor mediante su DNS, la app cambia sola al DNS cifrado (DNS-over-HTTPS).",
     dnsBlockedNotice = "El DNS de tu operador no encuentra este servidor: la app lo alcanza con DNS cifrado.",
     dnsStillBlockedHint = "Si sigue sin conectar, el operador puede bloquear también la dirección del servidor: prueba otra red (por ejemplo el hotspot del móvil).",
+    licenseCheckAction = "Verificar licencia",
+    licenseGateHint = "Para continuar, asocia una licencia activa a este ID de dispositivo y pulsa Verificar licencia.",
+    licenseEndedBody = "La licencia de este dispositivo terminó el %s.",
 )
 
 internal val MoreFrench = MoreStrings(
@@ -119,6 +128,9 @@ internal val MoreFrench = MoreStrings(
     dnsAppliesNote = "Utilisé pour les playlists, le guide TV, les affiches et la vidéo. Si votre opérateur bloque le serveur via son DNS, l'app passe d'elle-même au DNS chiffré (DNS-over-HTTPS).",
     dnsBlockedNotice = "Le DNS de votre opérateur ne trouve pas ce serveur : l'app le joint via le DNS chiffré.",
     dnsStillBlockedHint = "Si la connexion échoue encore, l'opérateur bloque peut-être aussi l'adresse du serveur : essayez un autre réseau (par exemple le partage de connexion du téléphone).",
+    licenseCheckAction = "Vérifier la licence",
+    licenseGateHint = "Pour continuer, associez une licence active à cet ID d'appareil, puis appuyez sur Vérifier la licence.",
+    licenseEndedBody = "La licence de cet appareil a pris fin le %s.",
 )
 
 internal val MoreGerman = MoreStrings(
@@ -148,6 +160,9 @@ internal val MoreGerman = MoreStrings(
     dnsAppliesNote = "Gilt für Playlists, Programmführer, Cover und Video. Sperrt dein Internetanbieter den Server über sein DNS, wechselt die App selbst zu verschlüsseltem DNS (DNS-over-HTTPS).",
     dnsBlockedNotice = "Das DNS deines Anbieters findet diesen Server nicht: Die App erreicht ihn über verschlüsseltes DNS.",
     dnsStillBlockedHint = "Klappt es weiterhin nicht, sperrt der Anbieter eventuell auch die Server-Adresse: Probiere ein anderes Netz (z. B. den Hotspot des Handys).",
+    licenseCheckAction = "Lizenz prüfen",
+    licenseGateHint = "Um fortzufahren, verknüpfe eine aktive Lizenz mit dieser Geräte-ID und tippe dann auf Lizenz prüfen.",
+    licenseEndedBody = "Die Lizenz dieses Geräts ist am %s abgelaufen.",
 )
 
 internal val MorePortuguese = MoreStrings(
@@ -177,6 +192,9 @@ internal val MorePortuguese = MoreStrings(
     dnsAppliesNote = "Usado para listas, guia TV, capas e vídeo. Se o operador bloquear o servidor através do seu DNS, a app muda sozinha para DNS cifrado (DNS-over-HTTPS).",
     dnsBlockedNotice = "O DNS do seu operador não encontra este servidor: a app chega a ele com DNS cifrado.",
     dnsStillBlockedHint = "Se ainda não ligar, o operador pode bloquear também o endereço do servidor: experimente outra rede (por exemplo o hotspot do telemóvel).",
+    licenseCheckAction = "Verificar licença",
+    licenseGateHint = "Para continuar, associe uma licença ativa a este ID do dispositivo e toque em Verificar licença.",
+    licenseEndedBody = "A licença deste dispositivo terminou em %s.",
 )
 
 internal val MoreRomanian = MoreStrings(
@@ -206,6 +224,9 @@ internal val MoreRomanian = MoreStrings(
     dnsAppliesNote = "Folosit pentru playlisturi, ghid TV, coperți și video. Dacă operatorul blochează serverul prin DNS-ul său, aplicația trece singură la DNS criptat (DNS-over-HTTPS).",
     dnsBlockedNotice = "DNS-ul operatorului nu găsește acest server: aplicația îl accesează prin DNS criptat.",
     dnsStillBlockedHint = "Dacă tot nu se conectează, operatorul poate bloca și adresa serverului: încearcă altă rețea (de exemplu hotspotul telefonului).",
+    licenseCheckAction = "Verifică licența",
+    licenseGateHint = "Pentru a continua, asociază o licență activă acestui ID de dispozitiv, apoi apasă Verifică licența.",
+    licenseEndedBody = "Licența acestui dispozitiv a expirat pe %s.",
 )
 
 internal val MoreTurkish = MoreStrings(
@@ -235,4 +256,7 @@ internal val MoreTurkish = MoreStrings(
     dnsAppliesNote = "Listeler, TV rehberi, kapaklar ve video için kullanılır. Operatör sunucuyu kendi DNS'iyle engellerse uygulama kendiliğinden şifreli DNS'e (DNS-over-HTTPS) geçer.",
     dnsBlockedNotice = "Operatörünüzün DNS'i bu sunucuyu bulamıyor: uygulama sunucuya şifreli DNS ile ulaşıyor.",
     dnsStillBlockedHint = "Yine bağlanamazsa operatör sunucunun adresini de engelliyor olabilir: başka bir ağ deneyin (örneğin telefonun erişim noktası).",
+    licenseCheckAction = "Lisansı doğrula",
+    licenseGateHint = "Devam etmek için bu cihaz kimliğine etkin bir lisans bağlayın, ardından Lisansı doğrula'ya dokunun.",
+    licenseEndedBody = "Bu cihazın lisansı %s tarihinde sona erdi.",
 )

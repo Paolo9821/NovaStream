@@ -4,6 +4,26 @@ Da 1.2.7 ogni versione ha anche un file dedicato nella cartella `changelogs`
 (`changelogs/1.2.7.md`, `changelogs/1.2.6.md`, …), scritto in tutte e otto le
 lingue dell'app. Questo file resta lo storico completo in ordine di rilascio.
 
+## 1.3.2
+
+Dettaglio completo in 8 lingue: `changelogs/1.3.2.md`.
+
+### Italiano
+
+- Conformità Google Play (norme sui pagamenti): rimossi pulsanti, link e QR verso la
+  pagina di acquisto e le frasi su pagamenti/rinnovi; la schermata di licenza scaduta
+  mostra solo ID dispositivo e "Verifica licenza"; barra della prova solo informativa.
+
+### English
+
+- Google Play compliance (Payments policy): removed buttons, links and QR codes to the
+  purchase page and wording about payments/renewals; the expired-licence screen only
+  shows the Device ID and "Check license"; the trial strip is informational only.
+
+### Español / Français / Deutsch / Português / Română / Türkçe
+
+Vedi `changelogs/1.3.2.md`.
+
 ## 1.3.1
 
 Dettaglio completo in 8 lingue: `changelogs/1.3.1.md`.

@@ -50,6 +50,7 @@ import {
   type DevicePlaylist,
   type NewPlaylist,
 } from "@/lib/api";
+import { useFromApp } from "@/hooks/use-from-app";
 import { useI18n } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
@@ -90,6 +91,8 @@ function initialSession(): Start {
 
 export default function Playlists() {
   const { t } = useI18n();
+  // Opened from the Android app: no way back to the shop (Google Play policy).
+  const fromApp = useFromApp();
   const [start] = useState(initialSession);
   const [identifier, setIdentifier] = useState<string>(start.identifier);
   const [key, setKey] = useState<string>(start.key);
@@ -158,23 +161,34 @@ export default function Playlists() {
       <div className="pointer-events-none absolute inset-0 grid-veil" aria-hidden />
 
       <header className="relative mx-auto flex max-w-3xl items-center justify-between gap-3 px-5 py-6">
-        <Link to="/" className="flex items-center gap-2.5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/15 text-primary">
-            <Zap className="h-4.5 w-4.5" strokeWidth={2.5} />
+        {fromApp ? (
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/15 text-primary">
+              <Zap className="h-4.5 w-4.5" strokeWidth={2.5} />
+            </div>
+            <span className="text-lg font-bold tracking-tight">NovaStream</span>
           </div>
-          <span className="text-lg font-bold tracking-tight">NovaStream</span>
-        </Link>
+        ) : (
+          <Link to="/" className="flex items-center gap-2.5">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/15 text-primary">
+              <Zap className="h-4.5 w-4.5" strokeWidth={2.5} />
+            </div>
+            <span className="text-lg font-bold tracking-tight">NovaStream</span>
+          </Link>
+        )}
         <LanguagePicker />
       </header>
 
       <main className="relative mx-auto max-w-3xl px-5 pb-24">
-        <Link
-          to="/"
-          className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition hover:text-foreground"
-        >
-          <ArrowLeft className="h-3.5 w-3.5" />
-          {t("common.back")}
-        </Link>
+        {!fromApp && (
+          <Link
+            to="/"
+            className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition hover:text-foreground"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            {t("common.back")}
+          </Link>
+        )}
 
         <div className="animate-rise mt-6 flex items-start gap-3.5">
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary/12 text-primary glow-ring">

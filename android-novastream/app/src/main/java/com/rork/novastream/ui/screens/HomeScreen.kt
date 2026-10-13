@@ -96,7 +96,6 @@ fun HomeScreen(
     val unlocked by viewModel.parentalUnlocked.collectAsStateWithLifecycle()
     val favorites by viewModel.favorites.collectAsStateWithLifecycle()
     val license by viewModel.license.collectAsStateWithLifecycle()
-    val storeUrl by viewModel.storeUrl.collectAsStateWithLifecycle()
     val restoring by viewModel.catalogRestoring.collectAsStateWithLifecycle()
     val recovering by viewModel.catalogRecovering.collectAsStateWithLifecycle()
     val providerInfo by viewModel.providerInfo.collectAsStateWithLifecycle()
@@ -139,17 +138,10 @@ fun HomeScreen(
 
         (license.status as? LicenseStatus.Trial)?.let { trial ->
             item("trial") {
-                // Same rule as Settings: a link on a phone, a QR code on a TV.
-                StorePurchase(
-                    storeUrl = storeUrl,
-                    deviceId = license.identity.deviceId,
-                ) { onBuy ->
-                    TrialBanner(
-                        trial = trial,
-                        language = settings.language,
-                        onActivate = onBuy,
-                    )
-                }
+                TrialBanner(
+                    trial = trial,
+                    language = settings.language,
+                )
             }
         }
 
