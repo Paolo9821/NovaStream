@@ -29,9 +29,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.CloudOff
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Lock
-import androidx.compose.material.icons.rounded.OpenInNew
 import androidx.compose.material.icons.rounded.PauseCircle
-import androidx.compose.material.icons.rounded.QrCode2
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Timer
 import androidx.compose.material3.Button
@@ -56,7 +54,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
@@ -68,8 +65,6 @@ import com.rork.novastream.data.local.DeviceIdentity
 import com.rork.novastream.data.local.LicenseStatus
 import com.rork.novastream.data.local.ONLINE_GRACE_DAYS
 import com.rork.novastream.ui.components.BrandMark
-import com.rork.novastream.ui.components.LocalIsTv
-import com.rork.novastream.ui.components.QrCodePanel
 import com.rork.novastream.ui.components.tvFocusFrame
 import com.rork.novastream.ui.i18n.Language
 import com.rork.novastream.ui.i18n.LocalStrings
@@ -174,7 +169,10 @@ fun LicenseBlockedScreen(
         },
         note = note,
         identity = identity,
-        footnote = if (lastVerifiedAtMs > 0L) {
+        // A revoked licence is solved like an expired one: from the website.
+        footnote = if (reason == BlockReason.REVOKED) {
+            strings.more.licenseGateHint
+        } else if (lastVerifiedAtMs > 0L) {
             strings.licenseLastCheck.format(licenseDate(lastVerifiedAtMs, language))
         } else {
             strings.licenseNeverChecked
