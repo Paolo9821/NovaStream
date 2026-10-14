@@ -55,6 +55,23 @@ const PLAN_KEYS: Record<PlanId, { title: TranslationKey; blurb: TranslationKey; 
   },
 };
 
+/** Play Store listing URL; override with VITE_PLAY_STORE_URL once the listing is live. */
+const PLAY_STORE_URL: string =
+  import.meta.env.VITE_PLAY_STORE_URL ??
+  "https://play.google.com/store/apps/details?id=com.rork.novastream";
+
+/** Official "Get it on Google Play" badge, localized per site language. */
+const PLAY_BADGE_BY_LANG: Record<string, string> = {
+  it: "/badges/it.png",
+  en: "/badges/en.png",
+  es: "/badges/es.png",
+  fr: "/badges/fr.png",
+  de: "/badges/de.png",
+  pt: "/badges/pt.png",
+  ro: "/badges/ro.png",
+  tr: "/badges/tr.png",
+};
+
 /** Reads the device id Stripe/the app may have put in the URL. */
 function initialDeviceId(): string {
   const params = new URLSearchParams(window.location.search);
@@ -197,6 +214,7 @@ export default function Index() {
           <p className="mx-auto mt-5 max-w-xl text-balance text-base leading-relaxed text-muted-foreground">
             {t("hero.sub")}
           </p>
+          <PlayStoreBadge lang={lang} className="mt-8" />
         </section>
 
         <section className="mt-14 grid gap-5 lg:grid-cols-[1.05fr_0.95fr]">
@@ -371,6 +389,32 @@ export default function Index() {
   );
 }
 
+/** Official Google Play download badge for the Android app. */
+export function PlayStoreBadge({ lang, className }: { lang: string; className?: string }) {
+  const src = PLAY_BADGE_BY_LANG[lang] ?? "/badges/en.png";
+  return (
+    <a
+      href={PLAY_STORE_URL}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label="Google Play"
+      className={cn(
+        "inline-block transition duration-300 hover:-translate-y-0.5 hover:drop-shadow-[0_8px_20px_rgba(0,0,0,0.45)] active:translate-y-0",
+        className,
+      )}
+    >
+      <img
+        src={src}
+        alt="Google Play"
+        width={172}
+        height={67}
+        loading="lazy"
+        className="h-16 w-auto sm:h-[4.5rem]"
+      />
+    </a>
+  );
+}
+
 /** Points customers at the website playlist manager. */
 function PlaylistBanner() {
   const { t } = useI18n();
@@ -440,10 +484,11 @@ function HelpBanner() {
 }
 
 function SiteFooter() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   return (
     <footer className="relative border-t border-border/60 py-8">
       <div className="mx-auto flex max-w-5xl flex-col items-center gap-4 px-5 text-xs text-muted-foreground sm:flex-row sm:justify-between">
+        <PlayStoreBadge lang={lang} className="h-11" />
         <span>{t("footer")}</span>
         <nav className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
           <Link to="/termini" className="transition hover:text-foreground">
