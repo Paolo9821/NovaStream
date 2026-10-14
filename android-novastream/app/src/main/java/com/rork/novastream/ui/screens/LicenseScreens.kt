@@ -114,6 +114,7 @@ fun LicenseLockedScreen(
         },
         identity = identity,
         footnote = strings.more.licenseGateHint,
+        showHubAddress = true,
     ) {
         RecheckButton(verifying = verifying, onRetry = onRetry, primary = true)
     }
@@ -177,6 +178,7 @@ fun LicenseBlockedScreen(
         } else {
             strings.licenseNeverChecked
         },
+        showHubAddress = reason == BlockReason.REVOKED,
     ) {
         RecheckButton(verifying = verifying, onRetry = onRetry, primary = true)
     }
@@ -192,6 +194,7 @@ private fun GateScaffold(
     identity: DeviceIdentity,
     footnote: String,
     note: String = "",
+    showHubAddress: Boolean = false,
     actions: @Composable () -> Unit,
 ) {
     Surface(
@@ -257,6 +260,10 @@ private fun GateScaffold(
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(horizontal = 8.dp),
             )
+            if (showHubAddress) {
+                Spacer(Modifier.height(10.dp))
+                DeviceHubAddress()
+            }
             Spacer(Modifier.height(12.dp))
         }
     }

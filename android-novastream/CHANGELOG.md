@@ -12,7 +12,8 @@ Dettaglio completo in 8 lingue: `changelogs/1.3.2.md`.
 
 - Conformità Google Play (norme sui pagamenti): rimossi pulsanti, link e QR verso la
   pagina di acquisto e le frasi su pagamenti/rinnovi; la schermata di licenza scaduta
-  mostra solo ID dispositivo e "Verifica licenza"; la schermata di licenza scaduta indica di gestire la licenza dal sito di NovaStream
+  mostra solo ID dispositivo e "Verifica licenza"; la schermata di licenza scaduta indica come testo l'indirizzo novastream.rork.app/dispositivo (nuova pagina del sito con
+  stato licenza, playlist e assistenza, senza prezzi)
   (solo testo informativo, senza link); barra della prova solo informativa.
 
 ### English

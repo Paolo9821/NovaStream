@@ -859,12 +859,15 @@ fun SettingsScreen(
             // the app, only a neutral note on how a licence gets recognised.
             if (page == SettingsPage.LICENSE) item("license-hint") {
                 if (license.status !is LicenseStatus.Licensed) {
-                    Text(
-                        text = strings.more.licenseGateHint,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 6.dp),
-                    )
+                    Column(modifier = Modifier.padding(horizontal = 6.dp)) {
+                        Text(
+                            text = strings.more.licenseGateHint,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        DeviceHubAddress()
+                    }
                 }
             }
 

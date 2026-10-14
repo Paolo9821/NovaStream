@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { LanguageProvider } from "@/lib/i18n";
 
 import Dashboard from "./pages/Dashboard";
+import Device from "./pages/Device";
 import Index from "./pages/Index";
 import { PrivacyPage, TermsPage } from "./pages/Legal";
 import NotFound from "./pages/NotFound";
@@ -32,6 +33,8 @@ const App = () => (
             <Route path="/privacy" element={<PrivacyPage />} />
             <Route path="/playlist" element={<Playlists />} />
             <Route path="/playlists" element={<Playlists />} />
+            <Route path="/dispositivo" element={<Device />} />
+            <Route path="/device" element={<Device />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

@@ -33,7 +33,7 @@ data class MoreStrings(
     val dnsBlockedNotice: String = "Your operator's DNS does not find this server: the app reaches it through encrypted DNS.",
     val dnsStillBlockedHint: String = "If it still cannot connect, the operator may also block the server's address: try another network (for example the phone hotspot).",
     val licenseCheckAction: String = "Check license",
-    val licenseGateHint: String = "To continue, manage this device's licence from the NovaStream website, then tap Check licence.",
+    val licenseGateHint: String = "To manage this device's licence, open this address on a computer or phone and enter the Device ID. Then tap Check licence.",
     val licenseEndedBody: String = "The license for this device ended on %s.",
 )
 
@@ -65,7 +65,7 @@ internal val MoreItalian = MoreStrings(
     dnsBlockedNotice = "Il DNS del tuo operatore non trova questo server: l'app lo raggiunge con il DNS cifrato.",
     dnsStillBlockedHint = "Se ancora non si collega, l'operatore potrebbe bloccare anche l'indirizzo del server: prova un'altra rete (per esempio l'hotspot del telefono).",
     licenseCheckAction = "Verifica licenza",
-    licenseGateHint = "Per continuare, gestisci la licenza di questo dispositivo dal sito di NovaStream, poi premi Verifica licenza.",
+    licenseGateHint = "Per gestire la licenza di questo dispositivo, apri questo indirizzo dal computer o dal telefono e inserisci l'ID dispositivo. Poi premi Verifica licenza.",
     licenseEndedBody = "La licenza di questo dispositivo è scaduta il %s.",
 )
 
@@ -97,7 +97,7 @@ internal val MoreSpanish = MoreStrings(
     dnsBlockedNotice = "El DNS de tu operador no encuentra este servidor: la app lo alcanza con DNS cifrado.",
     dnsStillBlockedHint = "Si sigue sin conectar, el operador puede bloquear también la dirección del servidor: prueba otra red (por ejemplo el hotspot del móvil).",
     licenseCheckAction = "Verificar licencia",
-    licenseGateHint = "Para continuar, gestiona la licencia de este dispositivo desde la web de NovaStream y pulsa Verificar licencia.",
+    licenseGateHint = "Para gestionar la licencia de este dispositivo, abre esta dirección en un ordenador o móvil e introduce el ID del dispositivo. Luego pulsa Verificar licencia.",
     licenseEndedBody = "La licencia de este dispositivo terminó el %s.",
 )
 
@@ -129,7 +129,7 @@ internal val MoreFrench = MoreStrings(
     dnsBlockedNotice = "Le DNS de votre opérateur ne trouve pas ce serveur : l'app le joint via le DNS chiffré.",
     dnsStillBlockedHint = "Si la connexion échoue encore, l'opérateur bloque peut-être aussi l'adresse du serveur : essayez un autre réseau (par exemple le partage de connexion du téléphone).",
     licenseCheckAction = "Vérifier la licence",
-    licenseGateHint = "Pour continuer, gérez la licence de cet appareil depuis le site de NovaStream, puis appuyez sur Vérifier la licence.",
+    licenseGateHint = "Pour gérer la licence de cet appareil, ouvrez cette adresse sur un ordinateur ou un téléphone et saisissez l'ID de l'appareil. Puis appuyez sur Vérifier la licence.",
     licenseEndedBody = "La licence de cet appareil a pris fin le %s.",
 )
 
@@ -161,7 +161,7 @@ internal val MoreGerman = MoreStrings(
     dnsBlockedNotice = "Das DNS deines Anbieters findet diesen Server nicht: Die App erreicht ihn über verschlüsseltes DNS.",
     dnsStillBlockedHint = "Klappt es weiterhin nicht, sperrt der Anbieter eventuell auch die Server-Adresse: Probiere ein anderes Netz (z. B. den Hotspot des Handys).",
     licenseCheckAction = "Lizenz prüfen",
-    licenseGateHint = "Um fortzufahren, verwalte die Lizenz dieses Geräts auf der NovaStream-Website und tippe dann auf Lizenz prüfen.",
+    licenseGateHint = "Um die Lizenz dieses Geräts zu verwalten, öffne diese Adresse am Computer oder Handy und gib die Geräte-ID ein. Tippe dann auf Lizenz prüfen.",
     licenseEndedBody = "Die Lizenz dieses Geräts ist am %s abgelaufen.",
 )
 
@@ -193,7 +193,7 @@ internal val MorePortuguese = MoreStrings(
     dnsBlockedNotice = "O DNS do seu operador não encontra este servidor: a app chega a ele com DNS cifrado.",
     dnsStillBlockedHint = "Se ainda não ligar, o operador pode bloquear também o endereço do servidor: experimente outra rede (por exemplo o hotspot do telemóvel).",
     licenseCheckAction = "Verificar licença",
-    licenseGateHint = "Para continuar, gere a licença deste dispositivo no site da NovaStream e toque em Verificar licença.",
+    licenseGateHint = "Para gerir a licença deste dispositivo, abra este endereço num computador ou telemóvel e introduza o ID do dispositivo. Depois toque em Verificar licença.",
     licenseEndedBody = "A licença deste dispositivo terminou em %s.",
 )
 
@@ -225,7 +225,7 @@ internal val MoreRomanian = MoreStrings(
     dnsBlockedNotice = "DNS-ul operatorului nu găsește acest server: aplicația îl accesează prin DNS criptat.",
     dnsStillBlockedHint = "Dacă tot nu se conectează, operatorul poate bloca și adresa serverului: încearcă altă rețea (de exemplu hotspotul telefonului).",
     licenseCheckAction = "Verifică licența",
-    licenseGateHint = "Pentru a continua, gestionează licența acestui dispozitiv de pe site-ul NovaStream, apoi apasă Verifică licența.",
+    licenseGateHint = "Pentru a gestiona licența acestui dispozitiv, deschide această adresă de pe calculator sau telefon și introdu ID-ul dispozitivului. Apoi apasă Verifică licența.",
     licenseEndedBody = "Licența acestui dispozitiv a expirat pe %s.",
 )
 
@@ -257,6 +257,6 @@ internal val MoreTurkish = MoreStrings(
     dnsBlockedNotice = "Operatörünüzün DNS'i bu sunucuyu bulamıyor: uygulama sunucuya şifreli DNS ile ulaşıyor.",
     dnsStillBlockedHint = "Yine bağlanamazsa operatör sunucunun adresini de engelliyor olabilir: başka bir ağ deneyin (örneğin telefonun erişim noktası).",
     licenseCheckAction = "Lisansı doğrula",
-    licenseGateHint = "Devam etmek için bu cihazın lisansını NovaStream web sitesinden yönetin, ardından Lisansı doğrula'ya dokunun.",
+    licenseGateHint = "Bu cihazın lisansını yönetmek için bu adresi bilgisayardan veya telefondan açın ve cihaz kimliğini girin. Ardından Lisansı doğrula'ya dokunun.",
     licenseEndedBody = "Bu cihazın lisansı %s tarihinde sona erdi.",
 )
