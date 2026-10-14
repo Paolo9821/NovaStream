@@ -32,7 +32,7 @@ const val LICENSE_BACKEND_URL: String =
     "https://crea-un-applicazione-di-iptv-che-accetta-backend.rork.app"
 
 /** Fallback storefront, used until the server reports its own address. */
-const val DEFAULT_STORE_URL: String = "https://novastream.rork.app"
+const val DEFAULT_STORE_URL: String = "https://novastreamapp.com"
 
 /** What the registry says about this device right now. */
 enum class RemoteStatus {

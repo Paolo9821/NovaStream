@@ -16,7 +16,7 @@ import androidx.compose.ui.unit.dp
  * prices or checkout on it. Shown as plain, non-clickable text only, so the app
  * never links users to a payment page (Google Play payments policy).
  */
-internal const val DEVICE_HUB_ADDRESS = "novastream.rork.app/dispositivo"
+internal const val DEVICE_HUB_ADDRESS = "novastreamapp.com/dispositivo"
 
 @Composable
 internal fun DeviceHubAddress(modifier: Modifier = Modifier) {

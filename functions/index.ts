@@ -49,7 +49,7 @@ const PLAYLIST_SEAL_KEY = "playlist_seal_key";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 /** Where the app sends customers to buy. Overridable without an app update. */
-const DEFAULT_STORE_URL = "https://novastream.rork.app";
+const DEFAULT_STORE_URL = "https://novastreamapp.com";
 
 const CORS: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
