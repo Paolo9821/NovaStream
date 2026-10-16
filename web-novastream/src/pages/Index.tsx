@@ -6,7 +6,10 @@ import {
   BadgeCheck,
   Check,
   CreditCard,
+  Gift,
   Infinity as InfinityIcon,
+  TicketPercent,
+  X,
   LifeBuoy,
   ListVideo,
   Loader2,
@@ -25,6 +28,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  ApiError,
+  checkPromo,
   confirmCheckout,
   fetchConfig,
   fetchDeviceStatus,
@@ -32,11 +37,14 @@ import {
   formatMac,
   isValidDeviceId,
   normalizeDeviceId,
+  redeemPromo,
   startCheckout,
   type CheckoutResult,
   type DeviceStatus,
   type PlanId,
   type PlanInfo,
+  type PromoQuote,
+  type Term,
 } from "@/lib/api";
 import { useI18n, type TranslationKey } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -78,6 +86,60 @@ function initialDeviceId(): string {
   return params.get("device") ?? params.get("deviceId") ?? "";
 }
 
+/** A gift link can carry its code: novastreamapp.com/?code=NOVA-ABCD-1234 */
+function initialCode(): string {
+  return new URLSearchParams(window.location.search).get("code")?.trim() ?? "";
+}
+
+type Translate = ReturnType<typeof useI18n>["t"];
+
+const euros = (cents: number): string => `€ ${(cents / 100).toFixed(2).replace(".", ",")}`;
+
+/** "3 mesi", "licenza a vita"… for a duration object. */
+function termText(t: Translate, term: Term | null): string {
+  if (!term) return t("plan.annual.title");
+  switch (term.kind) {
+    case "lifetime":
+      return t("promo.term.lifetime");
+    case "months":
+      return term.months === 1 ? t("promo.term.month") : t("promo.term.months", { n: String(term.months) });
+    case "days":
+      return term.days === 1 ? t("promo.term.day") : t("promo.term.days", { n: String(term.days) });
+    case "date":
+      return t("promo.term.date");
+  }
+}
+
+/** Same, for the short code the server keeps on a licence ("3m", "30d", "lifetime"). */
+function termCodeText(t: Translate, code: string): string {
+  if (code === "lifetime") return termText(t, { kind: "lifetime" });
+  if (code === "date") return termText(t, { kind: "date", expiresAt: 0 });
+  const months = /^(\d+)m$/.exec(code);
+  if (months) return termText(t, { kind: "months", months: Number(months[1]) });
+  const days = /^(\d+)d$/.exec(code);
+  if (days) return termText(t, { kind: "days", days: Number(days[1]) });
+  return code;
+}
+
+/** Turns the server's reason into a sentence in the visitor's language. */
+function promoErrorText(t: Translate, error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  const map: Record<string, TranslationKey> = {
+    "code not found": "promo.err.notFound",
+    "code required": "promo.err.notFound",
+    "code expired": "promo.err.expired",
+    "code used up": "promo.err.usedUp",
+    "code disabled": "promo.err.disabled",
+    "code not valid for this plan": "promo.err.plan",
+    "too many attempts": "promo.err.tooMany",
+    "already lifetime": "promo.err.lifetime",
+    "already redeemed": "promo.err.already",
+    "invalid device id": "promo.err.device",
+  };
+  if (error instanceof ApiError && error.status === 429) return t("promo.err.tooMany");
+  return t(map[message] ?? "promo.err.generic");
+}
+
 export default function Index() {
   const { t, lang } = useI18n();
   const [deviceId, setDeviceId] = useState<string>(initialDeviceId);
@@ -92,6 +154,80 @@ export default function Index() {
   const [returning, setReturning] = useState<boolean>(() =>
     new URLSearchParams(window.location.search).has("session_id"),
   );
+  const [promoOpen, setPromoOpen] = useState<boolean>(() => initialCode().length > 0);
+  const [promoInput, setPromoInput] = useState<string>(initialCode);
+  const [promo, setPromo] = useState<PromoQuote | null>(null);
+  const [promoError, setPromoError] = useState<string>("");
+  const [promoBusy, setPromoBusy] = useState<boolean>(false);
+  const [redeeming, setRedeeming] = useState<boolean>(false);
+  const [redeemedTerm, setRedeemedTerm] = useState<string>("");
+
+  /** Free when it is a gift code or a 100% discount: no card, no Stripe. */
+  const isFree = promo !== null && promo.finalCents === 0;
+  const isGift = promo?.kind === "gift";
+
+  const applyPromo = useCallback(
+    async (raw: string, planId: PlanId): Promise<void> => {
+      const code = raw.trim();
+      if (!code) return;
+      setPromoBusy(true);
+      setPromoError("");
+      try {
+        const quote = await checkPromo(code, planId);
+        setPromo(quote);
+        if (quote.kind === "gift") setPlan(quote.plan);
+      } catch (err) {
+        setPromo(null);
+        setPromoError(promoErrorText(t, err));
+      } finally {
+        setPromoBusy(false);
+      }
+    },
+    [t],
+  );
+
+  const clearPromo = useCallback((): void => {
+    setPromo(null);
+    setPromoInput("");
+    setPromoError("");
+  }, []);
+
+  // A discount depends on the plan: work it out again when the buyer switches.
+  useEffect(() => {
+    if (promo && promo.kind !== "gift" && promo.plan !== plan) void applyPromo(promo.code, plan);
+  }, [plan, promo, applyPromo]);
+
+  // Gift links arrive with ?code=…: apply it straight away.
+  useEffect(() => {
+    const code = initialCode();
+    if (code) void applyPromo(code, "annual");
+    // Runs once on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleRedeem = useCallback(async (): Promise<void> => {
+    if (!promo) return;
+    setError("");
+    setRedeeming(true);
+    try {
+      const result = await redeemPromo(promo.code, plan, normalizeDeviceId(deviceId), email.trim());
+      if (!result.ok) {
+        setPromoError(promoErrorText(t, result.error));
+        return;
+      }
+      setRedeemedTerm(result.term ?? "");
+      setPurchase({
+        ok: true,
+        deviceId: result.deviceId,
+        plan: result.plan === "lifetime" ? "lifetime" : "annual",
+        expiresAt: result.expiresAt ?? null,
+      });
+    } catch (err) {
+      setPromoError(promoErrorText(t, err));
+    } finally {
+      setRedeeming(false);
+    }
+  }, [deviceId, email, plan, promo, t]);
 
   const config = useQuery({ queryKey: ["config"], queryFn: fetchConfig });
 
@@ -140,25 +276,48 @@ export default function Index() {
     setError("");
     setRedirecting(true);
     try {
-      const session = await startCheckout(plan, normalizeDeviceId(deviceId), email.trim(), {
-        accepted: true,
-        acceptedAt: consentAt ?? Date.now(),
-        lang,
-        text: t("consent.label"),
-      });
+      const session = await startCheckout(
+        plan,
+        normalizeDeviceId(deviceId),
+        email.trim(),
+        {
+          accepted: true,
+          acceptedAt: consentAt ?? Date.now(),
+          lang,
+          text: t("consent.label"),
+        },
+        promo?.code,
+      );
       window.location.assign(session.url);
     } catch (err) {
       setRedirecting(false);
+      if (promo && err instanceof Error && err.message.startsWith("code")) {
+        setPromo(null);
+        setPromoError(promoErrorText(t, err));
+        return;
+      }
       setError(err instanceof Error ? err.message : t("error.open"));
     }
-  }, [consentAt, consented, deviceId, email, lang, plan, t]);
+  }, [consentAt, consented, deviceId, email, lang, plan, promo, t]);
+
+  const finalCents = promo && !isGift ? promo.finalCents : (selectedPlan?.priceCents ?? 0);
 
   if (returning) {
     return <ConfirmingScreen />;
   }
 
   if (purchase?.ok) {
-    return <SuccessScreen result={purchase} onReset={() => setPurchase(null)} />;
+    return (
+      <SuccessScreen
+        result={purchase}
+        termLabel={redeemedTerm ? termCodeText(t, redeemedTerm) : ""}
+        onReset={() => {
+          setPurchase(null);
+          setRedeemedTerm("");
+          clearPromo();
+        }}
+      />
+    );
   }
 
   return (
@@ -268,17 +427,46 @@ export default function Index() {
 
             <div className="mt-8 space-y-3">
               <StepBadge index={3} label={t("step.payment")} />
-              {config.isLoading && (
+              <PromoField
+                open={promoOpen}
+                onOpen={() => setPromoOpen(true)}
+                value={promoInput}
+                onChange={(value) => {
+                  setPromoInput(value);
+                  setPromoError("");
+                }}
+                busy={promoBusy}
+                error={promoError}
+                applied={promo}
+                onApply={() => void applyPromo(promoInput, plan)}
+                onRemove={clearPromo}
+              />
+              {isFree && (
+                <>
+                  <Button
+                    onClick={() => void handleRedeem()}
+                    disabled={!deviceValid || redeeming}
+                    className="h-13 w-full gap-2.5 bg-accent text-base font-semibold text-accent-foreground hover:bg-accent/90"
+                  >
+                    {redeeming ? <Loader2 className="h-4.5 w-4.5 animate-spin" /> : <Gift className="h-4.5 w-4.5" />}
+                    {redeeming ? t("promo.redeeming") : t("promo.redeem")}
+                  </Button>
+                  <p className="text-center text-xs text-muted-foreground">
+                    {deviceValid ? t("promo.redeemHint") : t("promo.err.device")}
+                  </p>
+                </>
+              )}
+              {!isFree && config.isLoading && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" /> {t("pay.loading")}
                 </div>
               )}
-              {config.data && !config.data.paymentsConfigured && (
+              {!isFree && config.data && !config.data.paymentsConfigured && (
                 <div className="rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-foreground/90">
                   {t("pay.notConfigured")}
                 </div>
               )}
-              {config.data?.paymentsConfigured && (
+              {!isFree && config.data?.paymentsConfigured && (
                 <>
                   <label
                     htmlFor="consent"
@@ -325,7 +513,7 @@ export default function Index() {
                     {redirecting
                       ? t("pay.redirecting")
                       : selectedPlan
-                        ? t("pay.button", { price: `€ ${selectedPlan.price.replace(".", ",")}` })
+                        ? t("pay.button", { price: euros(finalCents) })
                         : t("pay.buttonGeneric")}
                   </Button>
                   <p className="text-center text-xs text-muted-foreground">
@@ -353,21 +541,42 @@ export default function Index() {
 
           <div className="animate-rise space-y-4">
             <StepBadge index={2} label={t("step.plan")} />
-            {plans.map((info) => (
-              <PlanCard
-                key={info.id}
-                info={info}
-                selected={plan === info.id}
-                onSelect={() => setPlan(info.id)}
-              />
-            ))}
+            {isGift && promo ? (
+              <GiftCard quote={promo} />
+            ) : (
+              plans.map((info) => (
+                <PlanCard
+                  key={info.id}
+                  info={info}
+                  selected={plan === info.id}
+                  onSelect={() => setPlan(info.id)}
+                />
+              ))
+            )}
             {selectedPlan && (
-              <div className="panel flex items-center justify-between px-5 py-4">
-                <div>
-                  <span className="block text-sm text-muted-foreground">{t("total.label")}</span>
-                  <span className="text-[11px] text-muted-foreground/80">{t("total.vat")}</span>
+              <div className="panel px-5 py-4">
+                {promo && !isGift && promo.discountCents > 0 && (
+                  <div className="mb-3 space-y-1.5 border-b border-border/60 pb-3 text-sm">
+                    <div className="flex justify-between text-muted-foreground">
+                      <span>{t("promo.listPrice")}</span>
+                      <span className="line-through">{euros(promo.listCents)}</span>
+                    </div>
+                    <div className="flex justify-between text-accent">
+                      <span className="flex items-center gap-1.5">
+                        <TicketPercent className="h-3.5 w-3.5" />
+                        {t("promo.discount")} · <span className="mono text-xs">{promo.code}</span>
+                      </span>
+                      <span>− {euros(promo.discountCents)}</span>
+                    </div>
+                  </div>
+                )}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="block text-sm text-muted-foreground">{t("total.label")}</span>
+                    <span className="text-[11px] text-muted-foreground/80">{t("total.vat")}</span>
+                  </div>
+                  <span className="text-2xl font-bold">{euros(isFree ? 0 : finalCents)}</span>
                 </div>
-                <span className="text-2xl font-bold">€ {selectedPlan.price.replace(".", ",")}</span>
               </div>
             )}
             <div className="flex items-start gap-2.5 px-1 text-xs leading-relaxed text-muted-foreground">
@@ -385,6 +594,123 @@ export default function Index() {
       </main>
 
       <SiteFooter />
+    </div>
+  );
+}
+
+/** Collapsed "Have a code?" link that opens into a field; shows the applied code as a chip. */
+function PromoField({
+  open,
+  onOpen,
+  value,
+  onChange,
+  busy,
+  error,
+  applied,
+  onApply,
+  onRemove,
+}: {
+  open: boolean;
+  onOpen: () => void;
+  value: string;
+  onChange: (value: string) => void;
+  busy: boolean;
+  error: string;
+  applied: PromoQuote | null;
+  onApply: () => void;
+  onRemove: () => void;
+}) {
+  const { t } = useI18n();
+
+  if (applied) {
+    const gift = applied.kind === "gift";
+    return (
+      <div className="animate-rise flex items-start gap-3 rounded-xl border border-accent/40 bg-accent/[0.08] px-4 py-3">
+        <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-accent/15 text-accent">
+          {gift ? <Gift className="h-4 w-4" /> : <TicketPercent className="h-4 w-4" />}
+        </div>
+        <p className="min-w-0 flex-1 text-sm leading-relaxed text-foreground/90">
+          {gift
+            ? t("promo.gift", { code: applied.code, term: termText(t, applied.term) })
+            : t("promo.applied", { code: applied.code, amount: euros(applied.discountCents) })}
+        </p>
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label={t("promo.remove")}
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition hover:bg-secondary hover:text-foreground"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+    );
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={onOpen}
+        className="flex items-center gap-2 text-sm font-medium text-primary underline-offset-4 transition hover:underline"
+      >
+        <TicketPercent className="h-4 w-4" />
+        {t("promo.toggle")}
+      </button>
+    );
+  }
+
+  return (
+    <div className="animate-rise space-y-2">
+      <Label htmlFor="promo" className="block text-sm font-medium">
+        {t("promo.toggle")}
+      </Label>
+      <form
+        className="flex gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          onApply();
+        }}
+      >
+        <Input
+          id="promo"
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={t("promo.placeholder")}
+          autoComplete="off"
+          spellCheck={false}
+          className={cn(
+            "mono h-12 border-border/80 bg-secondary/60 uppercase tracking-wider placeholder:normal-case placeholder:tracking-normal",
+            error && "border-destructive/70",
+          )}
+        />
+        <Button type="submit" variant="secondary" disabled={busy || !value.trim()} className="h-12 shrink-0 px-5">
+          {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : t("promo.apply")}
+        </Button>
+      </form>
+      {error && (
+        <p className="flex items-center gap-1.5 text-xs text-destructive">
+          <AlertTriangle className="h-3.5 w-3.5" />
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** Replaces the plan cards when a gift code decides the plan. */
+function GiftCard({ quote }: { quote: PromoQuote }) {
+  const { t } = useI18n();
+  return (
+    <div className="panel glow-ring relative overflow-hidden border-accent/50 bg-accent/[0.06] p-5">
+      <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-accent/20 blur-3xl" aria-hidden />
+      <div className="relative flex items-center gap-2.5">
+        <Gift className="h-5 w-5 text-accent" />
+        <h3 className="text-lg font-bold">{t("promo.giftTitle")}</h3>
+      </div>
+      <div className="relative mt-3 text-3xl font-extrabold capitalize tracking-tight">{termText(t, quote.term)}</div>
+      <p className="relative mt-1 text-sm text-muted-foreground">
+        <span className="mono">{quote.code}</span>
+      </p>
     </div>
   );
 }
@@ -702,7 +1028,15 @@ function ConfirmingScreen() {
   );
 }
 
-function SuccessScreen({ result, onReset }: { result: CheckoutResult; onReset: () => void }) {
+function SuccessScreen({
+  result,
+  termLabel,
+  onReset,
+}: {
+  result: CheckoutResult;
+  termLabel: string;
+  onReset: () => void;
+}) {
   const { t, locale } = useI18n();
   return (
     <div className="relative flex min-h-screen items-center justify-center px-5 py-16">
@@ -720,8 +1054,8 @@ function SuccessScreen({ result, onReset }: { result: CheckoutResult; onReset: (
           </div>
           <div className="flex items-center justify-between gap-4">
             <dt className="text-muted-foreground">{t("success.plan")}</dt>
-            <dd className="font-medium">
-              {result.plan === "lifetime" ? t("plan.lifetime.title") : t("plan.annual.title")}
+            <dd className="font-medium capitalize">
+              {termLabel || (result.plan === "lifetime" ? t("plan.lifetime.title") : t("plan.annual.title"))}
             </dd>
           </div>
           <div className="flex items-center justify-between gap-4">

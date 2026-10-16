@@ -1,5 +1,6 @@
 import { DurableObject } from "cloudflare:workers";
 import { PLANS, type PlanId } from "./_lib/plans";
+import { expiryFor, readTerm, termCode, type Term } from "./_lib/terms";
 
 /** Lifecycle of a licence as stored in the registry. */
 export type StoredStatus = "active" | "suspended" | "revoked";
@@ -18,7 +19,124 @@ type LicenseRow = {
   order_id: string;
   amount_cents: number;
   source: string;
+  /** How the current period was granted: "12m", "3m", "30d", "lifetime", "date" ('' on older rows). */
+  term: string;
 };
+
+/** Discount or gift code created in the dashboard and typed by a buyer on the store. */
+type PromoRow = {
+  code: string;
+  kind: string;
+  value: number;
+  applies_to: string;
+  term: string;
+  max_uses: number;
+  used_count: number;
+  expires_at: number | null;
+  active: number;
+  note: string;
+  batch: string;
+  created_at: number;
+};
+
+export type PromoKind = "percent" | "amount" | "gift";
+
+export type PromoView = {
+  code: string;
+  kind: PromoKind;
+  /** Percent off (1-100) or cents off, depending on the kind. Unused for gifts. */
+  value: number;
+  appliesTo: "all" | PlanId;
+  /** Gift codes only: what the licence lasts. */
+  term: Term | null;
+  /** 0 means unlimited. */
+  maxUses: number;
+  usedCount: number;
+  expiresAt: number | null;
+  active: boolean;
+  note: string;
+  batch: string;
+  createdAt: number;
+};
+
+export type RedemptionView = {
+  id: string;
+  code: string;
+  deviceId: string;
+  orderId: string;
+  plan: string;
+  discountCents: number;
+  paidCents: number;
+  email: string;
+  createdAt: number;
+};
+
+/** What a code is worth on a given plan, as shown on the store before paying. */
+export type PromoQuote =
+  | {
+      ok: true;
+      code: string;
+      kind: PromoKind;
+      plan: PlanId;
+      listCents: number;
+      discountCents: number;
+      finalCents: number;
+      /** Gift codes only. */
+      term: Term | null;
+    }
+  | { ok: false; error: string };
+
+/** Characters of generated codes: no 0/O, 1/I/L, so they read well aloud and on paper. */
+const CODE_ALPHABET = "ACDEFGHJKMNPQRTUVWXYZ2345679";
+
+/** Stripe refuses card payments under 50 cents. */
+const MIN_CHARGE_CENTS = 50;
+
+/** Wrong codes tolerated per address before the store stops answering for a while. */
+const MAX_PROMO_FAILURES = 15;
+const PROMO_WINDOW_MS = 10 * 60 * 1000;
+
+function randomCode(): string {
+  const bytes = new Uint8Array(8);
+  crypto.getRandomValues(bytes);
+  const chars = [...bytes].map((b) => CODE_ALPHABET[b % CODE_ALPHABET.length]).join("");
+  return `NOVA-${chars.slice(0, 4)}-${chars.slice(4)}`;
+}
+
+/** Codes are compared case- and space-insensitively. */
+export function normalizeCode(raw: string): string {
+  return raw.trim().toUpperCase().replace(/\s+/g, "").slice(0, 40);
+}
+
+function promoView(row: PromoRow): PromoView {
+  return {
+    code: row.code,
+    kind: row.kind as PromoKind,
+    value: row.value,
+    appliesTo: (row.applies_to === "annual" || row.applies_to === "lifetime" ? row.applies_to : "all") as
+      | "all"
+      | PlanId,
+    term: row.term ? readTermLoose(row.term) : null,
+    maxUses: row.max_uses,
+    usedCount: row.used_count,
+    expiresAt: row.expires_at,
+    active: row.active === 1,
+    note: row.note,
+    batch: row.batch,
+    createdAt: row.created_at,
+  };
+}
+
+/** Like readTerm, but keeps fixed dates already in the past (stored codes may be old). */
+function readTermLoose(raw: string): Term | null {
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    if (parsed.kind === "date") return { kind: "date", expiresAt: Number(parsed.expiresAt) };
+    return readTerm(parsed);
+  } catch {
+    return null;
+  }
+}
 
 /**
  * First contact of a device, kept server-side so the free window cannot be
@@ -131,6 +249,7 @@ export type LicenseView = {
   orderId: string;
   amountCents: number;
   source: string;
+  term: string;
   expired: boolean;
 };
 
@@ -276,6 +395,7 @@ function toView(row: LicenseRow, aliases: string[] = []): LicenseView {
     orderId: row.order_id,
     amountCents: row.amount_cents,
     source: row.source,
+    term: row.term || (row.plan === "lifetime" ? "lifetime" : "12m"),
     expired,
   };
 }
@@ -286,6 +406,9 @@ function toView(row: LicenseRow, aliases: string[] = []): LicenseView {
  * without passing through the entrypoint's auth checks first.
  */
 export class Registry extends DurableObject {
+  /** Wrong promo codes per address; kept in memory only, a restart simply forgives. */
+  private promoFailures = new Map<string, { count: number; since: number }>();
+
   constructor(ctx: DurableObjectState, env: unknown) {
     super(ctx, env);
     this.ctx.storage.sql.exec(`
@@ -305,6 +428,44 @@ export class Registry extends DurableObject {
         source TEXT NOT NULL DEFAULT 'stripe'
       )
     `);
+    try {
+      this.ctx.storage.sql.exec("ALTER TABLE licenses ADD COLUMN term TEXT NOT NULL DEFAULT ''");
+    } catch {
+      /* column already there */
+    }
+    this.ctx.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS promo_codes (
+        code TEXT PRIMARY KEY,
+        kind TEXT NOT NULL,
+        value INTEGER NOT NULL DEFAULT 0,
+        applies_to TEXT NOT NULL DEFAULT 'all',
+        term TEXT NOT NULL DEFAULT '',
+        max_uses INTEGER NOT NULL DEFAULT 1,
+        used_count INTEGER NOT NULL DEFAULT 0,
+        expires_at INTEGER,
+        active INTEGER NOT NULL DEFAULT 1,
+        note TEXT NOT NULL DEFAULT '',
+        batch TEXT NOT NULL DEFAULT '',
+        created_at INTEGER NOT NULL
+      )
+    `);
+    // Kept even when the code itself is deleted, so the history stays readable.
+    this.ctx.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS promo_redemptions (
+        id TEXT PRIMARY KEY,
+        code TEXT NOT NULL,
+        device_id TEXT NOT NULL,
+        order_id TEXT NOT NULL DEFAULT '',
+        plan TEXT NOT NULL DEFAULT '',
+        discount_cents INTEGER NOT NULL DEFAULT 0,
+        paid_cents INTEGER NOT NULL DEFAULT 0,
+        email TEXT NOT NULL DEFAULT '',
+        created_at INTEGER NOT NULL
+      )
+    `);
+    this.ctx.storage.sql.exec(
+      "CREATE INDEX IF NOT EXISTS idx_promo_redemptions_code ON promo_redemptions (code)",
+    );
     // A device is known by two names: the MAC printed on the box (what customers
     // type on the site) and the ANDROID_ID the app sends. Whichever one paid for
     // the licence, both must open it — that is what this table records.
@@ -499,6 +660,30 @@ export class Registry extends DurableObject {
         );
       case "/extend":
         return Response.json(this.extend(String(body.deviceId ?? ""), Number(body.days ?? 0)));
+      case "/set-term":
+        return Response.json(this.setTerm(String(body.deviceId ?? ""), readTerm(body.term)));
+      case "/promo-quote":
+        return Response.json(
+          this.promoQuoteGuarded(String(body.ip ?? ""), normalizeCode(String(body.code ?? "")), String(body.plan ?? "")),
+        );
+      case "/promo-redeem":
+        return Response.json(this.promoRedeemFree(body));
+      case "/promo-record-paid":
+        return Response.json(this.promoRecordPaid(body));
+      case "/promo-list":
+        return Response.json({ codes: this.promoList(), redemptions: this.redemptionList() });
+      case "/promo-create":
+        return Response.json(this.promoCreate(body));
+      case "/promo-toggle":
+        this.ctx.storage.sql.exec(
+          "UPDATE promo_codes SET active = ? WHERE code = ?",
+          body.active === true ? 1 : 0,
+          normalizeCode(String(body.code ?? "")),
+        );
+        return Response.json({ ok: true });
+      case "/promo-remove":
+        this.ctx.storage.sql.exec("DELETE FROM promo_codes WHERE code = ?", normalizeCode(String(body.code ?? "")));
+        return Response.json({ ok: true });
       case "/update":
         return Response.json(
           this.updateDetails(String(body.deviceId ?? ""), String(body.label ?? ""), String(body.email ?? "")),
@@ -1361,20 +1546,21 @@ export class Registry extends DurableObject {
     const label = String(body.label ?? "");
     const source = String(body.source ?? "stripe");
     const amountCents = Number(body.amountCents ?? plan.priceCents);
-
-    let expiresAt: number | null = null;
-    if (plan.durationDays !== null) {
-      const base =
-        existing?.expires_at && existing.expires_at > now && existing.status === "active"
-          ? existing.expires_at
-          : now;
-      expiresAt = base + plan.durationDays * 24 * 60 * 60 * 1000;
-    }
+    // Manual grants and gift codes carry their own duration; store purchases use the plan's.
+    const custom = body.term === undefined ? null : readTermLoose(JSON.stringify(body.term));
+    const term: Term = custom ?? (plan.durationDays === null ? { kind: "lifetime" } : { kind: "months", months: 12 });
+    const base =
+      existing?.expires_at && existing.expires_at > now && existing.status === "active"
+        ? existing.expires_at
+        : now;
+    const expiresAt = custom ? expiryFor(term, base) : plan.durationDays === null ? null : base + plan.durationDays * DAY_MS;
+    // The app reads "no expiry" as lifetime, so the plan follows the expiry.
+    const storedPlan: PlanId = expiresAt === null ? "lifetime" : "annual";
 
     this.ctx.storage.sql.exec(
       `INSERT INTO licenses
-         (device_id, status, plan, email, label, note, created_at, updated_at, expires_at, last_seen_at, order_id, amount_cents, source)
-       VALUES (?, 'active', ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?)
+         (device_id, status, plan, email, label, note, created_at, updated_at, expires_at, last_seen_at, order_id, amount_cents, source, term)
+       VALUES (?, 'active', ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(device_id) DO UPDATE SET
          status = 'active',
          plan = excluded.plan,
@@ -1385,9 +1571,10 @@ export class Registry extends DurableObject {
          expires_at = excluded.expires_at,
          order_id = excluded.order_id,
          amount_cents = excluded.amount_cents,
-         source = excluded.source`,
+         source = excluded.source,
+         term = excluded.term`,
       deviceId,
-      planId,
+      storedPlan,
       email,
       label,
       now,
@@ -1397,6 +1584,7 @@ export class Registry extends DurableObject {
       orderId,
       amountCents,
       source,
+      termCode(term),
     );
 
     if (orderId) {
@@ -1446,6 +1634,282 @@ export class Registry extends DurableObject {
       deviceId,
     );
     return { ok: true, expiresAt };
+  }
+
+  /**
+   * Changes how long an existing licence lasts. Months and days are added to
+   * what is left (or start today if it already ran out); a date is set as is.
+   */
+  private setTerm(deviceId: string, term: Term | null): { ok: boolean; error?: string; expiresAt?: number | null } {
+    const row = this.find(deviceId);
+    if (!row) return { ok: false, error: "licence not found" };
+    if (!term) return { ok: false, error: "invalid duration" };
+    const now = Date.now();
+    const base = row.expires_at !== null && row.expires_at > now ? row.expires_at : now;
+    const expiresAt = expiryFor(term, base);
+    this.ctx.storage.sql.exec(
+      "UPDATE licenses SET expires_at = ?, plan = ?, term = ?, updated_at = ? WHERE device_id = ?",
+      expiresAt,
+      expiresAt === null ? "lifetime" : "annual",
+      termCode(term),
+      now,
+      deviceId,
+    );
+    return { ok: true, expiresAt };
+  }
+
+  // ---- Promo codes ------------------------------------------------------
+
+  private promoRow(code: string): PromoRow | null {
+    if (!code) return null;
+    return (
+      this.ctx.storage.sql.exec<PromoRow>("SELECT * FROM promo_codes WHERE code = ?", code).toArray()[0] ?? null
+    );
+  }
+
+  /** Same as promoQuote, but an address that keeps guessing gets locked out for a while. */
+  private promoQuoteGuarded(ip: string, code: string, planId: string): PromoQuote {
+    const now = Date.now();
+    const key = ip || "unknown";
+    const entry = this.promoFailures.get(key);
+    if (entry && now - entry.since > PROMO_WINDOW_MS) this.promoFailures.delete(key);
+    const current = this.promoFailures.get(key);
+    if (current && current.count >= MAX_PROMO_FAILURES) return { ok: false, error: "too many attempts" };
+    const quote = this.promoQuote(code, planId);
+    if (!quote.ok && quote.error === "code not found") {
+      this.promoFailures.set(key, { count: (current?.count ?? 0) + 1, since: current?.since ?? now });
+      if (this.promoFailures.size > 5000) this.promoFailures.clear();
+    }
+    return quote;
+  }
+
+  /** What a code is worth on a plan right now, with every reason it might not apply. */
+  private promoQuote(code: string, planId: string): PromoQuote {
+    const row = this.promoRow(code);
+    if (!row) return { ok: false, error: "code not found" };
+    if (row.active !== 1) return { ok: false, error: "code disabled" };
+    if (row.expires_at !== null && row.expires_at < Date.now()) return { ok: false, error: "code expired" };
+    if (row.max_uses > 0 && row.used_count >= row.max_uses) return { ok: false, error: "code used up" };
+
+    const view = promoView(row);
+    if (view.kind === "gift") {
+      const term = view.term ?? { kind: "months", months: 12 };
+      return {
+        ok: true,
+        code: row.code,
+        kind: "gift",
+        plan: term.kind === "lifetime" ? "lifetime" : "annual",
+        listCents: 0,
+        discountCents: 0,
+        finalCents: 0,
+        term,
+      };
+    }
+
+    const plan = PLANS[planId as PlanId];
+    if (!plan) return { ok: false, error: "unknown plan" };
+    if (view.appliesTo !== "all" && view.appliesTo !== plan.id) return { ok: false, error: "code not valid for this plan" };
+    const raw =
+      view.kind === "percent"
+        ? Math.round((plan.priceCents * Math.min(100, Math.max(0, view.value))) / 100)
+        : Math.max(0, view.value);
+    let finalCents = Math.max(0, plan.priceCents - raw);
+    if (finalCents > 0 && finalCents < MIN_CHARGE_CENTS) finalCents = MIN_CHARGE_CENTS;
+    return {
+      ok: true,
+      code: row.code,
+      kind: view.kind,
+      plan: plan.id,
+      listCents: plan.priceCents,
+      discountCents: plan.priceCents - finalCents,
+      finalCents,
+      term: null,
+    };
+  }
+
+  /**
+   * Turns a gift code (or a 100% discount) into a licence without any payment.
+   * Runs inside the Durable Object, so two people cannot spend the last use at once.
+   */
+  private promoRedeemFree(body: Record<string, unknown>): {
+    ok: boolean;
+    error?: string;
+    deviceId?: string;
+    plan?: string;
+    expiresAt?: number | null;
+    term?: string;
+  } {
+    const code = normalizeCode(String(body.code ?? ""));
+    const quote = this.promoQuoteGuarded(String(body.ip ?? ""), code, String(body.plan ?? ""));
+    if (!quote.ok) return { ok: false, error: quote.error };
+    if (quote.finalCents > 0) return { ok: false, error: "code needs payment" };
+
+    const identifiers = identifiersOf(body);
+    const existing = this.resolve(identifiers);
+    const deviceId = existing?.device_id ?? identifiers[0] ?? "";
+    if (!deviceId) return { ok: false, error: "invalid device id" };
+
+    const term: Term = quote.term ?? (quote.plan === "lifetime" ? { kind: "lifetime" } : { kind: "months", months: 12 });
+    // A timed gift must never shorten a lifetime licence already owned.
+    if (existing && existing.status === "active" && existing.expires_at === null && term.kind !== "lifetime") {
+      return { ok: false, error: "already lifetime" };
+    }
+    const reused = this.ctx.storage.sql
+      .exec("SELECT id FROM promo_redemptions WHERE code = ? AND device_id = ?", code, deviceId)
+      .toArray();
+    if (reused.length > 0) return { ok: false, error: "already redeemed" };
+
+    const issued = this.issue({
+      deviceId,
+      identifiers,
+      plan: quote.plan,
+      term,
+      email: String(body.email ?? "").trim().slice(0, 160),
+      orderId: "",
+      amountCents: 0,
+      source: "gift",
+    });
+    this.recordRedemption(code, deviceId, "", quote.plan, quote.listCents, 0, String(body.email ?? ""));
+    return {
+      ok: true,
+      deviceId,
+      plan: issued.license.plan,
+      expiresAt: issued.license.expiresAt,
+      term: issued.license.term,
+    };
+  }
+
+  /** Called once Stripe confirms a discounted payment; safe to call twice for one order. */
+  private promoRecordPaid(body: Record<string, unknown>): { ok: boolean } {
+    const orderId = String(body.orderId ?? "");
+    const code = normalizeCode(String(body.code ?? ""));
+    if (!orderId || !code) return { ok: false };
+    const seen = this.ctx.storage.sql
+      .exec("SELECT id FROM promo_redemptions WHERE order_id = ?", orderId)
+      .toArray();
+    if (seen.length > 0) return { ok: true };
+    this.recordRedemption(
+      code,
+      String(body.deviceId ?? ""),
+      orderId,
+      String(body.plan ?? ""),
+      Number(body.discountCents ?? 0),
+      Number(body.paidCents ?? 0),
+      String(body.email ?? ""),
+    );
+    return { ok: true };
+  }
+
+  private recordRedemption(
+    code: string,
+    deviceId: string,
+    orderId: string,
+    plan: string,
+    discountCents: number,
+    paidCents: number,
+    email: string,
+  ): void {
+    this.ctx.storage.sql.exec(
+      `INSERT INTO promo_redemptions (id, code, device_id, order_id, plan, discount_cents, paid_cents, email, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      crypto.randomUUID(),
+      code,
+      deviceId,
+      orderId,
+      plan,
+      Math.max(0, Math.round(discountCents)),
+      Math.max(0, Math.round(paidCents)),
+      email.slice(0, 160),
+      Date.now(),
+    );
+    this.ctx.storage.sql.exec("UPDATE promo_codes SET used_count = used_count + 1 WHERE code = ?", code);
+  }
+
+  private promoList(): PromoView[] {
+    return this.ctx.storage.sql
+      .exec<PromoRow>("SELECT * FROM promo_codes ORDER BY created_at DESC LIMIT 2000")
+      .toArray()
+      .map(promoView);
+  }
+
+  private redemptionList(): RedemptionView[] {
+    return this.ctx.storage.sql
+      .exec<{
+        id: string;
+        code: string;
+        device_id: string;
+        order_id: string;
+        plan: string;
+        discount_cents: number;
+        paid_cents: number;
+        email: string;
+        created_at: number;
+      }>("SELECT * FROM promo_redemptions ORDER BY created_at DESC LIMIT 1000")
+      .toArray()
+      .map((row) => ({
+        id: row.id,
+        code: row.code,
+        deviceId: row.device_id,
+        orderId: row.order_id,
+        plan: row.plan,
+        discountCents: row.discount_cents,
+        paidCents: row.paid_cents,
+        email: row.email,
+        createdAt: row.created_at,
+      }));
+  }
+
+  /**
+   * Creates one custom code (e.g. NATALE20) or a batch of random single codes
+   * (e.g. 20 gift cards to hand out). Returns the codes actually created.
+   */
+  private promoCreate(body: Record<string, unknown>): { ok: boolean; error?: string; codes?: string[] } {
+    const kind = String(body.kind ?? "");
+    if (kind !== "percent" && kind !== "amount" && kind !== "gift") return { ok: false, error: "invalid kind" };
+    const value = Math.round(Number(body.value ?? 0));
+    if (kind === "percent" && !(value >= 1 && value <= 100)) return { ok: false, error: "percent must be 1-100" };
+    if (kind === "amount" && !(value >= 1 && value <= 100_000)) return { ok: false, error: "invalid amount" };
+    const term = kind === "gift" ? readTerm(body.term) : null;
+    if (kind === "gift" && (!term || term.kind === "date")) return { ok: false, error: "invalid duration" };
+    const appliesTo = String(body.appliesTo ?? "all");
+    const applies = appliesTo === "annual" || appliesTo === "lifetime" ? appliesTo : "all";
+    const maxUses = Math.max(0, Math.min(100_000, Math.round(Number(body.maxUses ?? 1)) || 0));
+    const expiresRaw = Number(body.expiresAt ?? 0);
+    const expiresAt = Number.isFinite(expiresRaw) && expiresRaw > Date.now() ? expiresRaw : null;
+    const note = String(body.note ?? "").trim().slice(0, 120);
+    const count = Math.max(1, Math.min(200, Math.round(Number(body.count ?? 1)) || 1));
+    const custom = normalizeCode(String(body.code ?? ""));
+
+    if (custom) {
+      if (!/^[A-Z0-9-]{3,32}$/.test(custom)) return { ok: false, error: "code must be 3-32 letters, digits or dashes" };
+      if (this.promoRow(custom)) return { ok: false, error: "code already exists" };
+    }
+    const codes: string[] = [];
+    const batch = count > 1 ? crypto.randomUUID().slice(0, 8) : "";
+    const now = Date.now();
+    for (let i = 0; i < (custom ? 1 : count); i += 1) {
+      let code = custom;
+      if (!code) {
+        do code = randomCode();
+        while (this.promoRow(code));
+      }
+      this.ctx.storage.sql.exec(
+        `INSERT INTO promo_codes (code, kind, value, applies_to, term, max_uses, used_count, expires_at, active, note, batch, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, 0, ?, 1, ?, ?, ?)`,
+        code,
+        kind,
+        kind === "gift" ? 0 : value,
+        kind === "gift" ? "all" : applies,
+        term ? JSON.stringify(term) : "",
+        maxUses,
+        expiresAt,
+        note,
+        batch,
+        now + i,
+      );
+      codes.push(code);
+    }
+    return { ok: true, codes };
   }
 
   private updateDetails(deviceId: string, label: string, email: string): { ok: boolean } {

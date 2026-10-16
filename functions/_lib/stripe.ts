@@ -47,6 +47,10 @@ export type CheckoutSession = {
   deviceId: string;
   plan: string;
   email: string;
+  /** Promo code applied at checkout, '' when none. */
+  promoCode: string;
+  /** Price the server asked Stripe to charge; 0 on sessions created before promo codes. */
+  expectedCents: number;
 };
 
 type RawSession = {
@@ -70,8 +74,13 @@ function readSession(raw: RawSession): CheckoutSession {
     deviceId: raw.metadata?.deviceId ?? raw.client_reference_id ?? "",
     plan: raw.metadata?.plan ?? "",
     email: raw.customer_details?.email ?? raw.customer_email ?? "",
+    promoCode: raw.metadata?.promoCode ?? "",
+    expectedCents: Number(raw.metadata?.expectedCents ?? 0) || 0,
   };
 }
+
+/** A discount already validated server-side for this checkout. */
+export type CheckoutPromo = { code: string; finalCents: number };
 
 /**
  * Creates a hosted Stripe Checkout session. The price and the device binding
@@ -84,14 +93,18 @@ export async function createCheckoutSession(
   email: string,
   storeUrl: string,
   consentAt?: number,
+  promo?: CheckoutPromo,
 ): Promise<{ id: string; url: string }> {
   const plan = PLANS[planId];
+  const amount = promo ? promo.finalCents : plan.priceCents;
   const body = new URLSearchParams({
     mode: "payment",
     "line_items[0][quantity]": "1",
     "line_items[0][price_data][currency]": plan.currency.toLowerCase(),
-    "line_items[0][price_data][unit_amount]": String(plan.priceCents),
-    "line_items[0][price_data][product_data][name]": `NovaStream · ${plan.label}`,
+    "line_items[0][price_data][unit_amount]": String(amount),
+    "line_items[0][price_data][product_data][name]": promo
+      ? `NovaStream · ${plan.label} (${promo.code})`
+      : `NovaStream · ${plan.label}`,
     "line_items[0][price_data][product_data][description]": `Licenza per il dispositivo ${deviceId}`,
     // Required by Stripe Managed Payments: prewritten software downloaded for personal use.
     "line_items[0][price_data][product_data][tax_code]": "txcd_10202000",
@@ -101,6 +114,7 @@ export async function createCheckoutSession(
     client_reference_id: deviceId,
     "metadata[deviceId]": deviceId,
     "metadata[plan]": planId,
+    "metadata[expectedCents]": String(amount),
     "payment_intent_data[metadata][deviceId]": deviceId,
     "payment_intent_data[metadata][plan]": planId,
     "payment_intent_data[description]": `NovaStream ${plan.label} — ${deviceId}`,
@@ -109,6 +123,10 @@ export async function createCheckoutSession(
     locale: "auto",
   });
   if (email) body.set("customer_email", email);
+  if (promo) {
+    body.set("metadata[promoCode]", promo.code);
+    body.set("payment_intent_data[metadata][promoCode]", promo.code);
+  }
   // Mirrors the buyer's "I tried the app first" confirmation on the Stripe side,
   // so it shows up next to the payment when answering a dispute.
   if (consentAt) {
@@ -120,7 +138,7 @@ export async function createCheckoutSession(
   const session = await stripeFetch<RawSession & { url?: string }>(env, "/checkout/sessions", {
     method: "POST",
     body,
-    idempotencyKey: `novastream-${deviceId}-${planId}-${priceString(plan)}-${Date.now()}`,
+    idempotencyKey: `novastream-${deviceId}-${planId}-${priceString(plan)}-${promo?.code ?? ""}-${Date.now()}`,
   });
   if (!session.id || !session.url) throw new Error("stripe returned an incomplete session");
   return { id: session.id, url: session.url };

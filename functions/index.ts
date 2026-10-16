@@ -21,6 +21,8 @@ import {
 import { PLANS, isPlanId, isValidDeviceId, normalizeDeviceId, priceString } from "./_lib/plans";
 import { checkChallenge, createChallenge } from "./_lib/captcha";
 import { importSealKey, newSealKeyMaterial, seal, unseal } from "./_lib/seal";
+import { readTerm } from "./_lib/terms";
+import { normalizeCode, type PromoQuote } from "./registry";
 
 export { Registry } from "./registry";
 
@@ -396,6 +398,38 @@ export default {
         return json({ ok: true, id: created.id });
       }
 
+      // ---- Promo codes -----------------------------------------------------
+      // Tells the store what a code is worth on the chosen plan before paying.
+      if (path === "/api/promo/check" && request.method === "POST") {
+        const body = await readBody(request);
+        const code = normalizeCode(String(body.code ?? ""));
+        if (!code) return fail("code required");
+        const quote = await registryJson<PromoQuote>(env, "/promo-quote", {
+          code,
+          plan: String(body.plan ?? ""),
+          ip: request.headers.get("CF-Connecting-IP") ?? "",
+        });
+        if (!quote.ok) return json(quote, quote.error === "too many attempts" ? 429 : 400);
+        return json(quote);
+      }
+
+      // Gift codes (and 100% discounts) unlock the licence straight away, no payment.
+      if (path === "/api/promo/redeem" && request.method === "POST") {
+        const body = await readBody(request);
+        const deviceId = normalizeDeviceId(String(body.deviceId ?? ""));
+        if (!isValidDeviceId(deviceId)) return fail("invalid device id");
+        const result = await registryJson<{ ok: boolean; error?: string }>(env, "/promo-redeem", {
+          code: normalizeCode(String(body.code ?? "")),
+          plan: String(body.plan ?? ""),
+          deviceId,
+          identifiers: [deviceId],
+          email: String(body.email ?? "").trim(),
+          ip: request.headers.get("CF-Connecting-IP") ?? "",
+        });
+        if (!result.ok) return json(result, result.error === "too many attempts" ? 429 : 400);
+        return json(result);
+      }
+
       // ---- Checkout ------------------------------------------------------
       if (path === "/api/checkout/create-session" && request.method === "POST") {
         if (!stripeConfigured(env)) return fail("payments not configured", 503);
@@ -407,6 +441,19 @@ export default {
         if (!isValidDeviceId(deviceId)) return fail("invalid device id");
         const consent = readConsent(request, body.consent);
         if (!consent) return fail("consent required");
+        // The discount is worked out again here: the browser only names the code.
+        const code = normalizeCode(String(body.code ?? ""));
+        let promo: { code: string; finalCents: number } | undefined;
+        if (code) {
+          const quote = await registryJson<PromoQuote>(env, "/promo-quote", {
+            code,
+            plan: planId,
+            ip: request.headers.get("CF-Connecting-IP") ?? "",
+          });
+          if (!quote.ok) return fail(quote.error);
+          if (quote.finalCents === 0) return fail("code is free, redeem it");
+          promo = { code: quote.code, finalCents: quote.finalCents };
+        }
         const storeUrl = (env.STORE_URL?.trim() || DEFAULT_STORE_URL).replace(/\/+$/, "");
         const session = await createCheckoutSession(
           env,
@@ -415,6 +462,7 @@ export default {
           email,
           storeUrl,
           consent.acceptedAt,
+          promo,
         );
         // Kept against the Stripe session id, which becomes the order id once paid.
         await registry(env, "/consent-save", { sessionId: session.id, deviceId, plan: planId, ...consent });
@@ -582,6 +630,33 @@ export default {
           );
         }
 
+        if (path === "/api/admin/set-term") {
+          const deviceId = normalizeDeviceId(String(body.deviceId ?? ""));
+          const term = readTerm(body.term);
+          if (!term) return fail("invalid duration");
+          return json(await registryJson(env, "/set-term", { deviceId, term }));
+        }
+
+        // ---- Promo codes ------------------------------------------------
+        if (path === "/api/admin/promo-list") {
+          return json(await registryJson(env, "/promo-list", {}));
+        }
+
+        if (path === "/api/admin/promo-create") {
+          const result = await registryJson<{ ok: boolean; error?: string }>(env, "/promo-create", body);
+          return result.ok ? json(result) : fail(result.error ?? "could not create code");
+        }
+
+        if (path === "/api/admin/promo-toggle") {
+          return json(
+            await registryJson(env, "/promo-toggle", { code: String(body.code ?? ""), active: body.active === true }),
+          );
+        }
+
+        if (path === "/api/admin/promo-remove") {
+          return json(await registryJson(env, "/promo-remove", { code: String(body.code ?? "") }));
+        }
+
         if (path === "/api/admin/extend") {
           const deviceId = normalizeDeviceId(String(body.deviceId ?? ""));
           return json(await registryJson(env, "/extend", { deviceId, days: Number(body.days ?? 0) }));
@@ -608,12 +683,16 @@ export default {
           const mac = normalizeDeviceId(String(body.mac ?? ""));
           const planId = String(body.plan ?? "");
           if (!isValidDeviceId(deviceId)) return fail("invalid device id");
-          if (!isPlanId(planId)) return fail("unknown plan");
+          // A duration (1/3/6/12 months, lifetime, a date) wins over the plan's default.
+          const term = body.term === undefined ? null : readTerm(body.term);
+          if (body.term !== undefined && !term) return fail("invalid duration");
+          if (!term && !isPlanId(planId)) return fail("unknown plan");
           return json(
             await registryJson(env, "/issue", {
               deviceId,
               identifiers: [deviceId, mac],
-              plan: planId,
+              plan: term ? (term.kind === "lifetime" ? "lifetime" : "annual") : planId,
+              ...(term ? { term } : {}),
               label: String(body.label ?? ""),
               email: String(body.email ?? ""),
               orderId: "",
@@ -678,7 +757,9 @@ async function settle(
     return { ok: false, error: "order is missing device details" };
   }
   const plan = PLANS[session.plan];
-  if (session.currency !== plan.currency || session.amountTotal < plan.priceCents) {
+  // A discounted checkout carries the price the server set; older ones the list price.
+  const expected = session.promoCode && session.expectedCents > 0 ? session.expectedCents : plan.priceCents;
+  if (session.currency !== plan.currency || session.amountTotal < expected) {
     console.warn("amount mismatch", session.id, session.amountTotal, session.currency);
     return { ok: false, error: "payment amount does not match the plan" };
   }
@@ -699,6 +780,17 @@ async function settle(
     email: session.email,
     source: "stripe",
   });
+  if (session.promoCode) {
+    await registry(env, "/promo-record-paid", {
+      code: session.promoCode,
+      orderId: session.id,
+      deviceId,
+      plan: plan.id,
+      discountCents: Math.max(0, plan.priceCents - session.amountTotal),
+      paidCents: session.amountTotal,
+      email: session.email,
+    });
+  }
   return {
     ok: true,
     deviceId,

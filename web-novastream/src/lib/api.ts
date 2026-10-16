@@ -51,7 +51,66 @@ export type LicenseRecord = {
   orderId: string;
   amountCents: number;
   source: string;
+  /** How the current period was granted: "12m", "3m", "30d", "lifetime", "date". */
+  term: string;
   expired: boolean;
+};
+
+/** Licence duration chosen in the dashboard or carried by a gift code. */
+export type Term =
+  | { kind: "months"; months: number }
+  | { kind: "days"; days: number }
+  | { kind: "lifetime" }
+  | { kind: "date"; expiresAt: number };
+
+export type PromoKind = "percent" | "amount" | "gift";
+
+export type PromoCode = {
+  code: string;
+  kind: PromoKind;
+  value: number;
+  appliesTo: "all" | PlanId;
+  term: Term | null;
+  maxUses: number;
+  usedCount: number;
+  expiresAt: number | null;
+  active: boolean;
+  note: string;
+  batch: string;
+  createdAt: number;
+};
+
+export type PromoRedemption = {
+  id: string;
+  code: string;
+  deviceId: string;
+  orderId: string;
+  plan: string;
+  discountCents: number;
+  paidCents: number;
+  email: string;
+  createdAt: number;
+};
+
+/** What a code is worth on the chosen plan, worked out by the server. */
+export type PromoQuote = {
+  ok: true;
+  code: string;
+  kind: PromoKind;
+  plan: PlanId;
+  listCents: number;
+  discountCents: number;
+  finalCents: number;
+  term: Term | null;
+};
+
+export type RedeemResult = {
+  ok: boolean;
+  error?: string;
+  deviceId?: string;
+  plan?: string;
+  expiresAt?: number | null;
+  term?: string;
 };
 
 /** A device inside (or just out of) its free week. */
@@ -202,8 +261,22 @@ export const startCheckout = (
   deviceId: string,
   email: string,
   consent: CheckoutConsent,
+  code?: string,
 ): Promise<{ id: string; url: string }> =>
-  post<{ id: string; url: string }>("/api/checkout/create-session", { plan, deviceId, email, consent });
+  post<{ id: string; url: string }>("/api/checkout/create-session", {
+    plan,
+    deviceId,
+    email,
+    consent,
+    ...(code ? { code } : {}),
+  });
+
+export const checkPromo = (code: string, plan: PlanId): Promise<PromoQuote> =>
+  post<PromoQuote>("/api/promo/check", { code, plan });
+
+/** Spends a gift code (or a 100% discount) on a device: no payment involved. */
+export const redeemPromo = (code: string, plan: PlanId, deviceId: string, email: string): Promise<RedeemResult> =>
+  post<RedeemResult>("/api/promo/redeem", { code, plan, deviceId, email });
 
 export const confirmCheckout = (sessionId: string): Promise<CheckoutResult> =>
   post<CheckoutResult>("/api/checkout/confirm", { sessionId });
