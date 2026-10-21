@@ -23,6 +23,7 @@ import com.rork.novastream.data.net.ProviderNetwork
 import com.rork.novastream.data.net.SpeedTester
 import com.rork.novastream.data.net.downloadToFile
 import com.rork.novastream.data.net.toSyncFailure
+import com.rork.novastream.data.parser.LiveLeakFilter
 import com.rork.novastream.data.parser.M3uParser
 import com.rork.novastream.data.parser.XmltvParser
 import com.rork.novastream.data.remote.XtreamClient
@@ -176,7 +177,8 @@ class IptvRepository(context: Context) {
                     val stored = readVault<Catalog>(catalogFile(activeId))
                     if (stored != null && stored.entries.isNotEmpty()) {
                         Log.i(TAG, "Catalogo ripreso dal dispositivo (${stored.entries.size} voci)")
-                        _catalog.value = stored
+                        val cleaned = LiveLeakFilter.purgeMovies(stored.entries)
+                        _catalog.value = if (cleaned === stored.entries) stored else stored.copy(entries = cleaned)
                     } else {
                         // Missing, damaged, or written by an older build: the file
                         // would keep failing, so it goes and a fresh copy is fetched.

@@ -4,6 +4,30 @@ Da 1.2.7 ogni versione ha anche un file dedicato nella cartella `changelogs`
 (`changelogs/1.2.7.md`, `changelogs/1.2.6.md`, …), scritto in tutte e otto le
 lingue dell'app. Questo file resta lo storico completo in ordine di rilascio.
 
+## 1.3.3
+
+Dettaglio completo in 8 lingue: `changelogs/1.3.3.md`.
+
+### Italiano
+
+- Film: non compaiono più le copertine delle categorie live ("Italia", "Italia 4K-FHD")
+  né i canali live messi per errore tra i film dal fornitore; pulito anche il catalogo salvato.
+- Playlist M3U: riconoscimento più preciso di canali, film e serie.
+- Serie TV: risolta l'immagine bloccata (audio che continua) dopo il passaggio automatico
+  all'episodio successivo (TV Xiaomi): ogni episodio parte con lettore e superficie video nuovi.
+
+### English
+
+- Movies: live category covers ("Italia", "Italia 4K-FHD") and live channels misfiled by
+  the provider no longer appear; the saved catalog is cleaned too.
+- M3U playlists: more accurate detection of channels, movies and series.
+- TV series: fixed the frozen picture (audio still playing) after the automatic switch to
+  the next episode (Xiaomi TVs): each episode starts with a fresh player and video surface.
+
+### Español / Français / Deutsch / Português / Română / Türkçe
+
+Vedi `changelogs/1.3.3.md`.
+
 ## 1.3.2
 
 Dettaglio completo in 8 lingue: `changelogs/1.3.2.md`.

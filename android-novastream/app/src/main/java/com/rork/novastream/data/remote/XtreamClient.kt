@@ -8,6 +8,7 @@ import com.rork.novastream.data.model.PlaylistAccount
 import com.rork.novastream.data.model.ProviderInfo
 import com.rork.novastream.data.net.downloadToFile
 import com.rork.novastream.data.net.getProviderText
+import com.rork.novastream.data.parser.LiveLeakFilter
 import com.rork.novastream.data.parser.M3uParser
 import io.ktor.client.HttpClient
 import io.ktor.http.encodeURLParameter
@@ -53,10 +54,15 @@ class XtreamClient(
         val seriesCategories = categories(account, "get_series_categories")
 
         onProgress("Recupero canali live…")
-        entries += liveStreams(account, liveCategories)
+        val live = liveStreams(account, liveCategories)
+        entries += live
+        val liveIds = live.associateTo(HashMap(live.size)) {
+            it.id.removePrefix("live_") to LiveLeakFilter.normalize(it.title)
+        }
+        val leaks = LiveLeakFilter(liveCategories.values, live.map { it.title })
 
         onProgress("Recupero film…")
-        entries += vodStreams(account, vodCategories)
+        entries += vodStreams(account, vodCategories, liveCategories, liveIds, leaks)
 
         onProgress("Recupero serie TV…")
         entries += seriesList(account, seriesCategories)
@@ -267,21 +273,40 @@ class XtreamClient(
         )
     }
 
+    /**
+     * Films of the line. Some panels mix live channels and the poster cards of
+     * live categories into this list (the "Italia" / "choose a channel" tiles),
+     * which then showed up under Movies. A record is dropped when the portal
+     * marks it as live, when it is the very same channel (same id and name) as a
+     * live one, when it is filed under a live category that is not a film
+     * category, or when [LiveLeakFilter] recognises a live category cover.
+     */
     private suspend fun vodStreams(
         account: PlaylistAccount,
         categories: Map<String, String>,
+        liveCategories: Map<String, String>,
+        liveIds: Map<String, String>,
+        leaks: LiveLeakFilter,
     ): List<MediaEntry> = streamArray(
         url = apiUrl(account, "get_vod_streams"),
         tempName = "xtream-vod.json",
         deserializer = XtreamVodDto.serializer(),
     ) { index, dto ->
         val streamId = dto.streamId.ifBlank { return@streamArray null }
+        if (dto.categoryId.isNotBlank() && dto.categoryId !in categories && dto.categoryId in liveCategories) {
+            return@streamArray null
+        }
+        if (liveIds[streamId]?.let { it.isNotEmpty() && it == LiveLeakFilter.normalize(dto.name) } == true) {
+            return@streamArray null
+        }
+        val group = categories[dto.categoryId] ?: "Senza categoria"
+        if (leaks.isLiveLeak(dto.name, group, dto.streamType)) return@streamArray null
         val name = dto.name.ifBlank { "Film $streamId" }
         MediaEntry(
             id = "movie_$streamId",
             title = name,
             kind = MediaKind.MOVIE,
-            group = categories[dto.categoryId] ?: "Senza categoria",
+            group = group,
             logoUrl = dto.icon.ifBlank { dto.cover }.takeIf { it.isNotBlank() },
             streamUrl = "${base(account)}/movie/${account.username.enc()}/${account.password.enc()}/" +
                 "$streamId.${dto.extension.ifBlank { "mp4" }}",

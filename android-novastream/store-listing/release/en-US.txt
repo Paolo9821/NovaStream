@@ -1,11 +1,9 @@
-Add and delete playlists from the website, no remote needed.
+Fixes for movies and TV series.
 
-• New page novastream.rork.app/playlist: enter the device MAC and key
-• Single-use key: it changes every 5 minutes and as soon as it is used
-• Upload the details as M3U or Xtream Codes
-• Security check against bots
-• Playlists appear on or disappear from the device by themselves
-• Credentials always encrypted
-• Version 1.2.9
+• Movies: live category covers ("Italia", "Italia 4K-FHD") no longer show among films
+• Live channels misfiled among films are back where they belong
+• M3U playlists: channels, movies and series detected more accurately
+• TV series: fixed the frozen picture after the automatic switch to the next episode
+• Version 1.3.3
 
 Thanks for using NovaStream.

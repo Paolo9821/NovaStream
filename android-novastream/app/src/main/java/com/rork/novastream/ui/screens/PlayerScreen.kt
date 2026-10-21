@@ -61,6 +61,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -160,6 +161,9 @@ private const val MIN_AUTO_SWITCH_DURATION_MS = 3 * 60_000L
 /** Playback time with sound but no new frame before the picture counts as frozen. */
 private const val FROZEN_VIDEO_TIMEOUT_MS = 3_000L
 
+/** Fresh players a frozen stream may get before only seeks are tried. */
+private const val MAX_FROZEN_REBUILDS = 3
+
 /** A second freeze within this window gets the heavier recovery. */
 private const val FROZEN_RECOVERY_WINDOW_MS = 60_000L
 
@@ -217,10 +221,23 @@ fun PlayerScreen(
     }
     var resumeNoticeVisible by remember(activeStreamUrl) { mutableStateOf(resumeFromMs > 0L) }
 
-    // One player for the whole session. Rebuilding it on every channel change
-    // detached the video surface, which is why a zap used to leave the sound
-    // playing over a black picture; only a settings change rebuilds it now.
-    val player = remember(settings.bufferSeconds, settings.hardwareDecoding) {
+    /**
+     * Bumped to start a brand-new player and video surface. Live zapping keeps
+     * one player, but moving to another episode does what leaving and reopening
+     * the series did by hand: on several TVs (Xiaomi among them) the decoder of
+     * the finished episode, reused for the next one, stopped drawing a few
+     * seconds in while the sound carried on.
+     */
+    var playerSession by remember { mutableIntStateOf(0) }
+    /** Where the next player should start, when it is rebuilt mid-stream. */
+    var pendingStartMs by remember { mutableStateOf<Long?>(null) }
+    /** Rebuilds spent on a frozen picture for the current stream, so they cannot loop. */
+    var frozenRebuilds by remember(activeStreamUrl) { mutableIntStateOf(0) }
+
+    // A channel change keeps the same player and surface: rebuilding it on every
+    // zap used to leave the sound playing over a black picture. Settings changes
+    // and episode changes rebuild it, together with its surface.
+    val player = remember(settings.bufferSeconds, settings.hardwareDecoding, playerSession) {
         val bufferMs = settings.bufferSeconds * 1000
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
@@ -304,8 +321,11 @@ fun PlayerScreen(
             .build()
         player.setMediaItem(MediaItem.fromUri(activeStreamUrl))
         player.prepare()
-        // Picks the film back up where it was left instead of restarting it.
-        if (resumeFromMs > 0L) player.seekTo(resumeFromMs)
+        // Picks the film back up where it was left instead of restarting it,
+        // or where the picture froze when the player had to be rebuilt.
+        val startAt = pendingStartMs ?: resumeFromMs
+        pendingStartMs = null
+        if (startAt > 0L) player.seekTo(startAt)
         player.playWhenReady = true
     }
 
@@ -456,7 +476,17 @@ fun PlayerScreen(
         interactionTick += 1
     }
 
-    fun playEpisode(episode: Episode) = switchTo(activeEntryId, episode.streamUrl)
+    fun playEpisode(episode: Episode) {
+        if (episode.streamUrl.isBlank() || episode.streamUrl == activeStreamUrl) return
+        // The episode being left is written down now, while the player still
+        // holds it: the player is about to be replaced.
+        saveCurrentProgress(
+            positionMs = player.currentPosition,
+            durationMs = player.duration.coerceAtLeast(0L),
+        )
+        playerSession += 1
+        switchTo(activeEntryId, episode.streamUrl)
+    }
 
     fun playChannel(channel: MediaEntry) = switchTo(channel.id, channel.streamUrl)
 
@@ -523,10 +553,17 @@ fun PlayerScreen(
         player.addListener(listener)
 
         onDispose {
-            saveCurrentProgress(
-                positionMs = player.currentPosition,
-                durationMs = player.duration.coerceAtLeast(0L),
-            )
+            // When the player is replaced for the next episode, what it holds is
+            // the previous episode (already saved): it must not be written down
+            // under the new episode's address.
+            val heldUrl = player.currentMediaItem?.localConfiguration?.uri?.toString()
+            if (heldUrl == null || heldUrl == playingStreamUrl) {
+                saveCurrentProgress(
+                    positionMs = player.currentPosition,
+                    durationMs = player.duration.coerceAtLeast(0L),
+                )
+            }
+            playerViewRef?.let { view -> if (view.player === player) view.player = null }
             player.removeListener(listener)
             player.release()
         }
@@ -650,21 +687,16 @@ fun PlayerScreen(
             recoveries += 1
             lastRecoveryAtMs = now
             Log.w("NovaPlayer", "video frozen at ${position}ms, recovery #$recoveries")
-            if (recoveries == 1) {
+            if (recoveries == 1 || frozenRebuilds >= MAX_FROZEN_REBUILDS) {
                 // A seek to the same spot flushes the decoders: usually enough.
                 player.seekTo(position)
             } else {
-                // Still stuck: hand the picture a fresh surface and reopen the
-                // stream at the same second.
-                playerViewRef?.let { view ->
-                    view.player = null
-                    view.player = player
-                }
-                player.stop()
-                player.setMediaItem(MediaItem.fromUri(activeStreamUrl))
-                player.prepare()
-                player.seekTo(position)
-                player.playWhenReady = true
+                // Still stuck: a brand-new player and surface pick the stream up
+                // at the same second, exactly like closing and reopening it.
+                pendingStartMs = position
+                frozenRebuilds += 1
+                playerSession += 1
+                return@LaunchedEffect
             }
             lastRendered = -1
         }
@@ -1076,6 +1108,8 @@ fun PlayerScreen(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center,
         ) {
+        // A new player gets a new view, and with it a new video surface.
+        key(player) {
         AndroidView(
             factory = { viewContext ->
                 PlayerView(viewContext).apply {
@@ -1099,12 +1133,14 @@ fun PlayerScreen(
                 val resize = settings.videoFit.resizeMode()
                 if (view.resizeMode != resize) view.resizeMode = resize
             },
+            onRelease = { view -> view.player = null },
             modifier = if (forcedRatio != null) {
                 Modifier.aspectRatio(forcedRatio)
             } else {
                 Modifier.fillMaxSize()
             },
         )
+        }
         }
 
         // Tap surface: single tap toggles the controls, double tap jumps ±10 s.

@@ -64,6 +64,7 @@ data class XtreamVodDto(
     @SerialName("stream_icon") @Serializable(with = LooseText::class) val icon: String = "",
     @SerialName("cover") @Serializable(with = LooseText::class) val cover: String = "",
     @SerialName("container_extension") @Serializable(with = LooseText::class) val extension: String = "",
+    @SerialName("stream_type") @Serializable(with = LooseText::class) val streamType: String = "",
     @SerialName("added") @Serializable(with = LooseText::class) val added: String = "",
     @SerialName("plot") @Serializable(with = LooseText::class) val plot: String = "",
     @SerialName("genre") @Serializable(with = LooseText::class) val genre: String = "",

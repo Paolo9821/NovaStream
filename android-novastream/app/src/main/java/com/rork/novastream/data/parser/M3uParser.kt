@@ -25,6 +25,7 @@ object M3uParser {
      */
     fun parse(lines: Sequence<String>, nowMs: Long): List<MediaEntry> {
         val entries = ArrayList<MediaEntry>()
+        val decisive = java.util.BitSet()
         var pendingInfo: String? = null
         var order = 0
 
@@ -37,14 +38,73 @@ object M3uParser {
                 else -> {
                     val info = pendingInfo
                     if (info != null) {
+                        if (pathKind(line) != null) decisive.set(entries.size)
                         entries += buildEntry(info, line, order++, nowMs)
                         pendingInfo = null
                     }
                 }
             }
         }
-        entries.trimToSize()
-        return entries
+        return settleKinds(entries, decisive)
+    }
+
+    /**
+     * Second pass over the playlist. An entry whose address does not say what it
+     * is (no /live/, /movie/ or /series/ in the path) takes the kind most of its
+     * group has: a live group's cover card, which providers often point at a
+     * placeholder .mp4, stays in Live TV instead of landing among the films.
+     * Films that are really live category covers or channels are then moved back.
+     */
+    private fun settleKinds(entries: ArrayList<MediaEntry>, decisive: java.util.BitSet): List<MediaEntry> {
+        val tally = HashMap<String, IntArray>()
+        entries.forEach { entry ->
+            tally.getOrPut(entry.group) { IntArray(MediaKind.entries.size) }[entry.kind.ordinal]++
+        }
+        val majority = tally.mapValues { (_, counts) ->
+            MediaKind.entries[counts.indices.maxBy { counts[it] }]
+        }
+
+        val liveGroups = HashSet<String>()
+        val liveNames = ArrayList<String>()
+        entries.forEachIndexed { index, entry ->
+            if (!decisive[index]) {
+                val groupKind = majority[entry.group] ?: entry.kind
+                if (groupKind != entry.kind && (groupKind == MediaKind.LIVE || entry.kind == MediaKind.LIVE)) {
+                    entries[index] = entry.copy(kind = groupKind)
+                }
+            }
+            if (entries[index].kind == MediaKind.LIVE) {
+                liveGroups += entry.group
+                liveNames += entry.title
+            }
+        }
+
+        val leaks = LiveLeakFilter(liveGroups, liveNames)
+        if (leaks.isEmpty) {
+            entries.trimToSize()
+            return entries
+        }
+        val result = ArrayList<MediaEntry>(entries.size)
+        entries.forEachIndexed { index, entry ->
+            when {
+                entry.kind != MediaKind.MOVIE || !leaks.isLiveLeak(entry.title, entry.group) -> result += entry
+                // A /movie/ address cannot play as a channel: the cover card is simply left out.
+                decisive[index] -> Unit
+                else -> result += entry.copy(kind = MediaKind.LIVE)
+            }
+        }
+        return result
+    }
+
+    /** What the stream address says, when it follows the usual /live/, /movie/, /series/ layout. */
+    private fun pathKind(url: String): MediaKind? {
+        val lower = url.lowercase()
+        return when {
+            "/movie/" in lower -> MediaKind.MOVIE
+            "/series/" in lower -> MediaKind.SERIES
+            "/live/" in lower -> MediaKind.LIVE
+            else -> null
+        }
     }
 
     private fun buildEntry(info: String, url: String, order: Int, nowMs: Long): MediaEntry {
@@ -77,11 +137,14 @@ object M3uParser {
         return "${base.hashCode()}_$order"
     }
 
+    private val episodePattern = Regex("s\\d{1,2}\\s?e\\d{1,2}", RegexOption.IGNORE_CASE)
+
     private fun classify(group: String, url: String, title: String): MediaKind {
+        pathKind(url)?.let { return it }
         val haystack = "${group.lowercase()} ${url.lowercase()}"
-        val seriesHints = listOf("/series/", "serie", "series", "tv show", "stagione", "season")
-        val movieHints = listOf("/movie/", "/vod/", "film", "movie", "cinema", "vod")
-        val episodePattern = Regex("s\\d{1,2}\\s?e\\d{1,2}", RegexOption.IGNORE_CASE)
+        val seriesHints = listOf("serie", "series", "tv show", "stagione", "season")
+        // "cinema" is left out on purpose: it names live channel groups too (Sky Cinema, Cinema Uno).
+        val movieHints = listOf("/vod/", "film", "movie", "vod")
 
         return when {
             seriesHints.any { haystack.contains(it) } || episodePattern.containsMatchIn(title) -> MediaKind.SERIES
