@@ -74,8 +74,29 @@ data class Catalog(
     val accountId: String = "",
     val entries: List<MediaEntry> = emptyList(),
     val syncedAtEpochMs: Long = 0L,
+    /**
+     * Category names of each section (keyed by [MediaKind.name]) in the order the
+     * provider lists them. Catalogs saved before this existed have it empty.
+     */
+    val groupOrder: Map<String, List<String>> = emptyMap(),
 ) {
     fun of(kind: MediaKind): List<MediaEntry> = entries.filter { it.kind == kind }
+
+    /**
+     * Categories of [items] in the provider's order. Names the provider did not
+     * list (or every name, for an older saved catalog) follow in the order they
+     * first appear among the entries, which is the provider's own listing order.
+     */
+    fun orderedGroups(kind: MediaKind, items: List<MediaEntry>): List<String> {
+        val present = LinkedHashSet<String>()
+        items.sortedBy { it.providerOrder }.forEach { present += it.group }
+        val declared = groupOrder[kind.name].orEmpty()
+        if (declared.isEmpty()) return present.toList()
+        val result = ArrayList<String>(present.size)
+        declared.forEach { if (present.remove(it)) result += it }
+        result += present
+        return result
+    }
 }
 
 @Serializable

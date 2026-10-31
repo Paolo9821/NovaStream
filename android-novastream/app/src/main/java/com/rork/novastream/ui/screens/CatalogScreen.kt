@@ -96,7 +96,7 @@ fun CatalogScreen(
         viewModel.filteredEntries(kind, query)
     }
     val groups = remember(catalog, kind, settings, unlocked) {
-        viewModel.visibleEntries(kind).map { it.group }.distinct().sorted()
+        viewModel.visibleGroupsOf(kind)
     }
 
     Column(
@@ -380,6 +380,14 @@ private fun SortChipsRow(
         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        // The provider's own order comes first and is what every list opens on.
+        item("provider") {
+            SortChip(
+                label = strings.sortProvider,
+                selected = query.sort == SortOption.PROVIDER_DEFAULT && query.year == null,
+                onClick = { onQueryChange(query.copy(sort = SortOption.PROVIDER_DEFAULT, year = null)) },
+            )
+        }
         item("favorites") {
             SortChip(
                 label = strings.onlyFavorites,
@@ -418,13 +426,6 @@ private fun SortChipsRow(
                 label = strings.sortNameDesc,
                 selected = query.sort == SortOption.NAME_DESC && query.year == null,
                 onClick = { onQueryChange(query.copy(sort = SortOption.NAME_DESC, year = null)) },
-            )
-        }
-        item("provider") {
-            SortChip(
-                label = strings.sortProvider,
-                selected = query.sort == SortOption.PROVIDER_DEFAULT && query.year == null,
-                onClick = { onQueryChange(query.copy(sort = SortOption.PROVIDER_DEFAULT, year = null)) },
             )
         }
     }

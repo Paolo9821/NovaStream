@@ -472,7 +472,7 @@ class IptvRepository(context: Context) {
             when (account.type) {
                 AccountType.XTREAM -> xtream.loadCatalog(account) { message ->
                     _syncState.value = SyncState.Running(message)
-                }
+                }.let { it.entries to it.groupOrder }
                 AccountType.M3U -> withContext(Dispatchers.IO) {
                     _syncState.value = SyncState.Running("Scarico la playlist…")
                     // Playlists are commonly tens of megabytes: the file goes to
@@ -487,7 +487,9 @@ class IptvRepository(context: Context) {
                         if (entries.isEmpty()) {
                             throw IllegalStateException("L'URL non contiene una playlist m3u valida")
                         }
-                        entries
+                        // An m3u playlist lists its categories in the order
+                        // they first appear, which is the order kept on screen.
+                        entries to emptyMap<String, List<String>>()
                     } finally {
                         temp.delete()
                     }
@@ -495,11 +497,12 @@ class IptvRepository(context: Context) {
             }
         }
 
-        result.onSuccess { entries ->
+        result.onSuccess { (entries, groupOrder) ->
             val catalog = Catalog(
                 accountId = account.id,
                 entries = entries,
                 syncedAtEpochMs = System.currentTimeMillis(),
+                groupOrder = groupOrder,
             )
             var live = 0
             var movies = 0

@@ -45,7 +45,7 @@ class XtreamClient(
     suspend fun loadCatalog(
         account: PlaylistAccount,
         onProgress: (String) -> Unit,
-    ): List<MediaEntry> = withContext(Dispatchers.IO) {
+    ): XtreamCatalog = withContext(Dispatchers.IO) {
         val entries = ArrayList<MediaEntry>()
 
         onProgress("Recupero categorie…")
@@ -68,7 +68,14 @@ class XtreamClient(
         entries += seriesList(account, seriesCategories)
 
         entries.trimToSize()
-        entries
+        XtreamCatalog(
+            entries = entries,
+            groupOrder = mapOf(
+                MediaKind.LIVE.name to liveCategories.values.distinct(),
+                MediaKind.MOVIE.name to vodCategories.values.distinct(),
+                MediaKind.SERIES.name to seriesCategories.values.distinct(),
+            ),
+        )
     }
 
     /**
@@ -248,7 +255,7 @@ class XtreamClient(
                 deserializer = XtreamCategoryDto.serializer(),
             ) { _, dto ->
                 if (dto.id.isBlank() || dto.name.isBlank()) null else dto.id to dto.name
-            }.toMap()
+            }.toMap(LinkedHashMap())
         }.getOrDefault(emptyMap())
 
     private suspend fun liveStreams(
@@ -266,7 +273,7 @@ class XtreamClient(
             kind = MediaKind.LIVE,
             group = categories[dto.categoryId] ?: "Senza categoria",
             logoUrl = dto.icon.takeIf { it.isNotBlank() },
-            streamUrl = "${base(account)}/live/${account.username.enc()}/${account.password.enc()}/$streamId.m3u8",
+            streamUrl = "${base(account)}/live/${account.username.enc()}/${account.password.enc()}/$streamId.ts",
             providerOrder = index,
             addedEpochMs = dto.added.epochMs(),
             tvgId = dto.epgChannelId.takeIf { it.isNotBlank() },
@@ -426,3 +433,9 @@ class XtreamClient(
         else -> emptyList()
     }
 }
+
+/** Everything a full Xtream download brings back: titles plus the provider's category order. */
+data class XtreamCatalog(
+    val entries: List<MediaEntry>,
+    val groupOrder: Map<String, List<String>>,
+)

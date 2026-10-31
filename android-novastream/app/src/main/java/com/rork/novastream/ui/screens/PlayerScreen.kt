@@ -110,6 +110,10 @@ import androidx.media3.common.Player
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.common.Tracks
+import androidx.media3.common.VideoSize
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.foundation.border
+import com.rork.novastream.data.remote.LiveStreamUrls
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
@@ -234,6 +238,21 @@ fun PlayerScreen(
     /** Rebuilds spent on a frozen picture for the current stream, so they cannot loop. */
     var frozenRebuilds by remember(activeStreamUrl) { mutableIntStateOf(0) }
 
+    /**
+     * Live channels whose provider refused the continuous stream: they are
+     * played as HLS for the rest of the session instead.
+     */
+    var hlsFallbackUrls by remember { mutableStateOf(emptySet<String>()) }
+    /** What the player is actually asked to open for [activeStreamUrl]. */
+    val playbackUrl = remember(activeStreamUrl, hlsFallbackUrls) {
+        LiveStreamUrls.forPlayback(activeStreamUrl, useHls = activeStreamUrl in hlsFallbackUrls)
+    }
+    val currentPlaybackUrl by rememberUpdatedState(playbackUrl)
+    /** True once the current source has played at least once, so later errors are not a refusal. */
+    var streamStarted by remember { mutableStateOf(false) }
+    /** Resolution of the picture on screen, known only once its first frame is drawn. */
+    var videoSize by remember { mutableStateOf<IntSize?>(null) }
+
     // A channel change keeps the same player and surface: rebuilding it on every
     // zap used to leave the sound playing over a black picture. Settings changes
     // and episode changes rebuild it, together with its surface.
@@ -307,8 +326,10 @@ fun PlayerScreen(
 
     // Loads whatever should be on screen into the running player, so switching
     // channel or episode swaps the source and keeps the same video surface.
-    LaunchedEffect(player, activeStreamUrl) {
+    LaunchedEffect(player, playbackUrl) {
         buffering = true
+        streamStarted = false
+        videoSize = null
         playbackEnded = false
         upNextDismissed = false
         secondsLeft = 0
@@ -319,7 +340,7 @@ fun PlayerScreen(
             .buildUpon()
             .clearOverrides()
             .build()
-        player.setMediaItem(MediaItem.fromUri(activeStreamUrl))
+        player.setMediaItem(MediaItem.fromUri(playbackUrl))
         player.prepare()
         // Picks the film back up where it was left instead of restarting it,
         // or where the picture froze when the player had to be rebuilt.
@@ -507,6 +528,7 @@ fun PlayerScreen(
         val listener = object : Player.Listener {
             override fun onPlaybackStateChanged(playbackState: Int) {
                 buffering = playbackState == Player.STATE_BUFFERING
+                if (playbackState == Player.STATE_READY) streamStarted = true
                 if (playbackState == Player.STATE_ENDED) {
                     playbackEnded = true
                     controlsVisible = true
@@ -528,6 +550,16 @@ fun PlayerScreen(
                 tracks = newTracks
             }
 
+            override fun onRenderedFirstFrame() {
+                videoSize = player.videoSize.toIntSizeOrNull()
+            }
+
+            override fun onVideoSizeChanged(size: VideoSize) {
+                // Before the first frame the size may still be a guess from the
+                // playlist: the label waits for the real picture.
+                if (videoSize != null) videoSize = size.toIntSizeOrNull() ?: videoSize
+            }
+
             override fun onTrackSelectionParametersChanged(parameters: TrackSelectionParameters) {
                 trackParams = parameters
             }
@@ -542,6 +574,13 @@ fun PlayerScreen(
             }
 
             override fun onPlayerError(playerError: PlaybackException) {
+                // The provider would not send this channel as a continuous
+                // stream: it is opened again straight away as HLS.
+                if (!streamStarted && LiveStreamUrls.canFallBack(currentPlaybackUrl)) {
+                    Log.w("NovaPlayer", "continuous live refused (${playerError.errorCodeName}), using HLS")
+                    hlsFallbackUrls = hlsFallbackUrls + playingStreamUrl
+                    return
+                }
                 if (reconnectAttempt < MAX_RECONNECT_ATTEMPTS) {
                     scheduleReconnect(player.currentPosition)
                 } else {
@@ -557,7 +596,7 @@ fun PlayerScreen(
             // the previous episode (already saved): it must not be written down
             // under the new episode's address.
             val heldUrl = player.currentMediaItem?.localConfiguration?.uri?.toString()
-            if (heldUrl == null || heldUrl == playingStreamUrl) {
+            if (heldUrl == null || heldUrl == playingStreamUrl || heldUrl == currentPlaybackUrl) {
                 saveCurrentProgress(
                     positionMs = player.currentPosition,
                     durationMs = player.duration.coerceAtLeast(0L),
@@ -687,7 +726,18 @@ fun PlayerScreen(
             recoveries += 1
             lastRecoveryAtMs = now
             Log.w("NovaPlayer", "video frozen at ${position}ms, recovery #$recoveries")
-            if (recoveries == 1 || frozenRebuilds >= MAX_FROZEN_REBUILDS) {
+            if (isLiveStream) {
+                // A channel never goes back in time: it rejoins the broadcast
+                // where it is now, and gets a fresh player if that is not enough.
+                if (recoveries == 1 || frozenRebuilds >= MAX_FROZEN_REBUILDS) {
+                    player.seekToDefaultPosition()
+                } else {
+                    pendingStartMs = null
+                    frozenRebuilds += 1
+                    playerSession += 1
+                    return@LaunchedEffect
+                }
+            } else if (recoveries == 1 || frozenRebuilds >= MAX_FROZEN_REBUILDS) {
                 // A seek to the same spot flushes the decoders: usually enough.
                 player.seekTo(position)
             } else {
@@ -708,7 +758,7 @@ fun PlayerScreen(
         error = null
         delay(reconnectDelayMs(reconnectAttempt))
         player.stop()
-        player.setMediaItem(MediaItem.fromUri(activeStreamUrl))
+        player.setMediaItem(MediaItem.fromUri(playbackUrl))
         player.prepare()
         // Live channels always rejoin at the edge; on-demand resumes where it froze.
         if (!isLiveStream && resumePositionMs > 0L) player.seekTo(resumePositionMs)
@@ -1346,6 +1396,7 @@ fun PlayerScreen(
         ) {
             PlayerTopBar(
                 title = entry?.title.orEmpty(),
+                quality = videoSize?.let { resolutionLabel(it.width, it.height) },
                 subtitle = when {
                     !isPlaying && !buffering && !reconnecting -> guideNow?.let {
                         "${strings.playerPausedBadge} · ${it.title}"
@@ -1389,7 +1440,7 @@ fun PlayerScreen(
                     OutlinedButton(onClick = {
                         error = null
                         reconnectAttempt = 0
-                        player.setMediaItem(MediaItem.fromUri(activeStreamUrl))
+                        player.setMediaItem(MediaItem.fromUri(playbackUrl))
                         player.prepare()
                         if (!isLiveStream && resumePositionMs > 0L) player.seekTo(resumePositionMs)
                         player.play()
@@ -1462,6 +1513,7 @@ private fun ReconnectOverlay(
 @Composable
 private fun PlayerTopBar(
     title: String,
+    quality: String?,
     subtitle: String?,
     closeLabel: String,
     onBack: () -> Unit,
@@ -1493,14 +1545,31 @@ private fun PlayerTopBar(
         }
         Spacer(Modifier.width(4.dp))
         Column(Modifier.weight(1f)) {
-            Text(
-                text = title,
-                color = Color.White,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = title,
+                    color = Color.White,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (quality != null) {
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        text = quality,
+                        color = Color.White,
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        modifier = Modifier
+                            .background(Color.White.copy(alpha = 0.16f), RoundedCornerShape(6.dp))
+                            .border(1.dp, Color.White.copy(alpha = 0.35f), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 8.dp, vertical = 2.dp),
+                    )
+                }
+            }
             if (subtitle != null) {
                 Text(
                     text = subtitle,
@@ -2054,6 +2123,26 @@ private fun VideoFit.label(strings: Strings): String = when (this) {
     VideoFit.STRETCH -> strings.videoFitStretch
     VideoFit.RATIO_16_9 -> strings.videoFit169
     VideoFit.RATIO_4_3 -> strings.videoFit43
+}
+
+private fun VideoSize.toIntSizeOrNull(): IntSize? =
+    if (width > 0 && height > 0) IntSize(width, height) else null
+
+/**
+ * `1920×1080 · Full HD` for the picture actually decoded. Classes leave room for
+ * the usual near-misses: 1920×1072 or anamorphic 1440×1080 are still Full HD.
+ */
+private fun resolutionLabel(width: Int, height: Int): String {
+    val long = maxOf(width, height)
+    val short = minOf(width, height)
+    val label = when {
+        long >= 3400 || short >= 2000 -> "4K"
+        long >= 2400 || short >= 1400 -> "2K"
+        long >= 1800 || short >= 1000 -> "Full HD"
+        long >= 1200 || short >= 700 -> "HD"
+        else -> "SD"
+    }
+    return "$width×$height · $label"
 }
 
 private fun speedLabel(speed: Float): String {

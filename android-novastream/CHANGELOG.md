@@ -4,6 +4,36 @@ Da 1.2.7 ogni versione ha anche un file dedicato nella cartella `changelogs`
 (`changelogs/1.2.7.md`, `changelogs/1.2.6.md`, …), scritto in tutte e otto le
 lingue dell'app. Questo file resta lo storico completo in ordine di rilascio.
 
+## 1.3.4
+
+Dettaglio completo in 8 lingue: `changelogs/1.3.4.md`.
+
+### Italiano
+
+- Menu principale: la sezione selezionata con il telecomando è molto più evidente
+  (scheda più grande e colorata, bordo bianco, freccia ben visibile).
+- "Default provider" è il primo filtro di TV in diretta, Film e Serie TV ed è già
+  selezionato; in TV in diretta sostituisce "Tutti i canali" (che resta nell'elenco categorie).
+- Categorie di TV in diretta, Film, Serie TV e Parental control nell'ordine del fornitore.
+- TV in diretta: canali Xtream come flusso continuo, con ritorno automatico a HLS se il
+  fornitore non lo supporta; immagine bloccata = riaggancio alla diretta in corso.
+- Lettore: risoluzione reale accanto al titolo (es. "1920×1080 · Full HD").
+
+### English
+
+- Main menu: the section selected with the remote stands out much more (larger,
+  coloured card, white border, clearly visible arrow).
+- "Provider default" is the first filter of Live TV, Movies and TV Series and is
+  preselected; in Live TV it replaces "All channels" (still in the category list).
+- Live TV, Movies, TV Series and Parental control categories in the provider's order.
+- Live TV: Xtream channels as a continuous stream, falling back to HLS automatically if
+  the provider does not support it; a frozen picture rejoins the live broadcast.
+- Player: real resolution next to the title (e.g. "1920×1080 · Full HD").
+
+### Español / Français / Deutsch / Português / Română / Türkçe
+
+Vedi `changelogs/1.3.4.md`.
+
 ## 1.3.3
 
 Dettaglio completo in 8 lingue: `changelogs/1.3.3.md`.

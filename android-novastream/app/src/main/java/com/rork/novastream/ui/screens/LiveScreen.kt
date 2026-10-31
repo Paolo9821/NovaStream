@@ -50,6 +50,7 @@ import coil3.compose.AsyncImage
 import com.rork.novastream.data.model.MediaEntry
 import com.rork.novastream.data.model.MediaKind
 import com.rork.novastream.data.model.Programme
+import com.rork.novastream.data.model.SortOption
 import com.rork.novastream.ui.components.EmptyState
 import com.rork.novastream.ui.components.FavoriteHeart
 import com.rork.novastream.ui.components.FocusableSurface
@@ -95,7 +96,7 @@ fun LiveScreen(
         viewModel.filteredEntries(MediaKind.LIVE, query)
     }
     val groups = remember(catalog, settings, unlocked) {
-        viewModel.visibleEntries(MediaKind.LIVE).map { it.group }.distinct().sorted()
+        viewModel.visibleGroupsOf(MediaKind.LIVE)
     }
 
     Column(
@@ -119,6 +120,24 @@ fun LiveScreen(
                 contentPadding = PaddingValues(horizontal = 20.dp, vertical = 4.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                // Every channel in the provider's own order: the first chip and
+                // the one the page opens on. "All channels" stays in the panel.
+                item("provider") {
+                    GroupChip(
+                        label = strings.sortProvider,
+                        selected = query.group == null && !query.favoritesOnly,
+                        onClick = {
+                            viewModel.applyQuery(
+                                MediaKind.LIVE,
+                                query.copy(
+                                    group = null,
+                                    favoritesOnly = false,
+                                    sort = SortOption.PROVIDER_DEFAULT,
+                                )
+                            )
+                        },
+                    )
+                }
                 item("favorites") {
                     GroupChip(
                         label = strings.onlyFavorites,
@@ -127,18 +146,6 @@ fun LiveScreen(
                             viewModel.applyQuery(
                                 MediaKind.LIVE,
                                 query.copy(favoritesOnly = !query.favoritesOnly)
-                            )
-                        },
-                    )
-                }
-                item("all") {
-                    GroupChip(
-                        label = strings.allChannels,
-                        selected = query.group == null && !query.favoritesOnly,
-                        onClick = {
-                            viewModel.applyQuery(
-                                MediaKind.LIVE,
-                                query.copy(group = null, favoritesOnly = false)
                             )
                         },
                     )

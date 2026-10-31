@@ -291,10 +291,11 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     private val _parentalUnlocked = MutableStateFlow(false)
     val parentalUnlocked: StateFlow<Boolean> = _parentalUnlocked.asStateFlow()
 
-    private val _movieQuery = MutableStateFlow(CatalogQuery())
+    // Every list opens on the provider's own order, the first chip of each page.
+    private val _movieQuery = MutableStateFlow(CatalogQuery(sort = SortOption.PROVIDER_DEFAULT))
     val movieQuery: StateFlow<CatalogQuery> = _movieQuery.asStateFlow()
 
-    private val _seriesQuery = MutableStateFlow(CatalogQuery())
+    private val _seriesQuery = MutableStateFlow(CatalogQuery(sort = SortOption.PROVIDER_DEFAULT))
     val seriesQuery: StateFlow<CatalogQuery> = _seriesQuery.asStateFlow()
 
     private val _liveQuery = MutableStateFlow(CatalogQuery(sort = SortOption.PROVIDER_DEFAULT))
@@ -340,10 +341,13 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /** Every category of one section, whatever the parental lock is hiding. */
-    fun allGroupsOf(kind: MediaKind): List<String> = catalog.value.of(kind)
-        .map { it.group }
-        .distinct()
-        .sorted()
+    fun allGroupsOf(kind: MediaKind): List<String> = catalog.value.let { current ->
+        current.orderedGroups(kind, current.of(kind))
+    }
+
+    /** Categories the parental lock lets through, in the provider's order. */
+    fun visibleGroupsOf(kind: MediaKind): List<String> =
+        catalog.value.orderedGroups(kind, visibleEntries(kind))
 
     /** How many categories of [kind] are currently behind the PIN. */
     fun blockedCountOf(kind: MediaKind): Int =

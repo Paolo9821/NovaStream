@@ -1,7 +1,16 @@
 package com.rork.novastream.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -49,8 +58,16 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -545,21 +562,80 @@ private fun CategoryCard(
     onClick: () -> Unit,
 ) {
     val accent = accentFor(kind)
-    FocusableSurface(
+    val interactionSource = remember { MutableInteractionSource() }
+    val focused by interactionSource.collectIsFocusedAsState()
+    val pressed by interactionSource.collectIsPressedAsState()
+    // Seen from the sofa the highlighted section has to stand out at a glance:
+    // it grows, fills with its own colour, gets a double white/colour frame
+    // with a glow, a white bar on the left and a bold white title.
+    val focus by animateFloatAsState(
+        targetValue = if (focused) 1f else 0f,
+        animationSpec = tween(durationMillis = 160),
+        label = "categoryFocus",
+    )
+    val scale by animateFloatAsState(
+        targetValue = if (focused) 1.07f else if (pressed) 0.97f else 1f,
+        animationSpec = spring(dampingRatio = 0.62f, stiffness = 520f),
+        label = "categoryScale",
+    )
+    val shape = RoundedCornerShape(18.dp)
+    Surface(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .zIndex(if (focused) 1f else 0f)
+            .scale(scale)
+            .drawBehind {
+                if (focus < 0.01f) return@drawBehind
+                // Soft glow in the section colour, spreading past the card.
+                for (step in 1..4) {
+                    val spread = (step * 5).dp.toPx() * focus
+                    drawRoundRect(
+                        color = accent.copy(alpha = 0.16f * focus / step),
+                        topLeft = Offset(-spread, -spread),
+                        size = Size(size.width + spread * 2, size.height + spread * 2),
+                        cornerRadius = CornerRadius(18.dp.toPx() + spread),
+                    )
+                }
+            },
+        shape = shape,
         color = MaterialTheme.colorScheme.surface,
-        focusRingColor = accent,
+        interactionSource = interactionSource,
+        shadowElevation = if (focused) 12.dp else 0.dp,
+        // Outer white line, inner coloured line.
+        border = if (focused) BorderStroke(3.dp, Color.White) else null,
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(
                     Brush.horizontalGradient(
-                        listOf(accent.copy(alpha = 0.22f), Color.Transparent),
+                        listOf(
+                            lerp(accent.copy(alpha = 0.22f), accent, focus),
+                            lerp(Color.Transparent, accent.copy(alpha = 0.72f), focus),
+                        ),
                     )
                 )
+                .then(
+                    if (focused) {
+                        Modifier
+                            .padding(3.dp)
+                            .border(BorderStroke(3.dp, accent.copy(alpha = 0.95f)), RoundedCornerShape(15.dp))
+                    } else Modifier
+                )
         ) {
+            if (focus > 0.01f) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .padding(start = 6.dp)
+                        .width(5.dp)
+                        .height(40.dp)
+                        .graphicsLayer { alpha = focus }
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(Color.White),
+                )
+            }
             Row(
                 modifier = Modifier.padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -574,19 +650,22 @@ private fun CategoryCard(
                             MediaKind.SERIES -> strings.seriesTitle
                         },
                         style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold,
+                        fontWeight = if (focused) FontWeight.ExtraBold else FontWeight.SemiBold,
+                        color = if (focused) Color.White else MaterialTheme.colorScheme.onSurface,
                     )
                     if (loading) {
                         Text(
                             text = strings.catalogUpdating,
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = if (focused) Color.White.copy(alpha = 0.85f)
+                            else MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     } else {
                         Text(
                             text = "${formatCount(count)} ${unitOf(kind, strings)}",
                             style = MaterialTheme.typography.titleSmall,
-                            color = accent,
+                            color = if (focused) Color.White.copy(alpha = 0.9f) else accent,
+                            fontWeight = if (focused) FontWeight.SemiBold else null,
                         )
                     }
                 }
@@ -594,22 +673,27 @@ private fun CategoryCard(
                     CircularProgressIndicator(
                         modifier = Modifier.size(16.dp),
                         strokeWidth = 2.dp,
-                        color = accent,
+                        color = if (focused) Color.White else accent,
                     )
                     Spacer(Modifier.width(6.dp))
                 }
+                val arrowBox by animateDpAsState(
+                    targetValue = if (focused) 42.dp else 32.dp,
+                    animationSpec = tween(durationMillis = 160),
+                    label = "categoryArrow",
+                )
                 Box(
                     modifier = Modifier
-                        .size(32.dp)
-                        .clip(RoundedCornerShape(11.dp))
-                        .background(accent.copy(alpha = 0.18f)),
+                        .size(arrowBox)
+                        .clip(RoundedCornerShape(if (focused) 13.dp else 11.dp))
+                        .background(if (focused) Color.White else accent.copy(alpha = 0.18f)),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
                         contentDescription = null,
                         tint = accent,
-                        modifier = Modifier.size(20.dp),
+                        modifier = Modifier.size(if (focused) 30.dp else 20.dp),
                     )
                 }
             }

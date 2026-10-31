@@ -1,9 +1,10 @@
-Fixes for movies and TV series.
+Clearer menu, provider order and smoother live TV.
 
-• Movies: live category covers ("Italia", "Italia 4K-FHD") no longer show among films
-• Live channels misfiled among films are back where they belong
-• M3U playlists: channels, movies and series detected more accurately
-• TV series: fixed the frozen picture after the automatic switch to the next episode
-• Version 1.3.3
+• Main menu: the section selected with the remote now stands out at once
+• "Provider default" is the first filter of Live TV, Movies and TV Series
+• Categories in the provider's order, Parental control included
+• Live TV: channels play as a continuous stream, smoother
+• Player: video resolution next to the title (e.g. 1920×1080 · Full HD)
+• Version 1.3.4
 
 Thanks for using NovaStream.
