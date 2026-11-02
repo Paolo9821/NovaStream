@@ -565,45 +565,42 @@ private fun CategoryCard(
     val interactionSource = remember { MutableInteractionSource() }
     val focused by interactionSource.collectIsFocusedAsState()
     val pressed by interactionSource.collectIsPressedAsState()
-    // Seen from the sofa the highlighted section has to stand out at a glance:
-    // it grows, fills with its own colour, gets a double white/colour frame
-    // with a glow, a white bar on the left and a bold white title.
+    // Seen from the sofa the highlighted section has to stand out at a glance,
+    // the same way for every section. It stays inside its own space (nothing
+    // grows past the edge of a TV screen) and lights up instead: a deep fill
+    // in the section colour that keeps white text readable, a bright frame
+    // drawn inside the card, a white bar on the left and a white arrow.
     val focus by animateFloatAsState(
         targetValue = if (focused) 1f else 0f,
         animationSpec = tween(durationMillis = 160),
         label = "categoryFocus",
     )
-    val scale by animateFloatAsState(
-        targetValue = if (focused) 1.07f else if (pressed) 0.97f else 1f,
-        animationSpec = spring(dampingRatio = 0.62f, stiffness = 520f),
-        label = "categoryScale",
+    val pressScale by animateFloatAsState(
+        targetValue = if (pressed) 0.98f else 1f,
+        animationSpec = spring(dampingRatio = 0.7f, stiffness = 600f),
+        label = "categoryPress",
     )
     val shape = RoundedCornerShape(18.dp)
+    // Darkened section colour: white on it stays well above readable contrast
+    // for green, blue and violet alike.
+    val deep = lerp(accent, Color.Black, 0.58f)
+    val restingFill = MaterialTheme.colorScheme.surface
     Surface(
         onClick = onClick,
         modifier = Modifier
             .fillMaxWidth()
-            .zIndex(if (focused) 1f else 0f)
-            .scale(scale)
-            .drawBehind {
-                if (focus < 0.01f) return@drawBehind
-                // Soft glow in the section colour, spreading past the card.
-                for (step in 1..4) {
-                    val spread = (step * 5).dp.toPx() * focus
-                    drawRoundRect(
-                        color = accent.copy(alpha = 0.16f * focus / step),
-                        topLeft = Offset(-spread, -spread),
-                        size = Size(size.width + spread * 2, size.height + spread * 2),
-                        cornerRadius = CornerRadius(18.dp.toPx() + spread),
-                    )
-                }
+            .graphicsLayer {
+                scaleX = pressScale
+                scaleY = pressScale
             },
         shape = shape,
-        color = MaterialTheme.colorScheme.surface,
+        color = lerp(restingFill, deep, focus),
         interactionSource = interactionSource,
-        shadowElevation = if (focused) 12.dp else 0.dp,
-        // Outer white line, inner coloured line.
-        border = if (focused) BorderStroke(3.dp, Color.White) else null,
+        shadowElevation = if (focused) 10.dp else 0.dp,
+        border = BorderStroke(
+            width = if (focused) 3.dp else 1.dp,
+            color = lerp(accent.copy(alpha = 0.22f), accent, focus),
+        ),
     ) {
         Box(
             modifier = Modifier
@@ -611,17 +608,10 @@ private fun CategoryCard(
                 .background(
                     Brush.horizontalGradient(
                         listOf(
-                            lerp(accent.copy(alpha = 0.22f), accent, focus),
-                            lerp(Color.Transparent, accent.copy(alpha = 0.72f), focus),
+                            lerp(accent.copy(alpha = 0.16f), accent.copy(alpha = 0.38f), focus),
+                            Color.Transparent,
                         ),
                     )
-                )
-                .then(
-                    if (focused) {
-                        Modifier
-                            .padding(3.dp)
-                            .border(BorderStroke(3.dp, accent.copy(alpha = 0.95f)), RoundedCornerShape(15.dp))
-                    } else Modifier
                 )
         ) {
             if (focus > 0.01f) {
@@ -664,7 +654,7 @@ private fun CategoryCard(
                         Text(
                             text = "${formatCount(count)} ${unitOf(kind, strings)}",
                             style = MaterialTheme.typography.titleSmall,
-                            color = if (focused) Color.White.copy(alpha = 0.9f) else accent,
+                            color = if (focused) Color.White.copy(alpha = 0.92f) else accent,
                             fontWeight = if (focused) FontWeight.SemiBold else null,
                         )
                     }
@@ -678,7 +668,7 @@ private fun CategoryCard(
                     Spacer(Modifier.width(6.dp))
                 }
                 val arrowBox by animateDpAsState(
-                    targetValue = if (focused) 42.dp else 32.dp,
+                    targetValue = if (focused) 38.dp else 32.dp,
                     animationSpec = tween(durationMillis = 160),
                     label = "categoryArrow",
                 )
@@ -693,7 +683,7 @@ private fun CategoryCard(
                         imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
                         contentDescription = null,
                         tint = accent,
-                        modifier = Modifier.size(if (focused) 30.dp else 20.dp),
+                        modifier = Modifier.size(if (focused) 26.dp else 20.dp),
                     )
                 }
             }

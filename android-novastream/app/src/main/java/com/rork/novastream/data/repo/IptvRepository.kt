@@ -177,7 +177,7 @@ class IptvRepository(context: Context) {
                     val stored = readVault<Catalog>(catalogFile(activeId))
                     if (stored != null && stored.entries.isNotEmpty()) {
                         Log.i(TAG, "Catalogo ripreso dal dispositivo (${stored.entries.size} voci)")
-                        val cleaned = LiveLeakFilter.purgeMovies(stored.entries)
+                        val cleaned = LiveLeakFilter.purgeCatalog(stored.entries)
                         _catalog.value = if (cleaned === stored.entries) stored else stored.copy(entries = cleaned)
                     } else {
                         // Missing, damaged, or written by an older build: the file
@@ -497,7 +497,10 @@ class IptvRepository(context: Context) {
             }
         }
 
-        result.onSuccess { (entries, groupOrder) ->
+        result.onSuccess { (downloaded, groupOrder) ->
+            // Channels and channel lists the provider filed among films or
+            // series are taken out before anything is shown or saved.
+            val entries = LiveLeakFilter.purgeCatalog(downloaded)
             val catalog = Catalog(
                 accountId = account.id,
                 entries = entries,

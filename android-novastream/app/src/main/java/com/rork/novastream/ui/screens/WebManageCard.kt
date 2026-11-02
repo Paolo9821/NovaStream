@@ -95,14 +95,24 @@ fun WebManageCard(
     val link = playlistManagerLink(storeUrl, identity, keyShown)
     val siteLabel = storeUrl.removePrefix("https://").removePrefix("http://").trimEnd('/') + "/playlist"
 
+    val showQr = isTv && keyShown.isNotBlank()
+
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)),
     ) {
+        // On a TV the QR code sits beside the details instead of under them: the
+        // card then fits the screen in one piece, so the code is never cut in
+        // half whichever way the page scrolls onto it.
+        Row(
+            modifier = Modifier.padding(if (isTv) 20.dp else 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(24.dp),
+        ) {
         Column(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -178,14 +188,7 @@ fun WebManageCard(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            if (isTv && keyShown.isNotBlank()) {
-                QrCodePanel(
-                    content = link,
-                    title = strings.webManageQrTitle,
-                    caption = strings.webManageQrCaption,
-                    modifier = Modifier.align(Alignment.CenterHorizontally),
-                )
-            } else {
+            if (!showQr) {
                 FilledTonalButton(
                     onClick = {
                         runCatching {
@@ -202,6 +205,16 @@ fun WebManageCard(
                     Text(strings.webManageOpen)
                 }
             }
+        }
+        if (showQr) {
+            QrCodePanel(
+                content = link,
+                title = strings.webManageQrTitle,
+                caption = strings.webManageQrCaption,
+                codeSize = 176,
+                showContent = false,
+            )
+        }
         }
     }
 }

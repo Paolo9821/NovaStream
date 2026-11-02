@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -80,6 +81,8 @@ fun QrCodePanel(
     caption: String,
     modifier: Modifier = Modifier,
     codeSize: Int = 168,
+    /** Prints the encoded address under the code; off where space is tight. */
+    showContent: Boolean = true,
 ) {
     val bitmap = remember(content) { encodeQr(content) } ?: return
 
@@ -113,15 +116,18 @@ fun QrCodePanel(
                 style = MaterialTheme.typography.bodySmall,
                 color = Color(0xFF4B5563),
                 textAlign = TextAlign.Center,
+                modifier = if (showContent) Modifier else Modifier.widthIn(max = (codeSize + 24).dp),
             )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                text = content,
-                style = MaterialTheme.typography.labelSmall,
-                fontFamily = FontFamily.Monospace,
-                color = Color(0xFF6B7280),
-                textAlign = TextAlign.Center,
-            )
+            if (showContent) {
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    text = content,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontFamily = FontFamily.Monospace,
+                    color = Color(0xFF6B7280),
+                    textAlign = TextAlign.Center,
+                )
+            }
         }
     }
 }

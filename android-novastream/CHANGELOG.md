@@ -11,24 +11,32 @@ Dettaglio completo in 8 lingue: `changelogs/1.3.4.md`.
 ### Italiano
 
 - Menu principale: la sezione selezionata con il telecomando è molto più evidente
-  (scheda più grande e colorata, bordo bianco, freccia ben visibile).
+  (scheda illuminata nel suo colore scuro con testo bianco leggibile, bordo luminoso,
+  freccia ben visibile, senza uscire dallo schermo TV).
 - "Default provider" è il primo filtro di TV in diretta, Film e Serie TV ed è già
   selezionato; in TV in diretta sostituisce "Tutti i canali" (che resta nell'elenco categorie).
 - Categorie di TV in diretta, Film, Serie TV e Parental control nell'ordine del fornitore.
 - TV in diretta: canali Xtream come flusso continuo, con ritorno automatico a HLS se il
   fornitore non lo supporta; immagine bloccata = riaggancio alla diretta in corso.
 - Lettore: risoluzione reale accanto al titolo (es. "1920×1080 · Full HD").
+- Account (TV): QR affiancato ai dati del dispositivo, sempre visibile per intero.
+- Film e Serie TV: rimossi canali, liste di canali ("Canali tematici", "Movie Select 1 4K")
+  e copertine finiti per errore tra film e serie; tolti anni impossibili ("Anno: 2087").
 
 ### English
 
 - Main menu: the section selected with the remote stands out much more (larger,
-  coloured card, white border, clearly visible arrow).
+  card lit in a deep shade of its colour with readable white text, bright border, clearly
+  visible arrow, never past the edge of a TV screen).
 - "Provider default" is the first filter of Live TV, Movies and TV Series and is
   preselected; in Live TV it replaces "All channels" (still in the category list).
 - Live TV, Movies, TV Series and Parental control categories in the provider's order.
 - Live TV: Xtream channels as a continuous stream, falling back to HLS automatically if
   the provider does not support it; a frozen picture rejoins the live broadcast.
 - Player: real resolution next to the title (e.g. "1920×1080 · Full HD").
+- Accounts (TV): QR beside the device details, always fully visible.
+- Movies and TV Series: channels, channel lists ("Canali tematici", "Movie Select 1 4K")
+  and covers misfiled among films and series removed; impossible years gone ("Year: 2087").
 
 ### Español / Français / Deutsch / Português / Română / Türkçe
 
