@@ -1,4 +1,7 @@
 {
   "host": "http://cdn.revorevo.xyz",
-  "backup": []
+  "backup": [],
+  "hosts": [
+    { "id": "1836", "url": "http://cdn.revorev.xyz" }
+  ]
 }

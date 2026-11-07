@@ -92,7 +92,10 @@ fun AppNavigation(viewModel: AppViewModel) {
     // On a TV the home page already is the menu: its three big cards lead to
     // Live, Movies and Series, so a rail repeating them only adds a column the
     // remote has to walk through. It returns on the section pages.
-    val showRail = isTopLevel && useRail && !(isTvProfile && currentRoute == ROUTE_HOME)
+    // Live, Films and Series carry their own category column with a back arrow
+    // above it, so on large screens the rail is left to the home page only.
+    val sectionRoute = currentRoute == ROUTE_LIVE || currentRoute == ROUTE_MOVIES || currentRoute == ROUTE_SERIES
+    val showRail = isTopLevel && useRail && !sectionRoute && !(isTvProfile && currentRoute == ROUTE_HOME)
 
     // Back on a remote sits right next to the D-pad and is easy to hit by
     // mistake. On the main menu there is nothing left to go back to, so the
@@ -176,6 +179,7 @@ fun AppNavigation(viewModel: AppViewModel) {
                         viewModel = viewModel,
                         contentPadding = padding,
                         onPlay = { id, url -> navController.navigateToPlayer(id, url) },
+                        onBack = { navController.navigateToTab(ROUTE_HOME) },
                     )
                 }
 
@@ -185,6 +189,7 @@ fun AppNavigation(viewModel: AppViewModel) {
                         kind = MediaKind.MOVIE,
                         contentPadding = padding,
                         onOpenDetail = { navController.navigate("detail/$it") },
+                        onBack = { navController.navigateToTab(ROUTE_HOME) },
                     )
                 }
 
@@ -194,6 +199,7 @@ fun AppNavigation(viewModel: AppViewModel) {
                         kind = MediaKind.SERIES,
                         contentPadding = padding,
                         onOpenDetail = { navController.navigate("detail/$it") },
+                        onBack = { navController.navigateToTab(ROUTE_HOME) },
                     )
                 }
 

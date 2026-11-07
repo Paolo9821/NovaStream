@@ -1,7 +1,16 @@
 package com.rork.novastream.data.parser
 
+import com.rork.novastream.data.model.Episode
 import com.rork.novastream.data.model.MediaEntry
 import com.rork.novastream.data.model.MediaKind
+import java.util.Locale
+
+/** A parsed playlist: its entries, the episodes behind each series and the guide it announces. */
+class M3uPlaylist(
+    val entries: List<MediaEntry>,
+    val episodes: Map<String, List<Episode>>,
+    val epgUrl: String,
+)
 
 /**
  * Parses an m3u/m3u8 playlist into catalog entries.
@@ -18,21 +27,28 @@ object M3uParser {
     fun parse(content: String, nowMs: Long): List<MediaEntry> =
         parse(content.lineSequence(), nowMs)
 
+    fun parse(lines: Sequence<String>, nowMs: Long): List<MediaEntry> =
+        parsePlaylist(lines, nowMs).entries
+
     /**
      * Reads a playlist as it streams off the disk. Large providers ship files of
      * tens of megabytes, so the text is never held whole: only the entries built
      * from it stay in memory.
      */
-    fun parse(lines: Sequence<String>, nowMs: Long): List<MediaEntry> {
+    fun parsePlaylist(lines: Sequence<String>, nowMs: Long): M3uPlaylist {
         val entries = ArrayList<MediaEntry>()
         val decisive = java.util.BitSet()
         var pendingInfo: String? = null
         var order = 0
+        var epgUrl = ""
 
         lines.forEach { rawLine ->
-            val line = rawLine.trim()
+            val line = rawLine.trim().removePrefix("\uFEFF")
             when {
                 line.isEmpty() -> Unit
+                line.startsWith("#EXTM3U", ignoreCase = true) -> {
+                    if (epgUrl.isEmpty()) epgUrl = headerEpgUrl(line)
+                }
                 line.startsWith("#EXTINF", ignoreCase = true) -> pendingInfo = line
                 line.startsWith("#") -> Unit
                 else -> {
@@ -45,7 +61,91 @@ object M3uParser {
                 }
             }
         }
-        return settleKinds(entries, decisive)
+        val settled = settleKinds(entries, decisive)
+        return groupEpisodes(dedupeMovies(settled), epgUrl)
+    }
+
+    /** Groups loose episodes of an already parsed list (catalogs saved by older builds). */
+    fun regroupSeries(entries: List<MediaEntry>): M3uPlaylist =
+        groupEpisodes(dedupeMovies(entries), "")
+
+    /** The first guide address in `url-tvg` / `x-tvg-url`, which may list several separated by commas. */
+    private fun headerEpgUrl(header: String): String {
+        val attributes = attributeRegex.findAll(header).associate { it.groupValues[1].lowercase() to it.groupValues[2] }
+        val raw = attributes["url-tvg"] ?: attributes["x-tvg-url"] ?: attributes["tvg-url"] ?: return ""
+        return raw.split(',', ' ').map { it.trim() }.firstOrNull { it.startsWith("http", ignoreCase = true) }.orEmpty()
+    }
+
+    /**
+     * The same film listed twice in one category (same title and year, or the
+     * very same address) is shown once.
+     */
+    private fun dedupeMovies(entries: List<MediaEntry>): List<MediaEntry> {
+        val seenUrls = HashSet<String>()
+        val seenTitles = HashSet<String>()
+        return entries.filter { entry ->
+            if (entry.kind != MediaKind.MOVIE) return@filter true
+            val titleKey = "${entry.group}|${LiveLeakFilter.normalize(entry.title)}|${entry.year ?: 0}|${entry.quality.orEmpty()}"
+            seenUrls.add(entry.streamUrl) && seenTitles.add(titleKey)
+        }
+    }
+
+    private val seasonEpisodeRegex = Regex("""[Ss](\d{1,2})\s?[Ee][Pp]?\s?(\d{1,4})""")
+    private val seasonXEpisodeRegex = Regex("""\b(\d{1,2})x(\d{1,3})\b""")
+
+    /**
+     * An m3u playlist lists every episode as its own line, so a provider with a
+     * few thousand series ships hundreds of thousands of them. Episodes of the
+     * same show (same name before "S01E02", same category) become one series
+     * entry; its episodes are kept aside for the series page.
+     */
+    private fun groupEpisodes(entries: List<MediaEntry>, epgUrl: String): M3uPlaylist {
+        val result = ArrayList<MediaEntry>(entries.size)
+        val seriesIndex = HashMap<String, Int>()
+        val episodes = HashMap<String, MutableList<Episode>>()
+
+        entries.forEach { entry ->
+            if (entry.kind != MediaKind.SERIES) {
+                result += entry
+                return@forEach
+            }
+            val match = seasonEpisodeRegex.find(entry.title) ?: seasonXEpisodeRegex.find(entry.title)
+            val showName = (match?.let { entry.title.substring(0, it.range.first) } ?: entry.title)
+                .trim().trimEnd('-', '|', ':', '·', '.', '_').trim()
+                .ifEmpty { entry.title }
+            val season = match?.groupValues?.get(1)?.toIntOrNull() ?: 1
+            val number = match?.groupValues?.get(2)?.toIntOrNull()
+            val key = "${entry.group}|${showName.lowercase(Locale.ROOT).replace(Regex("[^\\p{L}\\p{N}]"), "")}"
+            val seriesId = "m3u:${key.hashCode()}_${entry.providerOrder}"
+
+            val existing = seriesIndex[key]
+            val id = if (existing == null) {
+                seriesIndex[key] = result.size
+                result += entry.copy(
+                    id = "m3useries_${key.hashCode()}_${entry.providerOrder}",
+                    title = showName,
+                    seriesId = seriesId,
+                )
+                seriesId
+            } else {
+                result[existing].seriesId.orEmpty()
+            }
+            val list = episodes.getOrPut(id) { ArrayList() }
+            list += Episode(
+                id = entry.id,
+                title = entry.title,
+                season = season,
+                number = number ?: (list.count { it.season == season } + 1),
+                streamUrl = entry.streamUrl,
+                thumbUrl = entry.logoUrl,
+            )
+        }
+
+        val sorted = episodes.mapValues { (_, list) ->
+            list.distinctBy { it.streamUrl }.sortedWith(compareBy({ it.season }, { it.number }))
+        }
+        result.trimToSize()
+        return M3uPlaylist(result, sorted, epgUrl)
     }
 
     /**

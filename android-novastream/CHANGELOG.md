@@ -4,6 +4,30 @@ Da 1.2.7 ogni versione ha anche un file dedicato nella cartella `changelogs`
 (`changelogs/1.2.7.md`, `changelogs/1.2.6.md`, …), scritto in tutte e otto le
 lingue dell'app. Questo file resta lo storico completo in ordine di rilascio.
 
+## 1.3.5
+
+Dettaglio completo in 8 lingue: `changelogs/1.3.5.md`.
+
+### Italiano
+
+- Nuova schermata di TV in diretta, Film e Serie TV: categorie sempre aperte a sinistra
+  (ricerca e conteggi), freccia indietro in alto a sinistra, griglia/lista a destra.
+- Ordinamento e filtri nel pulsante menu in alto a destra.
+- Host privato: nuovo tipo di playlist con numero host, username e password.
+- Guida TV cercata in più fonti (link utente, xmltv del pannello, url-tvg della playlist).
+- Playlist m3u: episodi raggruppati nella loro serie e film doppi eliminati (conteggi corretti).
+- Link m3u get.php letti tramite l'API del pannello.
+
+### English
+
+- New Live TV, Movies and TV Series screen: categories always open on the left (search
+  and counts), back arrow at the top left, grid/list on the right.
+- Sorting and filters in the menu button at the top right.
+- Private host: new playlist type with host number, username and password.
+- TV guide searched in several sources (user link, panel xmltv, playlist url-tvg).
+- m3u playlists: episodes grouped into their series and duplicate movies removed (correct counts).
+- m3u get.php links read through the panel API.
+
 ## 1.3.4
 
 Dettaglio completo in 8 lingue: `changelogs/1.3.4.md`.

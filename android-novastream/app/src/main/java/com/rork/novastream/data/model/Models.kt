@@ -17,8 +17,20 @@ data class PlaylistAccount(
     val password: String = "",
     val epgUrl: String = "",
     val lastSyncEpochMs: Long = 0L,
+    /** Guide address announced by the playlist itself (`url-tvg` in its header). */
+    val playlistEpgUrl: String = "",
+    /**
+     * Number of the private host this account connects through. The server
+     * address it stands for is resolved from the host list and never shown.
+     */
+    val hostNumber: String = "",
 ) {
-    val typeLabel: String get() = if (type == AccountType.XTREAM) "Xtream" else "m3u"
+    val isPrivateHost: Boolean get() = hostNumber.isNotBlank()
+    val typeLabel: String get() = when {
+        isPrivateHost -> "Host $hostNumber"
+        type == AccountType.XTREAM -> "Xtream"
+        else -> "m3u"
+    }
 }
 
 @Serializable
@@ -79,6 +91,11 @@ data class Catalog(
      * provider lists them. Catalogs saved before this existed have it empty.
      */
     val groupOrder: Map<String, List<String>> = emptyMap(),
+    /**
+     * Episodes of the series built from an m3u playlist, keyed by the series'
+     * [MediaEntry.seriesId]. Xtream series load their episodes on demand instead.
+     */
+    val m3uEpisodes: Map<String, List<Episode>> = emptyMap(),
 ) {
     fun of(kind: MediaKind): List<MediaEntry> = entries.filter { it.kind == kind }
 

@@ -1,10 +1,10 @@
-Menu più chiaro, ordine del fornitore e dirette più fluide.
+Nuova schermata delle sezioni, Host privato e guida TV più affidabile.
 
-• Menu principale: la sezione selezionata con il telecomando ora si vede subito
-• "Default provider" è il primo filtro di TV in diretta, Film e Serie TV
-• Categorie nell'ordine del fornitore, anche nel Parental control
-• TV in diretta: canali come flusso continuo, più fluidi
-• Lettore: risoluzione del video accanto al titolo (es. 1920×1080 · Full HD)
-• Versione 1.3.4
+• TV in diretta, Film e Serie TV: categorie sempre a sinistra, con ricerca e conteggi
+• Ordinamento e filtri nel pulsante menu in alto a destra
+• Host privato: basta numero host, username e password
+• Guida TV: funziona anche sui box dove restava vuota
+• Playlist m3u: conteggi corretti di film e serie
+• Versione 1.3.5
 
 Grazie per usare NovaStream.

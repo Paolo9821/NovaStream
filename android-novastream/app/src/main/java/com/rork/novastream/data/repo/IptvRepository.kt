@@ -26,6 +26,7 @@ import com.rork.novastream.data.net.toSyncFailure
 import com.rork.novastream.data.parser.LiveLeakFilter
 import com.rork.novastream.data.parser.M3uParser
 import com.rork.novastream.data.parser.XmltvParser
+import com.rork.novastream.data.remote.PrivateHosts
 import com.rork.novastream.data.remote.XtreamClient
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
@@ -67,7 +68,9 @@ class IptvRepository(context: Context) {
         engine { preconfigured = ProviderNetwork.client }
         expectSuccess = false
         install(HttpTimeout) {
-            requestTimeoutMillis = 180_000
+            // Whole-request limit: a big XMLTV guide on a slow box can take
+            // many minutes; stalled connections are caught by the socket timeout.
+            requestTimeoutMillis = 20 * 60_000L
             connectTimeoutMillis = 20_000
             socketTimeoutMillis = 120_000
         }
@@ -78,6 +81,7 @@ class IptvRepository(context: Context) {
     val settingsStore = SettingsStore(appContext).also { ProviderNetwork.attach(it.settings) }
     private val downloadDir: File = File(appContext.cacheDir, "downloads").apply { mkdirs() }
     private val xtream = XtreamClient(http, downloadDir)
+    private val privateHosts = PrivateHosts(http)
     private val speedTester = SpeedTester(http)
 
     private val _accounts = MutableStateFlow<List<PlaylistAccount>>(emptyList())
@@ -178,7 +182,20 @@ class IptvRepository(context: Context) {
                     if (stored != null && stored.entries.isNotEmpty()) {
                         Log.i(TAG, "Catalogo ripreso dal dispositivo (${stored.entries.size} voci)")
                         val cleaned = LiveLeakFilter.purgeCatalog(stored.entries)
-                        _catalog.value = if (cleaned === stored.entries) stored else stored.copy(entries = cleaned)
+                        // Catalogs saved by older builds list every m3u episode
+                        // as a series of its own: they are grouped here once.
+                        val loose = stored.m3uEpisodes.isEmpty() && cleaned.any {
+                            it.kind == MediaKind.SERIES && it.seriesId == null && it.streamUrl.isNotBlank()
+                        }
+                        _catalog.value = when {
+                            loose -> {
+                                val grouped = M3uParser.regroupSeries(cleaned)
+                                stored.copy(entries = grouped.entries, m3uEpisodes = grouped.episodes)
+                                    .also { fixed -> ioScope.launch { vaultMutex.withLock { writeVault(catalogFile(activeId), fixed) } } }
+                            }
+                            cleaned === stored.entries -> stored
+                            else -> stored.copy(entries = cleaned)
+                        }
                     } else {
                         // Missing, damaged, or written by an older build: the file
                         // would keep failing, so it goes and a fresh copy is fetched.
@@ -361,7 +378,18 @@ class IptvRepository(context: Context) {
     }
 
     /** Validates the credentials, saves the account encrypted and imports its catalog. */
-    suspend fun addAccount(account: PlaylistAccount, makeActive: Boolean = true): Result<PlaylistAccount> {
+    suspend fun addAccount(input: PlaylistAccount, makeActive: Boolean = true): Result<PlaylistAccount> {
+        var account = input
+        if (account.isPrivateHost) {
+            _syncState.value = SyncState.Running("Cerco l'host ${account.hostNumber}…")
+            val server = privateHosts.resolve(account.hostNumber)
+            if (server == null) {
+                val message = "Host ${account.hostNumber} non trovato"
+                _syncState.value = SyncState.Failed(message)
+                return Result.failure(IllegalStateException(message))
+            }
+            account = account.copy(type = AccountType.XTREAM, server = server)
+        }
         val validation = validate(account)
         if (validation.isFailure) {
             val message = validation.exceptionOrNull()?.message ?: "Verifica non riuscita"
@@ -466,14 +494,43 @@ class IptvRepository(context: Context) {
         }
     }
 
-    private suspend fun sync(account: PlaylistAccount) {
-        _syncState.value = SyncState.Running("Connessione a ${account.name}…")
+    /**
+     * A private host may move to a new address: the number is looked up again
+     * before each download, and the saved address follows when it changed.
+     * When the list cannot be reached the last known address is used.
+     */
+    private suspend fun refreshPrivateHost(account: PlaylistAccount): PlaylistAccount {
+        if (!account.isPrivateHost) return account
+        val server = privateHosts.resolve(account.hostNumber) ?: return account
+        if (server == account.server) return account
+        val updated = account.copy(server = server)
+        _accounts.value = _accounts.value.map { if (it.id == account.id) updated else it }
+        persistAccounts()
+        return updated
+    }
+
+    private suspend fun sync(original: PlaylistAccount) {
+        _syncState.value = SyncState.Running("Connessione a ${original.name}…")
+        val account = refreshPrivateHost(original)
+        var m3uEpisodes: Map<String, List<Episode>> = emptyMap()
         val result = runCatching {
-            when (account.type) {
-                AccountType.XTREAM -> xtream.loadCatalog(account) { message ->
+            // An m3u link of an Xtream panel (get.php?username=…&password=…) is
+            // read through the panel's own API: real series instead of one line
+            // per episode, the provider's categories and its TV guide.
+            val panel = if (account.type == AccountType.M3U) account.asXtreamLine() else null
+            val viaPanel = panel?.let {
+                runCatching {
+                    xtream.loadCatalog(it) { message -> _syncState.value = SyncState.Running(message) }
+                        .takeIf { catalog -> catalog.entries.isNotEmpty() }
+                }.onFailure { Log.w(TAG, "API del pannello non disponibile, leggo la playlist m3u") }
+                    .getOrNull()
+            }
+            when {
+                viaPanel != null -> viaPanel.entries to viaPanel.groupOrder
+                account.type == AccountType.XTREAM -> xtream.loadCatalog(account) { message ->
                     _syncState.value = SyncState.Running(message)
                 }.let { it.entries to it.groupOrder }
-                AccountType.M3U -> withContext(Dispatchers.IO) {
+                else -> withContext(Dispatchers.IO) {
                     _syncState.value = SyncState.Running("Scarico la playlist…")
                     // Playlists are commonly tens of megabytes: the file goes to
                     // disk and is read back a line at a time.
@@ -481,11 +538,19 @@ class IptvRepository(context: Context) {
                     try {
                         http.downloadToFile(account.m3uUrl, temp)
                         _syncState.value = SyncState.Running("Organizzo i contenuti…")
-                        val entries = temp.bufferedReader().useLines { lines ->
-                            M3uParser.parse(lines, System.currentTimeMillis())
+                        val playlist = temp.bufferedReader().useLines { lines ->
+                            M3uParser.parsePlaylist(lines, System.currentTimeMillis())
                         }
+                        val entries = playlist.entries
                         if (entries.isEmpty()) {
                             throw IllegalStateException("L'URL non contiene una playlist m3u valida")
+                        }
+                        m3uEpisodes = playlist.episodes
+                        if (playlist.epgUrl != account.playlistEpgUrl) {
+                            _accounts.value = _accounts.value.map {
+                                if (it.id == account.id) it.copy(playlistEpgUrl = playlist.epgUrl) else it
+                            }
+                            persistAccounts()
                         }
                         // An m3u playlist lists its categories in the order
                         // they first appear, which is the order kept on screen.
@@ -500,12 +565,14 @@ class IptvRepository(context: Context) {
         result.onSuccess { (downloaded, groupOrder) ->
             // Channels and channel lists the provider filed among films or
             // series are taken out before anything is shown or saved.
-            val entries = LiveLeakFilter.purgeCatalog(downloaded)
+            val entries = LiveLeakFilter.purgeCatalog(downloaded).distinctBy { it.id }
+            val keptSeries = entries.mapNotNullTo(HashSet()) { it.seriesId }
             val catalog = Catalog(
                 accountId = account.id,
                 entries = entries,
                 syncedAtEpochMs = System.currentTimeMillis(),
                 groupOrder = groupOrder,
+                m3uEpisodes = m3uEpisodes.filterKeys { it in keptSeries },
             )
             var live = 0
             var movies = 0
@@ -556,14 +623,27 @@ class IptvRepository(context: Context) {
     }
 
     /** Address of the XMLTV guide: the account override, or the Xtream default endpoint. */
-    fun effectiveEpgUrl(account: PlaylistAccount): String {
-        account.epgUrl.trim().takeIf { it.isNotBlank() }?.let { return it }
-        if (account.type != AccountType.XTREAM) return ""
-        val base = account.server.trim().trimEnd('/').let {
-            if (it.startsWith("http://") || it.startsWith("https://")) it else "http://$it"
+    fun effectiveEpgUrl(account: PlaylistAccount): String = epgCandidates(account).firstOrNull().orEmpty()
+
+    /**
+     * Every guide address worth trying, best first: the one the customer typed,
+     * the panel's xmltv.php (also for m3u links of an Xtream panel), then the
+     * one announced in the playlist header.
+     */
+    private fun epgCandidates(account: PlaylistAccount): List<String> {
+        val list = ArrayList<String>()
+        account.epgUrl.trim().takeIf { it.isNotBlank() }?.let { list += it }
+        account.asXtreamLine()?.let { line ->
+            val base = line.server.trim().trimEnd('/').let {
+                if (it.startsWith("http://") || it.startsWith("https://")) it else "http://$it"
+            }
+            if (base.length > 7) {
+                list += "$base/xmltv.php?username=${line.username.encodeURLParameter()}" +
+                    "&password=${line.password.encodeURLParameter()}"
+            }
         }
-        return "$base/xmltv.php?username=${account.username.encodeURLParameter()}" +
-            "&password=${account.password.encodeURLParameter()}"
+        account.playlistEpgUrl.trim().takeIf { it.isNotBlank() }?.let { list += it }
+        return list.distinct()
     }
 
     fun updateEpgUrl(accountId: String, url: String) {
@@ -579,34 +659,21 @@ class IptvRepository(context: Context) {
             _epgState.value = SyncState.Idle
             return
         }
-        val url = effectiveEpgUrl(account)
-        if (url.isBlank()) {
+        val candidates = epgCandidates(account)
+        if (candidates.isEmpty()) {
             _epgState.value = SyncState.Idle
             return
         }
 
-        _epgState.value = SyncState.Running(url)
+        _epgState.value = SyncState.Running(candidates.first())
         val now = System.currentTimeMillis()
-        val result = runCatching {
-            withContext(Dispatchers.IO) {
-                val temp = File(downloadDir, "epg-${account.id}.xml")
-                try {
-                    http.downloadToFile(url, temp)
-                    if (temp.length() == 0L) {
-                        throw IllegalStateException("Guida vuota o non raggiungibile")
-                    }
-                    temp.inputStream().use { stream ->
-                        XmltvParser.parse(
-                            input = stream,
-                            sourceUrl = url,
-                            windowStartMs = now - EPG_PAST_WINDOW_MS,
-                            windowEndMs = now + EPG_FUTURE_WINDOW_MS,
-                        )
-                    }
-                } finally {
-                    temp.delete()
-                }
-            }
+        // Each address is tried in turn: a panel whose xmltv.php is down or
+        // empty often still has the guide the playlist header points to.
+        var result: Result<EpgGuide> = Result.failure(IllegalStateException("Impossibile scaricare la guida"))
+        for (url in candidates) {
+            result = runCatching { downloadGuide(account.id, url, now) }
+            if (result.getOrNull()?.isEmpty == false) break
+            Log.w(TAG, "Guida non disponibile da una delle sorgenti, provo la successiva")
         }
 
         result.onSuccess { guide ->
@@ -626,6 +693,32 @@ class IptvRepository(context: Context) {
         }
     }
 
+    /**
+     * Downloads one guide to disk and parses it. Memory stays flat on TV boxes:
+     * the file is streamed in, then streamed through the parser. A failed
+     * attempt is retried once with a fresh connection before giving up.
+     */
+    private suspend fun downloadGuide(accountId: String, url: String, now: Long): EpgGuide =
+        withContext(Dispatchers.IO) {
+            val temp = File(downloadDir, "epg-$accountId.xml")
+            try {
+                http.downloadToFile(url, temp)
+                if (temp.length() < 64L) {
+                    throw IllegalStateException("Guida vuota o non raggiungibile")
+                }
+                temp.inputStream().use { stream ->
+                    XmltvParser.parse(
+                        input = stream,
+                        sourceUrl = url,
+                        windowStartMs = now - EPG_PAST_WINDOW_MS,
+                        windowEndMs = now + EPG_FUTURE_WINDOW_MS,
+                    )
+                }
+            } finally {
+                temp.delete()
+            }
+        }
+
     fun toggleFavorite(entryId: String) {
         val updated = _favorites.value.toMutableSet()
         if (!updated.add(entryId)) updated.remove(entryId)
@@ -640,8 +733,9 @@ class IptvRepository(context: Context) {
      */
     suspend fun detailsOf(entry: MediaEntry): MediaDetails? {
         detailsCache[entry.id]?.let { return it }
-        val account = activeAccount ?: return null
-        if (account.type != AccountType.XTREAM) return null
+        val account = activeAccount?.asXtreamLine() ?: return null
+        // Entries read from a plain m3u file carry no panel id to ask about.
+        if (!entry.id.startsWith("movie_") && !entry.id.startsWith("series_")) return null
         val loaded = runCatching {
             when (entry.kind) {
                 MediaKind.SERIES -> entry.seriesId?.let {
@@ -662,9 +756,9 @@ class IptvRepository(context: Context) {
         id.substringAfter('_', "").takeIf { it.isNotBlank() }
 
     suspend fun episodesOf(entry: MediaEntry): List<Episode> {
-        val account = activeAccount ?: return emptyList()
         val seriesId = entry.seriesId ?: return emptyList()
-        if (account.type != AccountType.XTREAM) return emptyList()
+        if (seriesId.startsWith("m3u:")) return _catalog.value.m3uEpisodes[seriesId].orEmpty()
+        val account = activeAccount?.asXtreamLine() ?: return emptyList()
         return runCatching { xtream.loadEpisodes(account, seriesId) }
             .onFailure { Log.w(TAG, "Impossibile caricare gli episodi") }
             .getOrDefault(emptyList())

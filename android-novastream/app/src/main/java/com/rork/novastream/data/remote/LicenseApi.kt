@@ -192,7 +192,12 @@ class LicenseApi(private val baseUrl: String = LICENSE_BACKEND_URL) {
                                     put("id", account.id)
                                     put("name", account.name)
                                     put("type", if (xtream) "xtream" else "m3u")
-                                    put("host", hostOf(if (xtream) account.server else account.m3uUrl))
+                                    // A private host is listed by its number only, never its address.
+                                    put(
+                                        "host",
+                                        if (account.isPrivateHost) "Host ${account.hostNumber}"
+                                        else hostOf(if (xtream) account.server else account.m3uUrl),
+                                    )
                                 }
                             }
                         }

@@ -357,6 +357,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     fun countOf(kind: MediaKind): Int = visibleEntries(kind).size
 
+    /** How many visible titles each category of [kind] holds. */
+    fun groupCountsOf(kind: MediaKind): Map<String, Int> =
+        visibleEntries(kind).groupingBy { it.group }.eachCount()
+
     fun favoriteEntries(): List<MediaEntry> {
         val ids = favorites.value
         if (ids.isEmpty()) return emptyList()
@@ -482,7 +486,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         activeAccount?.let { repository.updateEpgUrl(it.id, url) }
     }
 
-    fun effectiveEpgUrl(): String = activeAccount?.let { repository.effectiveEpgUrl(it) }.orEmpty()
+    fun effectiveEpgUrl(): String = activeAccount?.let {
+        // The address of a private host is never shown, not even inside a guide link.
+        if (it.isPrivateHost) it.typeLabel else repository.effectiveEpgUrl(it)
+    }.orEmpty()
 
     fun clearSyncState() = repository.clearSyncState()
 

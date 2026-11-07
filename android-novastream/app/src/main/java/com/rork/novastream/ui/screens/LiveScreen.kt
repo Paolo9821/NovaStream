@@ -14,7 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -23,8 +23,6 @@ import androidx.compose.material.icons.rounded.LiveTv
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -50,7 +48,6 @@ import coil3.compose.AsyncImage
 import com.rork.novastream.data.model.MediaEntry
 import com.rork.novastream.data.model.MediaKind
 import com.rork.novastream.data.model.Programme
-import com.rork.novastream.data.model.SortOption
 import com.rork.novastream.ui.components.EmptyState
 import com.rork.novastream.ui.components.FavoriteHeart
 import com.rork.novastream.ui.components.FocusableSurface
@@ -71,6 +68,7 @@ fun LiveScreen(
     viewModel: AppViewModel,
     contentPadding: PaddingValues,
     onPlay: (String, String) -> Unit,
+    onBack: () -> Unit,
 ) {
     val strings = LocalStrings.current
     val catalog by viewModel.catalog.collectAsStateWithLifecycle()
@@ -89,7 +87,8 @@ fun LiveScreen(
     }
 
     var guideEntryId by remember { mutableStateOf<String?>(null) }
-    var groupSheetOpen by remember { mutableStateOf(false) }
+    var filtersOpen by remember { mutableStateOf(false) }
+    val accents = LocalNovaAccents.current
 
     val total = remember(catalog, settings, unlocked) { viewModel.countOf(MediaKind.LIVE) }
     val entries = remember(catalog, query, settings, unlocked, favorites) {
@@ -98,73 +97,29 @@ fun LiveScreen(
     val groups = remember(catalog, settings, unlocked) {
         viewModel.visibleGroupsOf(MediaKind.LIVE)
     }
+    val counts = remember(catalog, settings, unlocked) { viewModel.groupCountsOf(MediaKind.LIVE) }
+    // Each category opens on its first channel.
+    val listState = remember(query.group, query.sort, query.favoritesOnly) { LazyListState() }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(top = contentPadding.calculateTopPadding())
+    SectionBrowser(
+        sectionTitle = strings.tabLive,
+        accent = accents.live,
+        allLabel = strings.allChannels,
+        total = total,
+        unitLabel = strings.unitChannels,
+        groups = groups,
+        counts = counts,
+        selectedGroup = query.group,
+        onSelectGroup = { viewModel.applyQuery(MediaKind.LIVE, query.copy(group = it)) },
+        onBack = onBack,
+        search = query.search,
+        searchPlaceholder = strings.searchIn.format(formatCount(total), strings.unitChannels),
+        onSearchChange = { viewModel.applyQuery(MediaKind.LIVE, query.copy(search = it)) },
+        shownCount = entries.size,
+        filterActive = query.isFiltered(),
+        onOpenFilters = { filtersOpen = true },
+        contentPadding = contentPadding,
     ) {
-        SearchRow(
-            value = query.search,
-            placeholder = strings.searchIn.format(formatCount(total), strings.unitChannels),
-            filterActive = query.group != null,
-            filterDescription = strings.filterByCategory,
-            onValueChange = { viewModel.applyQuery(MediaKind.LIVE, query.copy(search = it)) },
-            // The filter button opens the provider's channel groups, the same as
-            // on the film and series pages. Favourites stay one chip away below.
-            onFilterClick = { groupSheetOpen = true },
-        )
-
-        if (groups.isNotEmpty()) {
-            LazyRow(
-                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                // Every channel in the provider's own order: the first chip and
-                // the one the page opens on. "All channels" stays in the panel.
-                item("provider") {
-                    GroupChip(
-                        label = strings.sortProvider,
-                        selected = query.group == null && !query.favoritesOnly,
-                        onClick = {
-                            viewModel.applyQuery(
-                                MediaKind.LIVE,
-                                query.copy(
-                                    group = null,
-                                    favoritesOnly = false,
-                                    sort = SortOption.PROVIDER_DEFAULT,
-                                )
-                            )
-                        },
-                    )
-                }
-                item("favorites") {
-                    GroupChip(
-                        label = strings.onlyFavorites,
-                        selected = query.favoritesOnly,
-                        onClick = {
-                            viewModel.applyQuery(
-                                MediaKind.LIVE,
-                                query.copy(favoritesOnly = !query.favoritesOnly)
-                            )
-                        },
-                    )
-                }
-                items(groups, key = { it }) { group ->
-                    GroupChip(
-                        label = group,
-                        selected = query.group == group,
-                        onClick = {
-                            viewModel.applyQuery(
-                                MediaKind.LIVE,
-                                query.copy(group = if (query.group == group) null else group)
-                            )
-                        },
-                    )
-                }
-            }
-        }
-
         if (entries.isEmpty()) {
             EmptyState(
                 icon = Icons.Rounded.LiveTv,
@@ -173,9 +128,11 @@ fun LiveScreen(
             )
         } else {
             LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(
-                    start = 20.dp,
-                    end = 20.dp,
+                    start = 16.dp,
+                    end = 16.dp,
                     top = 8.dp,
                     bottom = contentPadding.calculateBottomPadding() + 24.dp,
                 ),
@@ -198,20 +155,14 @@ fun LiveScreen(
         }
     }
 
-    if (groupSheetOpen) {
-        CategorySheet(
-            title = strings.providerCategories,
-            allLabel = strings.allChannels,
-            groups = groups,
-            selectedGroup = query.group,
-            onSelect = { group ->
-                viewModel.applyQuery(
-                    MediaKind.LIVE,
-                    query.copy(group = group, favoritesOnly = false),
-                )
-                groupSheetOpen = false
-            },
-            onDismiss = { groupSheetOpen = false },
+    if (filtersOpen) {
+        SortFilterSheet(
+            query = query,
+            years = emptyList(),
+            showRecent = false,
+            accent = accents.live,
+            onQueryChange = { viewModel.applyQuery(MediaKind.LIVE, it) },
+            onDismiss = { filtersOpen = false },
         )
     }
 
@@ -528,21 +479,6 @@ private fun ProgrammeRow(programme: Programme, nowMs: Long) {
             )
         }
     }
-}
-
-@Composable
-private fun GroupChip(label: String, selected: Boolean, onClick: () -> Unit) {
-    FilterChip(
-        selected = selected,
-        onClick = onClick,
-        label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-        shape = RoundedCornerShape(12.dp),
-        colors = FilterChipDefaults.filterChipColors(
-            containerColor = MaterialTheme.colorScheme.surface,
-            selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
-            selectedLabelColor = MaterialTheme.colorScheme.onSecondaryContainer,
-        ),
-    )
 }
 
 private val clockFormat = SimpleDateFormat("HH:mm", Locale.getDefault())

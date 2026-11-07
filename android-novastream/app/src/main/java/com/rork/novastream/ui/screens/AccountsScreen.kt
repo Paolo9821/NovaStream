@@ -23,6 +23,7 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.Link
 import androidx.compose.material.icons.rounded.Storage
 import androidx.compose.material.icons.rounded.SwapHoriz
@@ -306,7 +307,11 @@ private fun AccountRow(
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
-                    imageVector = if (account.type == AccountType.XTREAM) Icons.Rounded.Storage else Icons.Rounded.Link,
+                    imageVector = when {
+                        account.isPrivateHost -> Icons.Rounded.Dns
+                        account.type == AccountType.XTREAM -> Icons.Rounded.Storage
+                        else -> Icons.Rounded.Link
+                    },
                     contentDescription = null,
                     tint = if (isActive) MaterialTheme.colorScheme.onPrimary
                     else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -363,6 +368,9 @@ private fun AccountForm(
     onSubmit: (PlaylistAccount) -> Unit,
 ) {
     var type by remember { mutableStateOf(AccountType.XTREAM) }
+    // A private host is an Xtream login whose server is a number from the host list.
+    var privateHost by remember { mutableStateOf(false) }
+    var hostNumber by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("") }
     var server by remember { mutableStateOf("") }
     var username by remember { mutableStateOf("") }
@@ -382,15 +390,20 @@ private fun AccountForm(
         ) {
             SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
                 SegmentedButton(
-                    selected = type == AccountType.M3U,
-                    onClick = { type = AccountType.M3U },
-                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
-                ) { Text(strings.tabM3u) }
+                    selected = type == AccountType.M3U && !privateHost,
+                    onClick = { type = AccountType.M3U; privateHost = false },
+                    shape = SegmentedButtonDefaults.itemShape(index = 0, count = 3),
+                ) { Text(strings.tabM3u, maxLines = 1) }
                 SegmentedButton(
-                    selected = type == AccountType.XTREAM,
-                    onClick = { type = AccountType.XTREAM },
-                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
-                ) { Text(strings.tabXtream) }
+                    selected = type == AccountType.XTREAM && !privateHost,
+                    onClick = { type = AccountType.XTREAM; privateHost = false },
+                    shape = SegmentedButtonDefaults.itemShape(index = 1, count = 3),
+                ) { Text(strings.tabXtream, maxLines = 1) }
+                SegmentedButton(
+                    selected = privateHost,
+                    onClick = { type = AccountType.XTREAM; privateHost = true },
+                    shape = SegmentedButtonDefaults.itemShape(index = 2, count = 3),
+                ) { Text(strings.more.tabPrivateHost, maxLines = 1) }
             }
 
             TvTextField(
@@ -401,8 +414,25 @@ private fun AccountForm(
                 modifier = Modifier.fillMaxWidth(),
             )
 
-            if (type == AccountType.XTREAM) {
+            if (privateHost) {
+                Text(
+                    text = strings.more.privateHostHint,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 TvTextField(
+                    value = hostNumber,
+                    onValueChange = { value -> hostNumber = value.filter { it.isLetterOrDigit() }.take(12) },
+                    label = { Text(strings.more.fieldHostNumber) },
+                    placeholder = { Text("1836") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
+            if (type == AccountType.XTREAM) {
+                if (!privateHost) TvTextField(
                     value = server,
                     onValueChange = { server = it },
                     label = { Text(strings.fieldServer) },
@@ -450,7 +480,7 @@ private fun AccountForm(
                 )
             }
 
-            TvTextField(
+            if (!privateHost) TvTextField(
                 value = epgUrl,
                 onValueChange = { epgUrl = it },
                 label = { Text(strings.fieldEpgUrl) },
@@ -476,14 +506,20 @@ private fun AccountForm(
                     val account = PlaylistAccount(
                         id = IptvRepository.newAccountId(),
                         name = name.trim().ifBlank {
-                            if (type == AccountType.XTREAM) "Xtream" else "m3u"
+                            when {
+                                privateHost -> "Host ${hostNumber.trim()}"
+                                type == AccountType.XTREAM -> "Xtream"
+                                else -> "m3u"
+                            }
                         },
                         type = type,
-                        m3uUrl = m3uUrl.trim(),
-                        server = server.trim(),
+                        m3uUrl = if (privateHost) "" else m3uUrl.trim(),
+                        // The address is looked up from the number when the account is saved.
+                        server = if (privateHost) "" else server.trim(),
                         username = username.trim(),
                         password = password,
-                        epgUrl = epgUrl.trim(),
+                        epgUrl = if (privateHost) "" else epgUrl.trim(),
+                        hostNumber = if (privateHost) hostNumber.trim() else "",
                     )
                     onSubmit(account)
                 },
@@ -506,7 +542,7 @@ private fun AccountForm(
 
             OutlinedButton(
                 onClick = {
-                    name = ""; server = ""; username = ""; password = ""; m3uUrl = ""; epgUrl = ""
+                    name = ""; server = ""; username = ""; password = ""; m3uUrl = ""; epgUrl = ""; hostNumber = ""
                 },
                 modifier = Modifier.fillMaxWidth(),
             ) { Text(strings.clearFields) }

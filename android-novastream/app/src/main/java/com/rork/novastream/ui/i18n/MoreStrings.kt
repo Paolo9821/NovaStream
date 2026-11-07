@@ -35,6 +35,12 @@ data class MoreStrings(
     val licenseCheckAction: String = "Check license",
     val licenseGateHint: String = "To manage this device's licence, open this address on a computer or phone and enter the Device ID. Then tap Check licence.",
     val licenseEndedBody: String = "The license for this device ended on %s.",
+    val searchCategories: String = "Search in categories",
+    val sortAndFilter: String = "Sort and filter",
+    val filterYearSection: String = "Year",
+    val tabPrivateHost: String = "Private host",
+    val fieldHostNumber: String = "Host number",
+    val privateHostHint: String = "Enter the host number you received, then your username and password.",
 )
 
 internal val MoreItalian = MoreStrings(
@@ -67,6 +73,12 @@ internal val MoreItalian = MoreStrings(
     licenseCheckAction = "Verifica licenza",
     licenseGateHint = "Per gestire la licenza di questo dispositivo, apri questo indirizzo dal computer o dal telefono e inserisci l'ID dispositivo. Poi premi Verifica licenza.",
     licenseEndedBody = "La licenza di questo dispositivo è scaduta il %s.",
+    searchCategories = "Cerca nelle categorie",
+    sortAndFilter = "Ordina e filtra",
+    filterYearSection = "Anno",
+    tabPrivateHost = "Host privato",
+    fieldHostNumber = "Numero host",
+    privateHostHint = "Inserisci il numero host che hai ricevuto, poi username e password.",
 )
 
 internal val MoreSpanish = MoreStrings(
@@ -99,6 +111,12 @@ internal val MoreSpanish = MoreStrings(
     licenseCheckAction = "Verificar licencia",
     licenseGateHint = "Para gestionar la licencia de este dispositivo, abre esta dirección en un ordenador o móvil e introduce el ID del dispositivo. Luego pulsa Verificar licencia.",
     licenseEndedBody = "La licencia de este dispositivo terminó el %s.",
+    searchCategories = "Buscar en categorías",
+    sortAndFilter = "Ordenar y filtrar",
+    filterYearSection = "Año",
+    tabPrivateHost = "Host privado",
+    fieldHostNumber = "Número de host",
+    privateHostHint = "Introduce el número de host que recibiste y luego tu usuario y contraseña.",
 )
 
 internal val MoreFrench = MoreStrings(
@@ -131,6 +149,12 @@ internal val MoreFrench = MoreStrings(
     licenseCheckAction = "Vérifier la licence",
     licenseGateHint = "Pour gérer la licence de cet appareil, ouvrez cette adresse sur un ordinateur ou un téléphone et saisissez l'ID de l'appareil. Puis appuyez sur Vérifier la licence.",
     licenseEndedBody = "La licence de cet appareil a pris fin le %s.",
+    searchCategories = "Rechercher dans les catégories",
+    sortAndFilter = "Trier et filtrer",
+    filterYearSection = "Année",
+    tabPrivateHost = "Hôte privé",
+    fieldHostNumber = "Numéro d'hôte",
+    privateHostHint = "Saisissez le numéro d'hôte reçu, puis votre identifiant et votre mot de passe.",
 )
 
 internal val MoreGerman = MoreStrings(
@@ -163,6 +187,12 @@ internal val MoreGerman = MoreStrings(
     licenseCheckAction = "Lizenz prüfen",
     licenseGateHint = "Um die Lizenz dieses Geräts zu verwalten, öffne diese Adresse am Computer oder Handy und gib die Geräte-ID ein. Tippe dann auf Lizenz prüfen.",
     licenseEndedBody = "Die Lizenz dieses Geräts ist am %s abgelaufen.",
+    searchCategories = "In Kategorien suchen",
+    sortAndFilter = "Sortieren und filtern",
+    filterYearSection = "Jahr",
+    tabPrivateHost = "Privater Host",
+    fieldHostNumber = "Host-Nummer",
+    privateHostHint = "Gib die erhaltene Host-Nummer ein, dann Benutzername und Passwort.",
 )
 
 internal val MorePortuguese = MoreStrings(
@@ -195,6 +225,12 @@ internal val MorePortuguese = MoreStrings(
     licenseCheckAction = "Verificar licença",
     licenseGateHint = "Para gerir a licença deste dispositivo, abra este endereço num computador ou telemóvel e introduza o ID do dispositivo. Depois toque em Verificar licença.",
     licenseEndedBody = "A licença deste dispositivo terminou em %s.",
+    searchCategories = "Pesquisar nas categorias",
+    sortAndFilter = "Ordenar e filtrar",
+    filterYearSection = "Ano",
+    tabPrivateHost = "Host privado",
+    fieldHostNumber = "Número do host",
+    privateHostHint = "Introduza o número de host que recebeu e depois o utilizador e a palavra-passe.",
 )
 
 internal val MoreRomanian = MoreStrings(
@@ -227,6 +263,12 @@ internal val MoreRomanian = MoreStrings(
     licenseCheckAction = "Verifică licența",
     licenseGateHint = "Pentru a gestiona licența acestui dispozitiv, deschide această adresă de pe calculator sau telefon și introdu ID-ul dispozitivului. Apoi apasă Verifică licența.",
     licenseEndedBody = "Licența acestui dispozitiv a expirat pe %s.",
+    searchCategories = "Caută în categorii",
+    sortAndFilter = "Sortează și filtrează",
+    filterYearSection = "An",
+    tabPrivateHost = "Host privat",
+    fieldHostNumber = "Număr host",
+    privateHostHint = "Introdu numărul de host primit, apoi numele de utilizator și parola.",
 )
 
 internal val MoreTurkish = MoreStrings(
@@ -259,4 +301,10 @@ internal val MoreTurkish = MoreStrings(
     licenseCheckAction = "Lisansı doğrula",
     licenseGateHint = "Bu cihazın lisansını yönetmek için bu adresi bilgisayardan veya telefondan açın ve cihaz kimliğini girin. Ardından Lisansı doğrula'ya dokunun.",
     licenseEndedBody = "Bu cihazın lisansı %s tarihinde sona erdi.",
+    searchCategories = "Kategorilerde ara",
+    sortAndFilter = "Sırala ve filtrele",
+    filterYearSection = "Yıl",
+    tabPrivateHost = "Özel host",
+    fieldHostNumber = "Host numarası",
+    privateHostHint = "Aldığınız host numarasını, ardından kullanıcı adınızı ve şifrenizi girin.",
 )
