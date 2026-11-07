@@ -91,11 +91,12 @@ fun AppNavigation(viewModel: AppViewModel) {
     val useRail = isTvProfile || configuration.screenWidthDp >= 720
     // On a TV the home page already is the menu: its three big cards lead to
     // Live, Movies and Series, so a rail repeating them only adds a column the
-    // remote has to walk through. It returns on the section pages.
+    // remote has to walk through. The same holds on every device: Home carries
+    // its own section cards, so the vertical buttons never appear there.
     // Live, Films and Series carry their own category column with a back arrow
-    // above it, so on large screens the rail is left to the home page only.
+    // above it instead.
     val sectionRoute = currentRoute == ROUTE_LIVE || currentRoute == ROUTE_MOVIES || currentRoute == ROUTE_SERIES
-    val showRail = isTopLevel && useRail && !sectionRoute && !(isTvProfile && currentRoute == ROUTE_HOME)
+    val showRail = isTopLevel && useRail && !sectionRoute && currentRoute != ROUTE_HOME
 
     // Back on a remote sits right next to the D-pad and is easy to hit by
     // mistake. On the main menu there is nothing left to go back to, so the
