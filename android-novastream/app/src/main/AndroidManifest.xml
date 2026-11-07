@@ -11,6 +11,13 @@
     <uses-feature
         android:name="android.hardware.touchscreen"
         android:required="false" />
+    <!-- The app runs in landscape only; still installable on any screen. -->
+    <uses-feature
+        android:name="android.hardware.screen.landscape"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.screen.portrait"
+        android:required="false" />
     <!-- Offered where the system has it; a television simply never reports it. -->
     <uses-feature
         android:name="android.software.picture_in_picture"
@@ -31,6 +38,7 @@
             android:name=".MainActivity"
             android:exported="true"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|smallestScreenSize|uiMode|screenLayout|density"
+            android:screenOrientation="sensorLandscape"
             android:supportsPictureInPicture="true"
             android:resizeableActivity="true"
             android:theme="@style/Theme.RorkApp">

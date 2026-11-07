@@ -45,11 +45,11 @@ class LiveLeakFilter(
          *
          * A record goes when:
          * - [isLiveLeak] recognises it (live category cover or channel);
-         * - its address is a live one (`/live/`, or an HLS playlist for a film);
-         * - its poster is the logo of one specific live channel;
+         * - its address is a live one (`/live/`);
+         * - its poster is the logo of one specific live channel and it has no year or plot;
          * - its title is a channel-list label ("Canali tematici", "scegli un canale"…);
          * - it belongs to a numbered run of identical cards ("Movie Select 1 4K",
-         *   "Movie Select 2 4K"… all with the same poster and no plot), together
+         *   "Movie Select 2 4K"… same poster, quality tag, no plot, no year), together
          *   with any other card of that category sharing the same poster;
          * - it is a series named exactly like a live channel and marked like one
          *   (quality tag, live category or channel logo).
@@ -78,14 +78,19 @@ class LiveLeakFilter(
                         .groupBy { it.logoUrl!!.trim() to runKey(it.title) }
                         .filter { (key, members) ->
                             members.size >= 3 && key.second.isNotEmpty() &&
-                                members.all { it.plot.isNullOrBlank() } &&
+                                members.all { it.plot.isNullOrBlank() && it.year == null } &&
+                                // Sagas ("Rocky 2", "Rocky 3") sharing a category poster are
+                                // real films: only runs labelled like channel picks go.
+                                members.all { QUALITY_TAG.containsMatchIn(it.title) } &&
                                 members.map { normalize(it.title) }.distinct().size == members.size
                         }
                     if (runs.isEmpty()) return@forEach
                     val posters = runs.keys.mapTo(HashSet()) { it.first }
                     group.forEach { entry ->
                         val poster = entry.logoUrl?.trim()
-                        if (poster != null && poster in posters && entry.plot.isNullOrBlank()) dropped += entry.id
+                        if (poster != null && poster in posters && entry.plot.isNullOrBlank() && entry.year == null &&
+                            runKey(entry.title).isNotEmpty()
+                        ) dropped += entry.id
                     }
                 }
 
@@ -122,9 +127,10 @@ class LiveLeakFilter(
             if (filter.isLiveLeak(entry.title, entry.group)) return true
             val url = entry.streamUrl.lowercase().substringBefore('?')
             if (url.contains("/live/")) return true
-            if (entry.kind == MediaKind.MOVIE && url.endsWith(".m3u8")) return true
+            // Films served as HLS (.m3u8) are common and stay: only a channel's
+            // own logo on a card with no year and no plot marks a channel.
             val poster = entry.logoUrl?.trim()
-            if (poster != null && poster in channelLogos) return true
+            if (poster != null && poster in channelLogos && entry.year == null && entry.plot.isNullOrBlank()) return true
             val name = normalize(entry.title)
             if (CHANNEL_LIST_LABELS.any { name.startsWith(it) || name.contains(it) && it.length > 10 }) return true
             if (entry.kind == MediaKind.SERIES && name in liveNames) {

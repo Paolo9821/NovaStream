@@ -5,6 +5,7 @@ New section screen, private host and a more reliable TV guide.
 • Private host: just a host number, username and password
 • TV guide: now works on boxes where it stayed empty
 • m3u playlists: correct movie and series counts
+• Movies and TV Series: every category now shows up
 • Version 1.3.5
 
 Thanks for using NovaStream.

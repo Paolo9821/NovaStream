@@ -372,7 +372,9 @@ export type Captcha = { token: string; image: string; expiresAt: number };
 
 export type NewPlaylist = {
   name: string;
-  type: "m3u" | "xtream";
+  /** "host": a private host, chosen by number; its address never reaches the page. */
+  type: "m3u" | "xtream" | "host";
+  hostNumber: string;
   m3uUrl: string;
   server: string;
   username: string;

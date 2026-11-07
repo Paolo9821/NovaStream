@@ -27,6 +27,9 @@ import java.io.File
 
 private const val BUFFER_BYTES = 64 * 1024
 
+/** Upper bound of the per-category requests made to fill empty categories. */
+private const val MAX_CATEGORY_REQUESTS = 300
+
 /**
  * Minimal Xtream Codes client.
  *
@@ -62,10 +65,16 @@ class XtreamClient(
         val leaks = LiveLeakFilter(liveCategories.values, live.map { it.title })
 
         onProgress("Recupero film…")
-        entries += vodStreams(account, vodCategories, liveCategories, liveIds, leaks)
+        val movies = vodStreams(account, vodCategories, liveCategories, liveIds, leaks)
+        entries += fillMissingCategories(movies, vodCategories) { id, name ->
+            vodStreams(account, vodCategories, liveCategories, liveIds, leaks, categoryId = id, forcedGroup = name)
+        }
 
         onProgress("Recupero serie TV…")
-        entries += seriesList(account, seriesCategories)
+        val series = seriesList(account, seriesCategories)
+        entries += fillMissingCategories(series, seriesCategories) { id, name ->
+            seriesList(account, seriesCategories, categoryId = id, forcedGroup = name)
+        }
 
         entries.trimToSize()
         XtreamCatalog(
@@ -247,6 +256,47 @@ class XtreamClient(
         }
     }
 
+    /**
+     * Categories the full listing left empty. Many panels only return a title
+     * under its main category in the full list, or cut the list short, while
+     * other players ask for each category on its own: those categories are
+     * requested one by one here. A title that is already known gains the
+     * category as an extra one instead of being listed twice.
+     */
+    private suspend fun fillMissingCategories(
+        loaded: List<MediaEntry>,
+        categories: Map<String, String>,
+        fetch: suspend (id: String, name: String) -> List<MediaEntry>,
+    ): List<MediaEntry> {
+        if (categories.isEmpty()) return loaded
+        val present = HashSet<String>()
+        loaded.forEach { entry ->
+            present += entry.group
+            present += entry.extraGroups
+        }
+        val missing = categories.entries.filter { it.value !in present }.take(MAX_CATEGORY_REQUESTS)
+        if (missing.isEmpty()) return loaded
+
+        val result = ArrayList(loaded)
+        val indexById = HashMap<String, Int>(result.size)
+        result.forEachIndexed { index, entry -> indexById[entry.id] = index }
+        missing.forEach { (id, name) ->
+            val items = runCatching { fetch(id, name) }.getOrDefault(emptyList())
+            items.forEach { item ->
+                val existing = indexById[item.id]
+                if (existing == null) {
+                    indexById[item.id] = result.size
+                    result += item.copy(providerOrder = result.size)
+                } else {
+                    val current = result[existing]
+                    if (!current.inGroup(name)) result[existing] = current.copy(extraGroups = current.extraGroups + name)
+                }
+            }
+        }
+        result.trimToSize()
+        return result
+    }
+
     private suspend fun categories(account: PlaylistAccount, action: String): Map<String, String> =
         runCatching {
             streamArray(
@@ -294,9 +344,11 @@ class XtreamClient(
         liveCategories: Map<String, String>,
         liveIds: Map<String, String>,
         leaks: LiveLeakFilter,
+        categoryId: String? = null,
+        forcedGroup: String? = null,
     ): List<MediaEntry> = streamArray(
-        url = apiUrl(account, "get_vod_streams"),
-        tempName = "xtream-vod.json",
+        url = apiUrl(account, "get_vod_streams") + (categoryId?.let { "&category_id=${it.enc()}" } ?: ""),
+        tempName = "xtream-vod${categoryId?.let { "-$it" } ?: ""}.json",
         deserializer = XtreamVodDto.serializer(),
     ) { index, dto ->
         val streamId = dto.streamId.ifBlank { return@streamArray null }
@@ -306,7 +358,7 @@ class XtreamClient(
         if (liveIds[streamId]?.let { it.isNotEmpty() && it == LiveLeakFilter.normalize(dto.name) } == true) {
             return@streamArray null
         }
-        val group = categories[dto.categoryId] ?: "Senza categoria"
+        val group = forcedGroup ?: categories[dto.categoryId] ?: "Senza categoria"
         if (leaks.isLiveLeak(dto.name, group, dto.streamType)) return@streamArray null
         val name = dto.name.ifBlank { "Film $streamId" }
         MediaEntry(
@@ -323,24 +375,28 @@ class XtreamClient(
             plot = dto.plot.takeIf { it.isNotBlank() },
             genres = dto.genre.splitGenres(),
             quality = dto.quality.takeIf { it.isNotBlank() },
+            extraGroups = dto.extraGroupsOf(categories, group),
         )
     }
 
     private suspend fun seriesList(
         account: PlaylistAccount,
         categories: Map<String, String>,
+        categoryId: String? = null,
+        forcedGroup: String? = null,
     ): List<MediaEntry> = streamArray(
-        url = apiUrl(account, "get_series"),
-        tempName = "xtream-series.json",
+        url = apiUrl(account, "get_series") + (categoryId?.let { "&category_id=${it.enc()}" } ?: ""),
+        tempName = "xtream-series${categoryId?.let { "-$it" } ?: ""}.json",
         deserializer = XtreamSeriesDto.serializer(),
     ) { index, dto ->
         val seriesId = dto.seriesId.ifBlank { return@streamArray null }
         val name = dto.name.ifBlank { "Serie $seriesId" }
+        val group = forcedGroup ?: categories[dto.categoryId] ?: "Senza categoria"
         MediaEntry(
             id = "series_$seriesId",
             title = name,
             kind = MediaKind.SERIES,
-            group = categories[dto.categoryId] ?: "Senza categoria",
+            group = group,
             logoUrl = dto.cover.ifBlank { dto.icon }.takeIf { it.isNotBlank() },
             streamUrl = "",
             year = year(dto.year, dto.releaseDate, dto.releaseDateSnake, name),
@@ -349,8 +405,12 @@ class XtreamClient(
             plot = dto.plot.takeIf { it.isNotBlank() },
             genres = dto.genre.splitGenres(),
             seriesId = seriesId,
+            extraGroups = dto.categoryIds.mapNotNull { categories[it] }.filter { it != group }.distinct(),
         )
     }
+
+    private fun XtreamVodDto.extraGroupsOf(categories: Map<String, String>, group: String): List<String> =
+        categoryIds.mapNotNull { categories[it] }.filter { it != group }.distinct()
 
     private fun apiUrl(account: PlaylistAccount, action: String): String {
         val suffix = if (action.isBlank()) "" else "&action=$action"

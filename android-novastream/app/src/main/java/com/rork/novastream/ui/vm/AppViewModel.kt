@@ -337,7 +337,10 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val current = settings.value
         val all = catalog.value.of(kind)
         if (!current.parentalEnabled || _parentalUnlocked.value) return all
-        return all.filterNot { current.isGroupBlocked(kind, it.group) }
+        return all.filterNot { entry ->
+            current.isGroupBlocked(kind, entry.group) ||
+                entry.extraGroups.any { current.isGroupBlocked(kind, it) }
+        }
     }
 
     /** Every category of one section, whatever the parental lock is hiding. */
@@ -359,7 +362,12 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
 
     /** How many visible titles each category of [kind] holds. */
     fun groupCountsOf(kind: MediaKind): Map<String, Int> =
-        visibleEntries(kind).groupingBy { it.group }.eachCount()
+        HashMap<String, Int>().also { counts ->
+            visibleEntries(kind).forEach { entry ->
+                counts.merge(entry.group, 1, Int::plus)
+                entry.extraGroups.forEach { if (it != entry.group) counts.merge(it, 1, Int::plus) }
+            }
+        }
 
     fun favoriteEntries(): List<MediaEntry> {
         val ids = favorites.value
@@ -406,7 +414,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
         val filtered = visibleEntries(kind).asSequence()
             .filter { search.isEmpty() || it.title.contains(search, ignoreCase = true) }
             .filter { query.year == null || it.year == query.year }
-            .filter { query.group == null || it.group == query.group }
+            .filter { query.group == null || it.inGroup(query.group) }
             .filter { !query.favoritesOnly || favoriteIds.contains(it.id) }
             .toList()
 

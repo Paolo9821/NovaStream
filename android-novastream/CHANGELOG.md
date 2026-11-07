@@ -17,6 +17,9 @@ Dettaglio completo in 8 lingue: `changelogs/1.3.5.md`.
 - Guida TV cercata in più fonti (link utente, xmltv del pannello, url-tvg della playlist).
 - Playlist m3u: episodi raggruppati nella loro serie e film doppi eliminati (conteggi corretti).
 - Link m3u get.php letti tramite l'API del pannello.
+- Film e Serie TV: categorie mancanti recuperate (category_ids, richieste per categoria, film HLS, saghe).
+- Telefoni e tablet: solo orientamento orizzontale.
+- Sito: Host privato nell'editor delle playlist.
 
 ### English
 
@@ -27,6 +30,9 @@ Dettaglio completo in 8 lingue: `changelogs/1.3.5.md`.
 - TV guide searched in several sources (user link, panel xmltv, playlist url-tvg).
 - m3u playlists: episodes grouped into their series and duplicate movies removed (correct counts).
 - m3u get.php links read through the panel API.
+- Movies and TV Series: missing categories recovered (category_ids, per-category requests, HLS films, sagas).
+- Phones and tablets: landscape only.
+- Website: Private host in the playlist editor.
 
 ## 1.3.4
 

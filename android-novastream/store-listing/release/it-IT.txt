@@ -5,6 +5,7 @@ Nuova schermata delle sezioni, Host privato e guida TV più affidabile.
 • Host privato: basta numero host, username e password
 • Guida TV: funziona anche sui box dove restava vuota
 • Playlist m3u: conteggi corretti di film e serie
+• Film e Serie TV: compaiono tutte le categorie
 • Versione 1.3.5
 
 Grazie per usare NovaStream.

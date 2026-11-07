@@ -211,11 +211,20 @@ class LicenseApi(private val baseUrl: String = LICENSE_BACKEND_URL) {
                 val item = element as? JsonObject ?: return@mapNotNull null
                 fun text(key: String): String = item[key]?.jsonPrimitive?.contentOrNull.orEmpty()
                 val id = text("id").takeIf { it.isNotBlank() } ?: return@mapNotNull null
-                val type = if (text("type") == "xtream") AccountType.XTREAM else AccountType.M3U
+                // A private host comes with its number only: the address is looked up at sync.
+                val hostNumber = text("hostNumber").filter { it.isLetterOrDigit() }.take(12)
+                val type = if (text("type") == "xtream" || hostNumber.isNotEmpty()) AccountType.XTREAM else AccountType.M3U
                 PlaylistAccount(
                     id = id,
-                    name = text("name").ifBlank { if (type == AccountType.XTREAM) "Xtream" else "m3u" },
+                    name = text("name").ifBlank {
+                        when {
+                            hostNumber.isNotEmpty() -> "Host $hostNumber"
+                            type == AccountType.XTREAM -> "Xtream"
+                            else -> "m3u"
+                        }
+                    },
                     type = type,
+                    hostNumber = hostNumber,
                     m3uUrl = text("m3uUrl"),
                     server = text("server"),
                     username = text("username"),

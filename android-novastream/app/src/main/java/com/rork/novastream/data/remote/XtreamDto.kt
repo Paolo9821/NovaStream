@@ -8,6 +8,7 @@ import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
 import kotlinx.serialization.descriptors.SerialDescriptor
 import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
+import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonDecoder
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
@@ -32,6 +33,28 @@ object LooseText : KSerializer<String> {
     }
 
     override fun serialize(encoder: Encoder, value: String) = encoder.encodeString(value)
+}
+
+/**
+ * `category_ids` of newer panels: an array of ids (numbers or strings), a single
+ * value or nothing at all. Always read as a list of non-empty strings.
+ */
+object LooseIdList : KSerializer<List<String>> {
+    override val descriptor: SerialDescriptor =
+        PrimitiveSerialDescriptor("LooseIdList", PrimitiveKind.STRING)
+
+    override fun deserialize(decoder: Decoder): List<String> {
+        val json = decoder as? JsonDecoder ?: return emptyList()
+        return when (val element = json.decodeJsonElement()) {
+            is JsonArray -> element.mapNotNull { item ->
+                (item as? JsonPrimitive)?.content?.takeIf { it.isNotBlank() && it != "null" }
+            }
+            is JsonPrimitive -> listOfNotNull(element.content.takeIf { it.isNotBlank() && it != "null" })
+            else -> emptyList()
+        }
+    }
+
+    override fun serialize(encoder: Encoder, value: List<String>) = encoder.encodeString(value.joinToString(","))
 }
 
 /**
@@ -72,6 +95,7 @@ data class XtreamVodDto(
     @SerialName("year") @Serializable(with = LooseText::class) val year: String = "",
     @SerialName("releaseDate") @Serializable(with = LooseText::class) val releaseDate: String = "",
     @SerialName("release_date") @Serializable(with = LooseText::class) val releaseDateSnake: String = "",
+    @SerialName("category_ids") @Serializable(with = LooseIdList::class) val categoryIds: List<String> = emptyList(),
 )
 
 @Serializable
@@ -87,4 +111,5 @@ data class XtreamSeriesDto(
     @SerialName("year") @Serializable(with = LooseText::class) val year: String = "",
     @SerialName("releaseDate") @Serializable(with = LooseText::class) val releaseDate: String = "",
     @SerialName("release_date") @Serializable(with = LooseText::class) val releaseDateSnake: String = "",
+    @SerialName("category_ids") @Serializable(with = LooseIdList::class) val categoryIds: List<String> = emptyList(),
 )

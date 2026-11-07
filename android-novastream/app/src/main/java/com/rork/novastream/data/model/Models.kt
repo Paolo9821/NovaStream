@@ -53,7 +53,14 @@ data class MediaEntry(
     val quality: String? = null,
     val seriesId: String? = null,
     val tvgId: String? = null,
-)
+    /**
+     * Further categories the provider files this title under (Xtream
+     * `category_ids`, or a category listed on its own that repeats a title).
+     */
+    val extraGroups: List<String> = emptyList(),
+) {
+    fun inGroup(name: String): Boolean = group == name || name in extraGroups
+}
 
 /**
  * The extra information a provider keeps behind its detail endpoint: plot,
@@ -106,7 +113,10 @@ data class Catalog(
      */
     fun orderedGroups(kind: MediaKind, items: List<MediaEntry>): List<String> {
         val present = LinkedHashSet<String>()
-        items.sortedBy { it.providerOrder }.forEach { present += it.group }
+        items.sortedBy { it.providerOrder }.forEach { entry ->
+            present += entry.group
+            entry.extraGroups.forEach { present += it }
+        }
         val declared = groupOrder[kind.name].orEmpty()
         if (declared.isEmpty()) return present.toList()
         val result = ArrayList<String>(present.size)

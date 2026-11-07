@@ -101,7 +101,15 @@ fun SectionBrowser(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val isTv = LocalIsTv.current
-    val wide = isTv || LocalConfiguration.current.screenWidthDp >= 720
+    val configuration = LocalConfiguration.current
+    val wide = isTv || configuration.screenWidthDp >= 720
+    // A phone held sideways is wide but short: a narrower column leaves room for the posters.
+    val columnWidth = when {
+        isTv -> 300.dp
+        wide && configuration.screenHeightDp < 500 -> 230.dp
+        wide -> 300.dp
+        else -> 138.dp
+    }
     val strings = LocalStrings.current
 
     Row(
@@ -122,7 +130,7 @@ fun SectionBrowser(
             compact = !wide,
             bottomPadding = contentPadding.calculateBottomPadding(),
             modifier = Modifier
-                .width(if (wide) 300.dp else 138.dp)
+                .width(columnWidth)
                 .fillMaxHeight(),
         )
         Box(

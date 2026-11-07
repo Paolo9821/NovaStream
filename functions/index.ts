@@ -139,6 +139,8 @@ type PlaylistPayload = {
   username: string;
   password: string;
   epgUrl: string;
+  /** Number of a private host from /app/host.json; the app looks up its address. */
+  hostNumber?: string;
 };
 
 const isHttpUrl = (value: string): boolean => {
@@ -161,7 +163,25 @@ const hostOf = (value: string): string => {
 /** Checks and trims what the website sent; returns an error code on bad input. */
 function readPlaylist(raw: unknown): { ok: true; value: PlaylistPayload } | { ok: false; error: string } {
   const item = (raw ?? {}) as Record<string, unknown>;
-  const type = String(item.type ?? "") === "xtream" ? "xtream" : "m3u";
+  const rawType = String(item.type ?? "");
+  // A private host travels as an Xtream line without a server: only its number.
+  if (rawType === "host") {
+    const hostNumber = String(item.hostNumber ?? "").replace(/[^0-9A-Za-z]/g, "").slice(0, 12);
+    const host: PlaylistPayload = {
+      name: String(item.name ?? "").trim().slice(0, 60) || `Host ${hostNumber}`,
+      type: "xtream",
+      m3uUrl: "",
+      server: "",
+      username: String(item.username ?? "").trim().slice(0, 200),
+      password: String(item.password ?? "").slice(0, 200),
+      epgUrl: "",
+      hostNumber,
+    };
+    if (!hostNumber) return { ok: false, error: "invalid host number" };
+    if (!host.username || !host.password) return { ok: false, error: "missing credentials" };
+    return { ok: true, value: host };
+  }
+  const type = rawType === "xtream" ? "xtream" : "m3u";
   const value: PlaylistPayload = {
     name: String(item.name ?? "").trim().slice(0, 60),
     type,
@@ -348,7 +368,9 @@ export default {
             id: crypto.randomUUID(),
             name: playlist.name,
             type: playlist.type,
-            host: hostOf(playlist.type === "xtream" ? playlist.server : playlist.m3uUrl),
+            host: playlist.hostNumber
+              ? `Host ${playlist.hostNumber}`
+              : hostOf(playlist.type === "xtream" ? playlist.server : playlist.m3uUrl),
             sealed: await seal(sealKey, JSON.stringify(playlist)),
           },
         );

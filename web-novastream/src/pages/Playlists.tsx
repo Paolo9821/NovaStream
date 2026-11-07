@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   ArrowLeft,
   BadgeCheck,
+  Hash,
   Clock,
   KeyRound,
   Link2,
@@ -67,6 +68,7 @@ const EMPTY_FORM: NewPlaylist = {
   username: "",
   password: "",
   epgUrl: "",
+  hostNumber: "",
 };
 
 const isHttpUrl = (value: string): boolean => /^https?:\/\/\S+\.\S+/i.test(value.trim());
@@ -396,6 +398,8 @@ function DeviceManager({
 
 function PlaylistRow({ item, onDelete }: { item: DevicePlaylist; onDelete: () => void }) {
   const { t } = useI18n();
+  // Private hosts are reported as "Host 0016": their address is never shown.
+  const privateHost = /^Host\s+\S+$/.test(item.host);
   const tone =
     item.status === "installed"
       ? "border-accent/30 bg-accent/10 text-accent"
@@ -410,13 +414,19 @@ function PlaylistRow({ item, onDelete }: { item: DevicePlaylist; onDelete: () =>
       )}
     >
       <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/12 text-primary">
-        {item.type === "xtream" ? <Server className="h-4.5 w-4.5" /> : <Link2 className="h-4.5 w-4.5" />}
+        {privateHost ? (
+          <Hash className="h-4.5 w-4.5" />
+        ) : item.type === "xtream" ? (
+          <Server className="h-4.5 w-4.5" />
+        ) : (
+          <Link2 className="h-4.5 w-4.5" />
+        )}
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <span className="truncate font-semibold">{item.name}</span>
           <span className="mono rounded-md bg-secondary px-1.5 py-0.5 text-[10px] font-bold uppercase text-muted-foreground">
-            {item.type === "xtream" ? "Xtream" : "M3U"}
+            {privateHost ? t("pl.typeHost") : item.type === "xtream" ? "Xtream" : "M3U"}
           </span>
         </div>
         <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -505,6 +515,7 @@ function AddPlaylistForm({
       else if (message === "invalid server") setError(t("pl.errServer"));
       else if (message === "missing credentials") setError(t("pl.errCreds"));
       else if (message === "invalid epg url") setError(t("pl.errEpg"));
+      else if (message === "invalid host number") setError(t("pl.errHost"));
       else if (err instanceof ApiError && err.retryInSeconds > 0) {
         setError(t("pl.errLocked", { min: String(Math.ceil(err.retryInSeconds / 60)) }));
       } else setError(t("pl.errGeneric"));
@@ -518,7 +529,11 @@ function AddPlaylistForm({
       if (!isHttpUrl(form.server)) return setError(t("pl.errServer"));
       if (!form.username.trim() || !form.password) return setError(t("pl.errCreds"));
     }
-    if (form.epgUrl.trim() && !isHttpUrl(form.epgUrl)) return setError(t("pl.errEpg"));
+    if (form.type === "host") {
+      if (!form.hostNumber.trim()) return setError(t("pl.errHost"));
+      if (!form.username.trim() || !form.password) return setError(t("pl.errCreds"));
+    }
+    if (form.type !== "host" && form.epgUrl.trim() && !isHttpUrl(form.epgUrl)) return setError(t("pl.errEpg"));
     if (answer.trim().length < 4) return setError(t("pl.errCaptchaEmpty"));
     send.mutate();
   };
@@ -526,6 +541,7 @@ function AddPlaylistForm({
   const types: { id: NewPlaylist["type"]; title: string; hint: string; icon: typeof Link2 }[] = [
     { id: "m3u", title: t("pl.typeM3u"), hint: t("pl.typeM3uHint"), icon: Link2 },
     { id: "xtream", title: t("pl.typeXtream"), hint: t("pl.typeXtreamHint"), icon: Server },
+    { id: "host", title: t("pl.typeHost"), hint: t("pl.typeHostHint"), icon: Hash },
   ];
 
   const fieldClass = "mt-2 h-12 border-border/80 bg-secondary/60";
@@ -541,7 +557,7 @@ function AddPlaylistForm({
       <StepTitle index={3} label={t("pl.step.add")} />
       <p className="mt-2 text-sm text-muted-foreground">{t("pl.addSub")}</p>
 
-      <div className="mt-5 grid gap-2.5 sm:grid-cols-2" role="radiogroup">
+      <div className="mt-5 grid gap-2.5 sm:grid-cols-3" role="radiogroup">
         {types.map((entry) => {
           const active = form.type === entry.id;
           return (
@@ -598,19 +614,40 @@ function AddPlaylistForm({
         </>
       ) : (
         <>
-          <Label htmlFor="pl-server" className="mt-5 block text-sm font-medium">
-            {t("pl.server")}
-          </Label>
-          <Input
-            id="pl-server"
-            value={form.server}
-            onChange={(event) => update("server", event.target.value)}
-            placeholder="http://srv.example.com:8080"
-            autoComplete="off"
-            spellCheck={false}
-            inputMode="url"
-            className={cn(fieldClass, "mono text-sm")}
-          />
+          {form.type === "host" ? (
+            <>
+              <Label htmlFor="pl-host" className="mt-5 block text-sm font-medium">
+                {t("pl.hostNumber")}
+              </Label>
+              <Input
+                id="pl-host"
+                value={form.hostNumber}
+                onChange={(event) => update("hostNumber", event.target.value.replace(/[^0-9A-Za-z]/g, "").slice(0, 12))}
+                placeholder="0016"
+                autoComplete="off"
+                spellCheck={false}
+                inputMode="numeric"
+                className={cn(fieldClass, "mono max-w-[220px] text-lg tracking-[0.2em]")}
+              />
+              <p className="mt-2 text-xs text-muted-foreground">{t("pl.hostNumberHelp")}</p>
+            </>
+          ) : (
+            <>
+              <Label htmlFor="pl-server" className="mt-5 block text-sm font-medium">
+                {t("pl.server")}
+              </Label>
+              <Input
+                id="pl-server"
+                value={form.server}
+                onChange={(event) => update("server", event.target.value)}
+                placeholder="http://srv.example.com:8080"
+                autoComplete="off"
+                spellCheck={false}
+                inputMode="url"
+                className={cn(fieldClass, "mono text-sm")}
+              />
+            </>
+          )}
           <div className="grid gap-x-3 sm:grid-cols-2">
             <div>
               <Label htmlFor="pl-user" className="mt-5 block text-sm font-medium">
@@ -642,20 +679,24 @@ function AddPlaylistForm({
         </>
       )}
 
-      <Label htmlFor="pl-epg" className="mt-5 block text-sm font-medium">
-        {t("pl.epg")} <span className="font-normal text-muted-foreground">{t("pl.optional")}</span>
-      </Label>
-      <Input
-        id="pl-epg"
-        value={form.epgUrl}
-        onChange={(event) => update("epgUrl", event.target.value)}
-        placeholder="http://srv.example.com/xmltv.php"
-        autoComplete="off"
-        spellCheck={false}
-        inputMode="url"
-        className={cn(fieldClass, "mono text-sm")}
-      />
-      {form.type === "xtream" && <p className="mt-2 text-xs text-muted-foreground">{t("pl.epgHint")}</p>}
+      {form.type !== "host" && (
+        <>
+          <Label htmlFor="pl-epg" className="mt-5 block text-sm font-medium">
+            {t("pl.epg")} <span className="font-normal text-muted-foreground">{t("pl.optional")}</span>
+          </Label>
+          <Input
+            id="pl-epg"
+            value={form.epgUrl}
+            onChange={(event) => update("epgUrl", event.target.value)}
+            placeholder="http://srv.example.com/xmltv.php"
+            autoComplete="off"
+            spellCheck={false}
+            inputMode="url"
+            className={cn(fieldClass, "mono text-sm")}
+          />
+          {form.type === "xtream" && <p className="mt-2 text-xs text-muted-foreground">{t("pl.epgHint")}</p>}
+        </>
+      )}
 
       {/* Last step before sending: the bot check. */}
       <div className="mt-7 rounded-2xl border border-border/80 bg-secondary/30 p-4 sm:p-5">
