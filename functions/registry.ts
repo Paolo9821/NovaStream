@@ -275,6 +275,35 @@ const MAX_KEY_FAILURES = 8;
 
 const KEY_LOCKOUT_MS = 15 * 60 * 1000;
 
+/** A licence can be moved by its owner once in this period; the dashboard is not limited. */
+const TRANSFER_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Wrong old-device proofs (key or email) tolerated per address and per licence. */
+const MAX_TRANSFER_FAILURES = 6;
+const TRANSFER_WINDOW_MS = 30 * 60 * 1000;
+
+export type TransferView = {
+  id: string;
+  fromId: string;
+  toId: string;
+  method: string;
+  plan: string;
+  email: string;
+  createdAt: number;
+};
+
+type TransferOutcome =
+  | {
+      ok: true;
+      fromId: string;
+      toId: string;
+      plan: string;
+      expiresAt: number | null;
+      email: string;
+      method: string;
+    }
+  | { ok: false; error: string; retryInSeconds?: number };
+
 /** Same look-alike-free alphabet as the CAPTCHA: nothing to confuse on a TV. */
 const KEY_ALPHABET = "ACDEFHJKLMNPQRTUVWXY23456789";
 
@@ -408,6 +437,9 @@ function toView(row: LicenseRow, aliases: string[] = []): LicenseView {
 export class Registry extends DurableObject {
   /** Wrong promo codes per address; kept in memory only, a restart simply forgives. */
   private promoFailures = new Map<string, { count: number; since: number }>();
+
+  /** Wrong transfer proofs per address and per licence; in memory, like the promo brake. */
+  private transferFailures = new Map<string, { count: number; since: number }>();
 
   constructor(ctx: DurableObjectState, env: unknown) {
     super(ctx, env);
@@ -604,6 +636,22 @@ export class Registry extends DurableObject {
         text TEXT NOT NULL DEFAULT ''
       )
     `);
+    // Every licence move, kept for the dashboard and for the once-a-week limit.
+    this.ctx.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS license_transfers (
+        id TEXT PRIMARY KEY,
+        from_id TEXT NOT NULL,
+        to_id TEXT NOT NULL,
+        method TEXT NOT NULL DEFAULT '',
+        plan TEXT NOT NULL DEFAULT '',
+        email TEXT NOT NULL DEFAULT '',
+        ip TEXT NOT NULL DEFAULT '',
+        created_at INTEGER NOT NULL
+      )
+    `);
+    this.ctx.storage.sql.exec(
+      "CREATE INDEX IF NOT EXISTS idx_license_transfers_to ON license_transfers (to_id)",
+    );
   }
 
   /** Stores a checkout confirmation and forgets the ones whose checkout was never paid. */
@@ -737,6 +785,10 @@ export class Registry extends DurableObject {
             String(body.id ?? ""),
           ),
         );
+      case "/license-transfer":
+        return Response.json(this.licenseTransfer(body));
+      case "/transfer-list":
+        return Response.json({ transfers: this.transferList() });
       case "/captcha-burn":
         return Response.json({
           fresh: this.burnCaptcha(String(body.nonce ?? ""), Number(body.expiresAt ?? 0)),
@@ -890,6 +942,36 @@ export class Registry extends DurableObject {
     const device = this.deviceByIdentifier(identifier);
     if (!device || !sessionHash) return { ok: false, error: "wrong device or key" };
     const now = Date.now();
+    const checked = this.verifyKey(device, key, now);
+    if (!checked.ok) return checked;
+    this.ctx.storage.sql.exec(
+      "UPDATE devices SET last_open_at = ? WHERE device_id = ?",
+      now,
+      device.device_id,
+    );
+    this.ctx.storage.sql.exec(
+      "DELETE FROM device_sessions WHERE device_id = ? OR expires_at < ? OR created_at < ?",
+      device.device_id,
+      now,
+      now - SESSION_MAX_MS,
+    );
+    this.ctx.storage.sql.exec(
+      `INSERT INTO device_sessions (token_hash, device_id, created_at, last_used_at, expires_at)
+       VALUES (?, ?, ?, ?, ?) ON CONFLICT(token_hash) DO NOTHING`,
+      sessionHash,
+      device.device_id,
+      now,
+      now,
+      now + SESSION_IDLE_MS,
+    );
+    return { ok: true, device };
+  }
+
+  /**
+   * Checks a key typed on the website against the one the app shows right now.
+   * A right key is burnt on the spot; wrong ones count against that device only.
+   */
+  private verifyKey(device: DeviceRow, key: string, now: number): { ok: true } | AuthFailure {
     if (device.locked_until > now) {
       return {
         ok: false,
@@ -918,29 +1000,10 @@ export class Registry extends DurableObject {
       return { ok: false, error: "wrong device or key" };
     }
 
-    // Single use: the key dies the moment it opens the device.
+    // Single use: the key dies the moment it is accepted.
     this.rotateKey(device, now);
-    this.ctx.storage.sql.exec(
-      "UPDATE devices SET key_failures = 0, last_open_at = ? WHERE device_id = ?",
-      now,
-      device.device_id,
-    );
-    this.ctx.storage.sql.exec(
-      "DELETE FROM device_sessions WHERE device_id = ? OR expires_at < ? OR created_at < ?",
-      device.device_id,
-      now,
-      now - SESSION_MAX_MS,
-    );
-    this.ctx.storage.sql.exec(
-      `INSERT INTO device_sessions (token_hash, device_id, created_at, last_used_at, expires_at)
-       VALUES (?, ?, ?, ?, ?) ON CONFLICT(token_hash) DO NOTHING`,
-      sessionHash,
-      device.device_id,
-      now,
-      now,
-      now + SESSION_IDLE_MS,
-    );
-    return { ok: true, device };
+    this.ctx.storage.sql.exec("UPDATE devices SET key_failures = 0 WHERE device_id = ?", device.device_id);
+    return { ok: true };
   }
 
   /** Lets a browser that already used a key keep working until its session ends. */
@@ -1607,6 +1670,219 @@ export class Registry extends DurableObject {
 
     const row = this.find(deviceId);
     return { ok: true, license: toView(row as LicenseRow, this.aliasesOf(deviceId)) };
+  }
+
+  // ---- Licence transfer ------------------------------------------------------
+
+  private transferRetry(keys: string[], now: number): number {
+    let retry = 0;
+    for (const key of keys) {
+      const entry = this.transferFailures.get(key);
+      if (!entry) continue;
+      if (now - entry.since > TRANSFER_WINDOW_MS) {
+        this.transferFailures.delete(key);
+        continue;
+      }
+      if (entry.count >= MAX_TRANSFER_FAILURES) {
+        retry = Math.max(retry, Math.ceil((entry.since + TRANSFER_WINDOW_MS - now) / 1000));
+      }
+    }
+    return retry;
+  }
+
+  private noteTransferFailure(keys: string[], now: number): void {
+    for (const key of keys) {
+      const entry = this.transferFailures.get(key);
+      if (!entry || now - entry.since > TRANSFER_WINDOW_MS) {
+        this.transferFailures.set(key, { count: 1, since: now });
+      } else {
+        entry.count += 1;
+      }
+    }
+  }
+
+  /**
+   * Moves a licence to another device: same plan, same expiry, same email. The
+   * old device loses it the next time its app checks in. Customers prove both
+   * devices (old one by key or purchase email, new one by key); the dashboard
+   * moves it directly.
+   */
+  private licenseTransfer(body: Record<string, unknown>): TransferOutcome {
+    const now = Date.now();
+    const method = String(body.method ?? "key");
+    const admin = method === "admin";
+    const fromId = String(body.fromId ?? "");
+    const toId = String(body.toId ?? "");
+    const guardKeys = [`ip:${String(body.ip ?? "")}`, `from:${fromId}`];
+
+    if (!admin) {
+      const retry = this.transferRetry(guardKeys, now);
+      if (retry > 0) return { ok: false, error: "too many attempts", retryInSeconds: retry };
+    }
+
+    // Which licence, and the old device when it is proven by key.
+    const fromDevice = this.deviceByIdentifier(fromId);
+    const license = this.resolve(
+      method === "key" && fromDevice ? [fromDevice.device_id, fromDevice.mac, fromId] : [fromId],
+    );
+    if (!license) {
+      if (!admin) this.noteTransferFailure(guardKeys, now);
+      return { ok: false, error: "licence not found" };
+    }
+
+    // The new device, by every name it answers to.
+    const toDevice = this.deviceByIdentifier(toId);
+    if (!admin && !toDevice) return { ok: false, error: "new device unknown" };
+    const toPrimary = toDevice?.device_id ?? toId;
+    const toNames = unique([toPrimary, toDevice?.mac ?? "", toId, String(body.toMac ?? "")]);
+
+    if (toNames.includes(license.device_id) || this.resolve(toNames)?.device_id === license.device_id) {
+      return { ok: false, error: "same device" };
+    }
+    if (license.status === "revoked") return { ok: false, error: "licence revoked" };
+    const expired = license.expires_at !== null && license.expires_at < now;
+    if (!admin && license.status === "suspended") return { ok: false, error: "licence suspended" };
+    if (!admin && expired) return { ok: false, error: "licence expired" };
+
+    const target = this.resolve(toNames);
+    if (target) {
+      const targetLive = target.status === "active" && (target.expires_at === null || target.expires_at >= now);
+      if (targetLive) return { ok: false, error: "new device has licence" };
+    }
+
+    if (!admin) {
+      const last = this.ctx.storage.sql
+        .exec<{ created_at: number }>(
+          "SELECT created_at FROM license_transfers WHERE to_id = ? AND method != 'admin' ORDER BY created_at DESC LIMIT 1",
+          license.device_id,
+        )
+        .toArray()[0];
+      if (last && now - last.created_at < TRANSFER_COOLDOWN_MS) {
+        return {
+          ok: false,
+          error: "transfer too soon",
+          retryInSeconds: Math.ceil((last.created_at + TRANSFER_COOLDOWN_MS - now) / 1000),
+        };
+      }
+
+      // Proof that the licence is theirs.
+      if (method === "email") {
+        const typed = String(body.email ?? "").trim().toLowerCase();
+        const known = new Set(
+          [
+            license.email,
+            ...this.ctx.storage.sql
+              .exec<{ email: string }>("SELECT email FROM orders WHERE device_id = ?", license.device_id)
+              .toArray()
+              .map((row) => row.email),
+          ]
+            .map((value) => value.trim().toLowerCase())
+            .filter(Boolean),
+        );
+        if (!typed || !known.has(typed)) {
+          this.noteTransferFailure(guardKeys, now);
+          return { ok: false, error: "wrong email" };
+        }
+      } else {
+        if (!fromDevice) {
+          this.noteTransferFailure(guardKeys, now);
+          return { ok: false, error: "wrong old key" };
+        }
+        const old = this.verifyKey(fromDevice, String(body.fromKey ?? ""), now);
+        if (!old.ok) {
+          this.noteTransferFailure(guardKeys, now);
+          return old.retryInSeconds
+            ? { ok: false, error: "too many attempts", retryInSeconds: old.retryInSeconds }
+            : { ok: false, error: "wrong old key" };
+        }
+      }
+
+      // Proof that they hold the new device.
+      const fresh = this.verifyKey(toDevice as DeviceRow, String(body.toKey ?? ""), now);
+      if (!fresh.ok) {
+        return fresh.retryInSeconds
+          ? { ok: false, error: "too many attempts", retryInSeconds: fresh.retryInSeconds }
+          : { ok: false, error: "wrong new key" };
+      }
+    }
+
+    // A dead licence already on the new device makes way for the live one.
+    if (target) {
+      this.ctx.storage.sql.exec("DELETE FROM licenses WHERE device_id = ?", target.device_id);
+      this.ctx.storage.sql.exec("DELETE FROM device_aliases WHERE device_id = ?", target.device_id);
+    }
+
+    const stamp = new Date(now).toISOString().slice(0, 10);
+    const note = [license.note, `Trasferita da ${license.device_id} il ${stamp}`].filter(Boolean).join(" · ").slice(-500);
+    this.ctx.storage.sql.exec(
+      `INSERT INTO licenses
+         (device_id, status, plan, email, label, note, created_at, updated_at, expires_at, last_seen_at,
+          order_id, amount_cents, source, term)
+       SELECT ?, status, plan, email, label, ?, created_at, ?, expires_at, NULL, order_id, amount_cents, source, term
+       FROM licenses WHERE device_id = ?`,
+      toPrimary,
+      note,
+      now,
+      license.device_id,
+    );
+    this.ctx.storage.sql.exec("DELETE FROM licenses WHERE device_id = ?", license.device_id);
+    this.ctx.storage.sql.exec("DELETE FROM device_aliases WHERE device_id = ?", license.device_id);
+    for (const name of toNames) {
+      this.ctx.storage.sql.exec("DELETE FROM device_aliases WHERE alias = ?", name);
+    }
+    this.link(toPrimary, toNames);
+    // Orders follow the licence, so the revenue view and the email proof keep working.
+    this.ctx.storage.sql.exec(
+      "UPDATE orders SET device_id = ? WHERE device_id = ?",
+      toPrimary,
+      license.device_id,
+    );
+    this.ctx.storage.sql.exec(
+      `INSERT INTO license_transfers (id, from_id, to_id, method, plan, email, ip, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      `x_${now.toString(36)}${Math.random().toString(36).slice(2, 8)}`,
+      license.device_id,
+      toPrimary,
+      method,
+      license.plan,
+      license.email,
+      String(body.ip ?? "").slice(0, 64),
+      now,
+    );
+    this.transferFailures.delete(`from:${fromId}`);
+
+    return {
+      ok: true,
+      fromId: license.device_id,
+      toId: toPrimary,
+      plan: license.plan,
+      expiresAt: license.expires_at,
+      email: license.email,
+      method,
+    };
+  }
+
+  private transferList(): TransferView[] {
+    return this.ctx.storage.sql
+      .exec<{
+        id: string;
+        from_id: string;
+        to_id: string;
+        method: string;
+        plan: string;
+        email: string;
+        created_at: number;
+      }>("SELECT * FROM license_transfers ORDER BY created_at DESC LIMIT 200")
+      .toArray()
+      .map((row) => ({
+        id: row.id,
+        fromId: row.from_id,
+        toId: row.to_id,
+        method: row.method,
+        plan: row.plan,
+        email: row.email,
+        createdAt: row.created_at,
+      }));
   }
 
   private setStatus(deviceId: string, status: StoredStatus, note: string): { ok: boolean } {

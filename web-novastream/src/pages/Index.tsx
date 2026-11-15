@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  ArrowRightLeft,
   BadgeCheck,
   Check,
   CreditCard,
@@ -339,6 +340,14 @@ export default function Index() {
           >
             <ListVideo className="h-3.5 w-3.5" />
             <span className="hidden sm:inline">{t("nav.playlists")}</span>
+          </Link>
+          <Link
+            to="/trasferimento"
+            title={t("nav.transfer")}
+            className="flex items-center gap-1.5 rounded-full border border-border/70 px-3.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-primary/50 hover:text-foreground"
+          >
+            <ArrowRightLeft className="h-3.5 w-3.5" />
+            <span className="hidden lg:inline">{t("nav.transfer")}</span>
           </Link>
           <Link
             to="/assistenza"
@@ -822,6 +831,9 @@ function SiteFooter() {
           </Link>
           <Link to="/privacy" className="transition hover:text-foreground">
             {t("legal.privacy.title")}
+          </Link>
+          <Link to="/trasferimento" className="transition hover:text-foreground">
+            {t("nav.transfer")}
           </Link>
           <Link to="/assistenza" className="transition hover:text-foreground">
             {t("footer.support")}

@@ -22,11 +22,12 @@ import { PLANS, isPlanId, isValidDeviceId, normalizeDeviceId, priceString } from
 import { checkChallenge, createChallenge } from "./_lib/captcha";
 import { importSealKey, newSealKeyMaterial, seal, unseal } from "./_lib/seal";
 import { readTerm } from "./_lib/terms";
+import { DEFAULT_SUPPORT_INBOX, escapeHtml, sendMail, type MailEnv } from "./_lib/mail";
 import { normalizeCode, type PromoQuote } from "./registry";
 
 export { Registry } from "./registry";
 
-type Env = StripeEnv & {
+type Env = StripeEnv & MailEnv & {
   DO: Fetcher;
   ADMIN_PASSWORD: string;
   ADMIN_USERNAME?: string;
@@ -217,7 +218,7 @@ async function readBody(request: Request): Promise<Record<string, unknown>> {
 }
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
 
     const url = new URL(request.url);
@@ -417,7 +418,57 @@ export default {
           { email, message, topic, lang, deviceId },
         );
         if (!created.ok) return fail(created.error ?? "could not save request", 429);
+        // A copy goes to the support inbox; the dashboard stays the source of truth,
+        // so a mail outage never loses a request.
+        ctx.waitUntil(mailTicket(env, { id: created.id ?? "", email, message, topic, lang, deviceId }));
         return json({ ok: true, id: created.id });
+      }
+
+      // ---- Licence transfer ------------------------------------------------
+      // Moves a licence to a new device. The new device proves itself with the
+      // key its app shows; the old one with its own key, or, when it is lost or
+      // broken, with the email used for the purchase.
+      if (path === "/api/license/transfer" && request.method === "POST") {
+        const body = await readBody(request);
+        const fromId = normalizeDeviceId(String(body.fromId ?? ""));
+        const toId = normalizeDeviceId(String(body.toId ?? ""));
+        if (!isValidDeviceId(fromId) || !isValidDeviceId(toId)) return fail("invalid device id");
+        const method = body.method === "email" ? "email" : "key";
+        const fromEmail = String(body.email ?? "").trim().toLowerCase().slice(0, 160);
+        if (method === "email" && !EMAIL_RE.test(fromEmail)) return fail("invalid email");
+
+        const check = await checkChallenge(
+          await generatedSecret(env, CAPTCHA_SECRET),
+          String(body.captchaToken ?? ""),
+          String(body.captchaAnswer ?? ""),
+        );
+        if (check.nonce) {
+          const burn = await registryJson<{ fresh: boolean }>(env, "/captcha-burn", {
+            nonce: check.nonce,
+            expiresAt: check.expiresAt,
+          });
+          if (!burn.fresh) return json({ error: "captcha used", captcha: true }, 400);
+        }
+        if (!check.ok) {
+          return json({ error: check.reason === "expired" ? "captcha expired" : "captcha wrong", captcha: true }, 400);
+        }
+
+        const result = await registryJson<TransferResult>(env, "/license-transfer", {
+          fromId,
+          toId,
+          method,
+          fromKey: String(body.fromKey ?? ""),
+          toKey: String(body.toKey ?? ""),
+          email: fromEmail,
+          ip: request.headers.get("CF-Connecting-IP") ?? "",
+        });
+        if (!result.ok) {
+          const status = result.retryInSeconds ? 429 : result.error === "licence not found" ? 404 : 400;
+          return json(result, status);
+        }
+        ctx.waitUntil(mailTransfer(env, result));
+        // The purchase email stays on the server.
+        return json({ ok: true, fromId: result.fromId, toId: result.toId, plan: result.plan, expiresAt: result.expiresAt });
       }
 
       // ---- Promo codes -----------------------------------------------------
@@ -695,6 +746,24 @@ export default {
           );
         }
 
+        // The owner can move a licence without any key, and without the waiting period.
+        if (path === "/api/admin/transfer") {
+          const fromId = normalizeDeviceId(String(body.fromId ?? ""));
+          const toId = normalizeDeviceId(String(body.toId ?? ""));
+          if (!isValidDeviceId(fromId) || !isValidDeviceId(toId)) return fail("invalid device id");
+          const result = await registryJson<TransferResult>(env, "/license-transfer", {
+            fromId,
+            toId,
+            method: "admin",
+            toMac: normalizeDeviceId(String(body.toMac ?? "")),
+          });
+          return result.ok ? json(result) : json(result, 400);
+        }
+
+        if (path === "/api/admin/transfers") {
+          return json(await registryJson(env, "/transfer-list", {}));
+        }
+
         if (path === "/api/admin/remove") {
           const deviceId = normalizeDeviceId(String(body.deviceId ?? ""));
           return json(await registryJson(env, "/remove", { deviceId }));
@@ -735,6 +804,105 @@ export default {
     }
   },
 } satisfies ExportedHandler<Env>;
+
+type TransferResult = {
+  ok: boolean;
+  error?: string;
+  retryInSeconds?: number;
+  fromId?: string;
+  toId?: string;
+  plan?: string;
+  expiresAt?: number | null;
+  email?: string;
+  method?: string;
+};
+
+const TOPIC_LABELS: Record<string, string> = {
+  subscription: "Abbonamento / licenza",
+  payment: "Pagamento",
+  activation: "Attivazione",
+  deletion: "Cancellazione dati",
+  other: "Altro",
+};
+
+/** Forwards a new support request to the support inbox, reply-to the customer. */
+async function mailTicket(
+  env: Env,
+  ticket: { id: string; email: string; message: string; topic: string; lang: string; deviceId: string },
+): Promise<void> {
+  const topic = TOPIC_LABELS[ticket.topic] ?? ticket.topic;
+  const lines = [
+    `Nuova richiesta di assistenza ${ticket.id}`,
+    "",
+    `Da: ${ticket.email}`,
+    `Argomento: ${topic}`,
+    `Dispositivo: ${ticket.deviceId || "-"}`,
+    `Lingua: ${ticket.lang || "-"}`,
+    "",
+    ticket.message,
+    "",
+    "Rispondi a questa email per scrivere direttamente al cliente.",
+    "La richiesta è anche nel pannello: https://novastreamapp.com/dashboard",
+  ];
+  const html = `<div style="font-family:system-ui,sans-serif;font-size:14px;line-height:1.5">
+<h2 style="margin:0 0 12px">Nuova richiesta di assistenza</h2>
+<table style="border-collapse:collapse">
+<tr><td style="padding:2px 12px 2px 0;color:#666">Riferimento</td><td><b>${escapeHtml(ticket.id)}</b></td></tr>
+<tr><td style="padding:2px 12px 2px 0;color:#666">Da</td><td><a href="mailto:${escapeHtml(ticket.email)}">${escapeHtml(ticket.email)}</a></td></tr>
+<tr><td style="padding:2px 12px 2px 0;color:#666">Argomento</td><td>${escapeHtml(topic)}</td></tr>
+<tr><td style="padding:2px 12px 2px 0;color:#666">Dispositivo</td><td style="font-family:monospace">${escapeHtml(ticket.deviceId || "-")}</td></tr>
+<tr><td style="padding:2px 12px 2px 0;color:#666">Lingua</td><td>${escapeHtml(ticket.lang || "-")}</td></tr>
+</table>
+<div style="margin:16px 0;padding:12px 14px;background:#f4f4f6;border-radius:8px;white-space:pre-wrap">${escapeHtml(ticket.message)}</div>
+<p style="color:#666">Rispondi a questa email per scrivere direttamente al cliente. La richiesta è anche nel <a href="https://novastreamapp.com/dashboard">pannello</a>.</p>
+</div>`;
+  await sendMail(env, {
+    to: env.SUPPORT_INBOX?.trim() || DEFAULT_SUPPORT_INBOX,
+    subject: `[NovaStream] ${topic} - ${ticket.email} (${ticket.id})`,
+    text: lines.join("\n"),
+    html,
+    replyTo: ticket.email,
+  });
+}
+
+/** Lets the support inbox know a customer moved their licence themselves. */
+async function mailTransfer(env: Env, result: TransferResult): Promise<void> {
+  const text = [
+    "Licenza trasferita dal sito",
+    "",
+    `Dal dispositivo: ${result.fromId ?? "-"}`,
+    `Al dispositivo: ${result.toId ?? "-"}`,
+    `Piano: ${result.plan ?? "-"}`,
+    `Verifica: ${result.method === "email" ? "email di acquisto" : "chiave del vecchio dispositivo"}`,
+    `Email licenza: ${result.email || "-"}`,
+  ].join("\n");
+  const inbox = env.SUPPORT_INBOX?.trim() || DEFAULT_SUPPORT_INBOX;
+  await sendMail(env, {
+    to: inbox,
+    subject: `[NovaStream] Trasferimento licenza ${result.fromId} → ${result.toId}`,
+    text,
+    ...(result.email ? { replyTo: result.email } : {}),
+  });
+  // The owner hears about it too, so a move they did not make is noticed at once.
+  if (result.email && EMAIL_RE.test(result.email)) {
+    await sendMail(env, {
+      to: result.email,
+      subject: "NovaStream: licence moved to a new device",
+      text: [
+        "Your NovaStream licence has been moved to a new device.",
+        "",
+        `Old device: ${result.fromId ?? "-"}`,
+        `New device: ${result.toId ?? "-"}`,
+        "",
+        "If you did not do this, reply to this email right away.",
+        "",
+        "La tua licenza NovaStream è stata trasferita su un nuovo dispositivo.",
+        "Se non sei stato tu, rispondi subito a questa email.",
+      ].join("\n"),
+      replyTo: inbox,
+    });
+  }
+}
 
 type ConsentRecord = {
   acceptedAt: number;

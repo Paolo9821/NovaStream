@@ -12,6 +12,7 @@ import { PrivacyPage, TermsPage } from "./pages/Legal";
 import NotFound from "./pages/NotFound";
 import Playlists from "./pages/Playlists";
 import Support from "./pages/Support";
+import Transfer from "./pages/Transfer";
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, refetchOnWindowFocus: false } },
@@ -35,6 +36,8 @@ const App = () => (
             <Route path="/playlists" element={<Playlists />} />
             <Route path="/dispositivo" element={<Device />} />
             <Route path="/device" element={<Device />} />
+            <Route path="/trasferimento" element={<Transfer />} />
+            <Route path="/transfer" element={<Transfer />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 import {
   ArrowRight,
+  ArrowRightLeft,
   BadgeCheck,
   ChevronRight,
   CircleSlash,
@@ -147,7 +148,7 @@ export default function Device() {
           )}
         </form>
 
-        <div className="mt-5 grid gap-4 sm:grid-cols-2">
+        <div className="mt-5 grid gap-4 sm:grid-cols-3">
           <HubLink
             to="/playlist"
             icon={ListVideo}
@@ -159,6 +160,12 @@ export default function Device() {
             icon={LifeBuoy}
             title={t("dev.supportTitle")}
             body={t("dev.supportBody")}
+          />
+          <HubLink
+            to={checkedId ? `/trasferimento?from=${encodeURIComponent(checkedId)}` : "/trasferimento"}
+            icon={ArrowRightLeft}
+            title={t("tr.title")}
+            body={t("tr.sub")}
           />
         </div>
       </main>

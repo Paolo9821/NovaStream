@@ -167,6 +167,23 @@ export default function Support() {
                 <p className="mt-1.5 text-sm text-muted-foreground">
                   {deletionMode ? t("support.deletion.body") : t("support.sub")}
                 </p>
+                <p className="mt-1.5 text-xs text-muted-foreground">
+                  {t("support.orEmail")}{" "}
+                  <a
+                    href="mailto:support@novastreamapp.com"
+                    className="font-semibold text-primary underline-offset-4 hover:underline"
+                  >
+                    support@novastreamapp.com
+                  </a>
+                  {!deletionMode && (
+                    <>
+                      {" · "}
+                      <Link to="/trasferimento" className="font-semibold text-primary underline-offset-4 hover:underline">
+                        {t("nav.transfer")}
+                      </Link>
+                    </>
+                  )}
+                </p>
               </div>
             </div>
 

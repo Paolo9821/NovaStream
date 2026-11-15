@@ -11,10 +11,10 @@ import { useI18n } from "@/lib/i18n";
  */
 type Section = { heading: string; body: string[]; list?: string[] };
 
-const LAST_UPDATED = "2026-09-25";
+const LAST_UPDATED = "2026-11-15";
 
 const CONTACT_LINE =
-  "The fastest way to reach us is the support form on this site; every request lands directly in our management console.";
+  "You can reach us through the support form on this site or by writing to support@novastreamapp.com. Every request reaches both our support inbox and our management console.";
 
 const TERMS: Section[] = [
   {
@@ -34,30 +34,38 @@ const TERMS: Section[] = [
   {
     heading: "3. The licence you are buying",
     body: [
-      "A licence unlocks the features of the application on one single device. It is bound to the device identifier shown inside the application (the network hardware address where readable, otherwise the identifier assigned by the operating system).",
-      "A licence is personal and non-transferable. It is not a subscription to any content service, it does not renew automatically, and no amount is ever charged again unless you deliberately buy another period.",
+      "A licence unlocks the features of the application on one device at a time. It is bound to the device identifier shown inside the application (the network hardware address where readable, otherwise the identifier assigned by the operating system).",
+      "A licence is personal: it cannot be shared, resold or given to another person. It is not a subscription to any content service, it does not renew automatically, and no amount is ever charged again unless you deliberately buy another period.",
     ],
     list: [
-      "12 months: the application stays unlocked on that device for 365 days from activation. Buying again before expiry adds a further 365 days on top of the time you still have.",
-      "Lifetime: a one-off payment that keeps that device unlocked for as long as the application and the licence service remain available.",
+      "12 months: the application stays unlocked for 365 days from activation. Buying again before expiry adds a further 365 days on top of the time you still have.",
+      "Lifetime: a one-off payment that keeps the application unlocked for as long as the application and the licence service remain available.",
     ],
   },
   {
-    heading: "4. Free trial — please test before you buy",
+    heading: "4. Moving your licence to a new device",
+    body: [
+      "If you replace your TV, box or phone, you can move your licence to the new device yourself, free of charge, from the \"Transfer licence\" page of this site. The licence keeps its plan and its expiry date; it is not extended or restarted by the move.",
+      "To move it you confirm the old device with the key shown inside its application or, if the old device is lost or broken, with the email address used for the purchase, and you confirm the new device with the key shown inside its application. As soon as the move is complete, the old device loses the licence.",
+      "A licence can be moved by you once every 7 days. If you need to move it sooner, or cannot complete the steps, write to support and we will move it for you. Moving a licence to a device belonging to someone else counts as sharing it (section 8).",
+    ],
+  },
+  {
+    heading: "5. Free trial — please test before you buy",
     body: [
       "Every device gets a free trial of 7 days with the full feature set and no payment details required. We strongly encourage you to use it.",
       "The trial exists so that you can check, on your own device, your own network and your own sources, that the application works the way you expect before spending any money. Please make sure that video playback, your playlists and the general behaviour of the application satisfy you during the trial period. Buying a licence means the trial has satisfied you.",
     ],
   },
   {
-    heading: "5. Prices, payment and invoicing",
+    heading: "6. Prices, payment and invoicing",
     body: [
       "Prices are shown on this site in euro and are final: the advertised amount is what you pay, VAT included where applicable.",
       "Payments are processed by Stripe. We never see or store your card details. Activation happens automatically as soon as Stripe confirms the payment, normally within seconds and at any hour of the day.",
     ],
   },
   {
-    heading: "6. No refunds",
+    heading: "7. No refunds",
     body: [
       "All sales are final. Licences are not refundable, in whole or in part, and this applies to both the 12-month and the lifetime licence. We do not offer refunds for change of mind, for accidental purchases, for a device you no longer use, for time left unused on a licence, or because a third-party source or playlist you added has stopped working.",
       "This is exactly why the 7-day free trial exists, and why we ask you to test the application on your own device before you buy. Once the trial has convinced you, the purchase is a deliberate decision on your part.",
@@ -66,50 +74,50 @@ const TERMS: Section[] = [
     ],
   },
   {
-    heading: "7. How you may use the application",
+    heading: "8. How you may use the application",
     body: ["When using NovaStream you agree not to:"],
     list: [
-      "share, resell, sublicense or publish your licence, or attempt to use it on devices other than the one it is bound to;",
+      "share, resell, sublicense or publish your licence, or attempt to use it on more than one device at the same time;",
       "tamper with the application, its licence checks or the licence service, or attempt to obtain access without paying;",
       "use the application to access, distribute or make available content you have no right to;",
       "use the application for any purpose that is unlawful in your country.",
     ],
   },
   {
-    heading: "8. Suspension and revocation",
+    heading: "9. Suspension and revocation",
     body: [
-      "We may suspend or revoke a licence, without refund, if we detect fraud, a payment reversal or chargeback, licence sharing, tampering with the licence system, or any breach of section 7. Where the circumstances allow it, we will tell you why and give you the opportunity to explain.",
+      "We may suspend or revoke a licence, without refund, if we detect fraud, a payment reversal or chargeback, licence sharing, abuse of the transfer feature, tampering with the licence system, or any breach of section 8. Where the circumstances allow it, we will tell you why and give you the opportunity to explain.",
     ],
   },
   {
-    heading: "9. Availability and offline behaviour",
+    heading: "10. Availability and offline behaviour",
     body: [
       "The application checks its licence with our service when it starts. A paid device that cannot reach the network keeps working offline for up to 14 days, so a connection problem never turns into a lost evening.",
       "We aim to keep the licence service available at all times, but we cannot guarantee uninterrupted operation. Playback quality depends on your internet connection, on your device and on the sources you have configured, none of which are under our control.",
     ],
   },
   {
-    heading: "10. Support",
+    heading: "11. Support",
     body: [
       CONTACT_LINE,
       "Please include the device identifier shown in the application: it lets us find your licence immediately and answer you in one reply instead of three.",
     ],
   },
   {
-    heading: "11. Liability",
+    heading: "12. Liability",
     body: [
       "The application is provided as it is. To the maximum extent permitted by law, our total liability towards you for any claim connected with the application or with a licence is limited to the amount you actually paid for that licence.",
       "We are not liable for content accessed through sources you configure, nor for any loss arising from the unavailability of such sources.",
     ],
   },
   {
-    heading: "12. Changes to these terms",
+    heading: "13. Changes to these terms",
     body: [
       "We may update these terms, for example when features change or when the law requires it. The date at the top of this page always shows the current version. Changes are not retroactive and never turn a licence you already own into a paid one twice.",
     ],
   },
   {
-    heading: "13. Governing law",
+    heading: "14. Governing law",
     body: [
       "These terms are governed by Italian law. Mandatory consumer protection rules of the country where you habitually reside continue to apply to you.",
     ],
@@ -132,6 +140,7 @@ const PRIVACY: Section[] = [
       "the plan purchased, the amount paid, the payment reference returned by Stripe and the expiry date;",
       "the date and time of the last licence check made by the device, so we can tell an active device from an abandoned one;",
       "the content of any support request you send us: your email address, the device identifier you type in, the topic, your message and the language of the site at that moment;",
+      "if you move a licence to a new device: the identifiers of the old and new device, the date of the move and the network address it was requested from, kept to protect licences from abuse;",
       "if you use the playlist manager on this site: a device key generated for your device, and for each playlist its name, its kind (M3U or Xtream) and the host name of its server. The full link, username and password of a playlist you send from the site are kept encrypted only until your device collects them, and are deleted as soon as it has.",
     ],
   },
@@ -152,7 +161,7 @@ const PRIVACY: Section[] = [
   {
     heading: "5. Who else is involved",
     body: [
-      "Stripe Payments Europe processes payments and holds the payment data connected with your purchase, under its own privacy policy. Cloudflare hosts this site and the licence service, and stores the registry data on our behalf. No one else receives your data, and it is never sold, rented or used for marketing by third parties.",
+      "Stripe Payments Europe processes payments and holds the payment data connected with your purchase, under its own privacy policy. Cloudflare hosts this site and the licence service, and stores the registry data on our behalf. Resend delivers the emails sent from this site, such as the copy of your support request to our inbox and the notice of a licence transfer. No one else receives your data, and it is never sold, rented or used for marketing by third parties.",
     ],
   },
   {

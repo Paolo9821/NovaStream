@@ -281,7 +281,7 @@ export const redeemPromo = (code: string, plan: PlanId, deviceId: string, email:
 export const confirmCheckout = (sessionId: string): Promise<CheckoutResult> =>
   post<CheckoutResult>("/api/checkout/confirm", { sessionId });
 
-/** Sends a contact-form request; it lands in the owner dashboard, not an inbox. */
+/** Sends a contact-form request; it lands in the owner dashboard and in the support inbox. */
 export const submitTicket = (input: {
   email: string;
   deviceId: string;
@@ -290,6 +290,44 @@ export const submitTicket = (input: {
   lang: string;
 }): Promise<{ ok: boolean; id: string }> =>
   post<{ ok: boolean; id: string }>("/api/support/ticket", input);
+
+export type TransferInput = {
+  fromId: string;
+  toId: string;
+  /** key: the old device is at hand · email: it is lost, proven by the purchase email. */
+  method: "key" | "email";
+  fromKey: string;
+  email: string;
+  toKey: string;
+  captchaToken: string;
+  captchaAnswer: string;
+};
+
+export type TransferDone = {
+  ok: true;
+  fromId: string;
+  toId: string;
+  plan: string;
+  expiresAt: number | null;
+};
+
+/** Moves a licence to a new device; both devices are proven server-side. */
+export const transferLicense = (input: TransferInput): Promise<TransferDone> =>
+  post<TransferDone>("/api/license/transfer", {
+    ...input,
+    fromId: normalizeDeviceId(input.fromId),
+    toId: normalizeDeviceId(input.toId),
+  });
+
+export type TransferRecord = {
+  id: string;
+  fromId: string;
+  toId: string;
+  method: string;
+  plan: string;
+  email: string;
+  createdAt: number;
+};
 
 /** Folds a typed MAC into the canonical form the registry stores. */
 export function normalizeDeviceId(raw: string): string {
