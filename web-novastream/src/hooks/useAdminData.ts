@@ -10,6 +10,7 @@ import {
   type PromoRedemption,
   type RegistryStats,
   type SupportTicket,
+  type TransferRecord,
   type TrialRecord,
 } from "@/lib/api";
 
@@ -38,6 +39,15 @@ export function useTickets(token: string) {
     queryKey: ["tickets"],
     queryFn: () => post<TicketsPayload>("/api/admin/tickets", {}, token),
     refetchInterval: 60_000,
+  });
+}
+
+/** Licences customers moved themselves from the transfer page. */
+export function useTransfers(token: string) {
+  return useQuery({
+    queryKey: ["transfers"],
+    queryFn: () => post<{ transfers: TransferRecord[] }>("/api/admin/transfers", {}, token),
+    refetchInterval: 120_000,
   });
 }
 

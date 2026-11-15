@@ -161,7 +161,7 @@ const PRIVACY: Section[] = [
   {
     heading: "5. Who else is involved",
     body: [
-      "Stripe Payments Europe processes payments and holds the payment data connected with your purchase, under its own privacy policy. Cloudflare hosts this site and the licence service, and stores the registry data on our behalf. Resend delivers the emails sent from this site, such as the copy of your support request to our inbox and the notice of a licence transfer. No one else receives your data, and it is never sold, rented or used for marketing by third parties.",
+      "Stripe Payments Europe processes payments and holds the payment data connected with your purchase, under its own privacy policy. Cloudflare hosts this site and the licence service, and stores the registry data on our behalf. Cloudflare also delivers the emails you send to support@novastreamapp.com to our inbox. No one else receives your data, and it is never sold, rented or used for marketing by third parties.",
     ],
   },
   {

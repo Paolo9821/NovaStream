@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 import {
+  ArrowRightLeft,
   Ban,
   CalendarClock,
   CheckCircle2,
@@ -36,8 +37,9 @@ import { Overview, type OverviewTarget } from "@/components/dashboard/Overview";
 import { RevenuePanel } from "@/components/dashboard/RevenuePanel";
 import { SecurityPanel } from "@/components/dashboard/SecurityPanel";
 import { SupportInbox, type TicketFolder } from "@/components/dashboard/SupportInbox";
+import { TransfersList } from "@/components/dashboard/TransfersList";
 import { SectionHeader, SubTabs } from "@/components/dashboard/ui";
-import { useLicenses, usePromos, useTickets } from "@/hooks/useAdminData";
+import { useLicenses, usePromos, useTickets, useTransfers } from "@/hooks/useAdminData";
 import { ApiError, post } from "@/lib/api";
 import { codeState } from "@/lib/dashboard";
 import { cn } from "@/lib/utils";
@@ -67,13 +69,15 @@ export default function Dashboard() {
 
 // ---- Navigation ----------------------------------------------------------
 
+type SupportFolder = TicketFolder | "transfers";
+
 type SectionId = "overview" | "customers" | "sales" | "codes" | "support" | "settings";
 
 type Location = {
   section: SectionId;
   customers: CustomerFolder;
   codes: CodeFolder;
-  support: TicketFolder;
+  support: SupportFolder;
 };
 
 const DEFAULT_LOCATION: Location = {
@@ -98,8 +102,8 @@ function readHash(): Location {
   if (location.section === "codes" && ["discount", "gift", "history"].includes(folder)) {
     location.codes = folder as CodeFolder;
   }
-  if (location.section === "support" && ["new", "open", "closed"].includes(folder)) {
-    location.support = folder as TicketFolder;
+  if (location.section === "support" && ["new", "open", "closed", "transfers"].includes(folder)) {
+    location.support = folder as SupportFolder;
   }
   return location;
 }
@@ -125,6 +129,7 @@ function Console({ token, onSignOut }: { token: string; onSignOut: () => void })
   const licenses = useLicenses(token);
   const tickets = useTickets(token);
   const promos = usePromos(token);
+  const transfers = useTransfers(token);
   const folders = useCustomerFolders(licenses.data, "");
 
   useEffect(() => {
@@ -149,14 +154,14 @@ function Console({ token, onSignOut }: { token: string; onSignOut: () => void })
       const [section, folder] = target.split("/");
       if (section === "customers") go({ section: "customers", customers: folder as CustomerFolder });
       else if (section === "codes") go({ section: "codes", codes: folder as CodeFolder });
-      else if (section === "support") go({ section: "support", support: folder as TicketFolder });
+      else if (section === "support") go({ section: "support", support: folder as SupportFolder });
       else go({ section: section as SectionId });
     },
     [go],
   );
 
   const refreshAll = useCallback((): void => {
-    for (const key of ["licenses", "tickets", "promos", "security"]) {
+    for (const key of ["licenses", "tickets", "promos", "transfers", "security"]) {
       void queryClient.invalidateQueries({ queryKey: [key] });
     }
   }, [queryClient]);
@@ -210,6 +215,12 @@ function Console({ token, onSignOut }: { token: string; onSignOut: () => void })
         { id: "new", label: "Nuove", icon: Inbox, count: ticketCount("new") },
         { id: "open", label: "In corso", icon: PlayCircle, count: ticketCount("open") },
         { id: "closed", label: "Chiuse", icon: CheckCircle2, count: ticketCount("closed") },
+        {
+          id: "transfers",
+          label: "Trasferimenti",
+          icon: ArrowRightLeft,
+          count: transfers.data?.transfers.length ?? 0,
+        },
       ],
     },
     { id: "settings", label: "Sicurezza", icon: Settings },
@@ -221,7 +232,7 @@ function Console({ token, onSignOut }: { token: string; onSignOut: () => void })
   const openFolder = (id: SectionId, folder: string): void => {
     if (id === "customers") go({ section: id, customers: folder as CustomerFolder });
     else if (id === "codes") go({ section: id, codes: folder as CodeFolder });
-    else if (id === "support") go({ section: id, support: folder as TicketFolder });
+    else if (id === "support") go({ section: id, support: folder as SupportFolder });
   };
 
   const current = sections.find((section) => section.id === location.section) ?? sections[0];
@@ -387,11 +398,15 @@ function Console({ token, onSignOut }: { token: string; onSignOut: () => void })
           {location.section === "support" && (
             <>
               <SubTabs
-                items={(current.children ?? []).map((child) => ({ ...child, id: child.id as TicketFolder }))}
+                items={(current.children ?? []).map((child) => ({ ...child, id: child.id as SupportFolder }))}
                 value={location.support}
                 onChange={(folder) => go({ support: folder })}
               />
-              <SupportInbox token={token} folder={location.support} />
+              {location.support === "transfers" ? (
+                <TransfersList token={token} />
+              ) : (
+                <SupportInbox token={token} folder={location.support} />
+              )}
             </>
           )}
 
