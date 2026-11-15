@@ -305,7 +305,6 @@ function Chip({ children, style, glow = C.mint }: { children: ReactNode; style?:
         background: "rgba(10,17,36,0.82)",
         borderColor: "rgba(160,190,255,0.22)",
         boxShadow: `0 1.6cqw 5cqw rgba(0,0,0,0.5), 0 0 3cqw ${glow}22`,
-        backdropFilter: "blur(1.2cqw)",
         ...style,
       }}
     >
@@ -330,7 +329,6 @@ function Backdrop({ clock, activeScene, reducedMotion }: FilmLayerProps<FilmScen
   const [g1, g2] = SCENE_GLOW[activeScene.id];
   const drift = useTransform(clock, (t) => (reducedMotion ? 0 : Math.sin(t * 0.35) * 6));
   const driftB = useTransform(clock, (t) => (reducedMotion ? 0 : Math.cos(t * 0.28) * 7));
-  const orbit = useTransform(clock, (t) => (reducedMotion ? -18 : -18 + t * 1.6));
   return (
     <div className="absolute inset-0 overflow-hidden" aria-hidden>
       <div
@@ -340,49 +338,24 @@ function Backdrop({ clock, activeScene, reducedMotion }: FilmLayerProps<FilmScen
       <motion.div
         className="absolute rounded-full transition-[background] duration-700"
         style={{
-          left: "-30cqw",
+          left: "-10cqw",
           top: "8cqw",
-          width: "110cqw",
-          height: "110cqw",
+          width: "100cqw",
+          height: "100cqw",
           x: useTransform(drift, (v) => `${v}cqw`),
           background: `radial-gradient(circle, ${g1}55 0%, ${g1}00 62%)`,
-          filter: "blur(4cqw)",
         }}
       />
       <motion.div
         className="absolute rounded-full transition-[background] duration-700"
         style={{
-          right: "-40cqw",
-          top: "90cqw",
-          width: "120cqw",
-          height: "120cqw",
+          right: "-10cqw",
+          top: "80cqw",
+          width: "100cqw",
+          height: "100cqw",
           y: useTransform(driftB, (v) => `${v}cqw`),
           background: `radial-gradient(circle, ${g2}40 0%, ${g2}00 60%)`,
-          filter: "blur(4cqw)",
         }}
-      />
-      {/* the icon's orbit, huge and faint */}
-      <motion.div
-        className="absolute left-1/2 top-[88cqw] h-[56cqw] w-[170cqw] rounded-[50%] border-[0.35cqw]"
-        style={{
-          x: "-50%",
-          y: "-50%",
-          rotate: orbit,
-          borderColor: "rgba(56,213,245,0.10)",
-          boxShadow: "0 0 6cqw rgba(52,224,161,0.06)",
-        }}
-      />
-      <div
-        className="absolute inset-0 opacity-[0.22]"
-        style={{
-          backgroundImage: "radial-gradient(rgba(170,195,255,0.35) 0.18cqw, transparent 0.2cqw)",
-          backgroundSize: "4.4cqw 4.4cqw",
-          maskImage: "linear-gradient(180deg, transparent 0%, #000 25%, #000 70%, transparent 100%)",
-        }}
-      />
-      <div
-        className="absolute inset-0"
-        style={{ background: "radial-gradient(140% 90% at 50% 45%, transparent 55%, rgba(0,0,0,0.65) 100%)" }}
       />
     </div>
   );
@@ -397,7 +370,7 @@ function HookScene({ scene, clock, reducedMotion }: SceneProps<"hook">) {
     reducedMotion ? 1 : 0.55 + 0.45 * settle.next(Math.max(0, t - 0.05) * 1000).value,
   );
   const iconOpacity = useProgress(local, 0, 0.35);
-  const ringRotate = useTransform(local, (t) => (reducedMotion ? -14 : -40 + t * 9));
+  const ringRotate = useTransform(local, (t) => (reducedMotion ? -14 : -20 + Math.min(t, 3) * 2));
   const ringOpacity = useProgress(local, 0.2, 0.9);
   const sparkle = useTransform(local, (t) => 0.55 + 0.45 * Math.abs(Math.sin(t * 2.4)));
   const k = useRise(local, 0.35, reducedMotion, 3);
@@ -415,16 +388,14 @@ function HookScene({ scene, clock, reducedMotion }: SceneProps<"hook">) {
           }}
         />
         <motion.div
-          className="absolute left-1/2 top-1/2 h-[30cqw] w-[84cqw] rounded-[50%] border-[0.6cqw]"
+          className="absolute left-1/2 top-1/2 h-[30cqw] w-[96cqw] rounded-[50%]"
           style={{
             x: "-50%",
             y: "-50%",
             rotate: ringRotate,
             opacity: ringOpacity,
-            borderColor: `${C.mint}AA`,
-            borderTopColor: "transparent",
-            borderRightColor: `${C.cyan}`,
-            boxShadow: `0 0 3cqw ${C.mint}55`,
+            // one solid colour all the way round: the icon tile hides the middle of the ring
+            border: `1.6cqw solid ${C.mint}`,
           }}
         />
         <motion.img
@@ -482,10 +453,11 @@ function LiveScene({ scene, clock, reducedMotion }: SceneProps<"live">) {
   return (
     <Section {...shell}>
       <Headline local={local} reducedMotion={reducedMotion} kicker={scene.kicker} line1={scene.line1} line2={scene.line2} />
-      <motion.div className="absolute left-[9cqw] top-[64cqw]" style={{ opacity: phone.opacity, y: phone.y }}>
-        <Phone src="/media/ns-phone-2-v1.jpg" width={46} />
+      <motion.div className="absolute left-[5cqw] top-[64cqw]" style={{ opacity: phone.opacity, y: phone.y }}>
+        <Phone src="/media/ns-phone-2-v1.jpg" width={44} />
       </motion.div>
-      <motion.div className="absolute left-[50cqw] top-[72cqw]" style={{ opacity: chipA.opacity, y: chipA.y }}>
+      {/* callouts sit in the column beside the phone, never over it */}
+      <motion.div className="absolute left-[53cqw] top-[74cqw]" style={{ opacity: chipA.opacity, y: chipA.y }}>
         <Chip glow={C.coral}>
           <motion.span
             className="h-[2cqw] w-[2cqw] rounded-full"
@@ -495,7 +467,7 @@ function LiveScene({ scene, clock, reducedMotion }: SceneProps<"live">) {
         </Chip>
       </motion.div>
       <motion.div
-        className="absolute left-[52cqw] top-[90cqw] w-[34cqw] rounded-[4cqw] border p-[3.6cqw]"
+        className="absolute left-[53cqw] top-[90cqw] w-[38cqw] rounded-[4cqw] border p-[3.6cqw]"
         style={{
           ...BODY,
           opacity: chipB.opacity,
@@ -510,7 +482,7 @@ function LiveScene({ scene, clock, reducedMotion }: SceneProps<"live">) {
           channels, one list
         </div>
       </motion.div>
-      <motion.div className="absolute left-[50cqw] top-[117cqw]" style={{ opacity: chipC.opacity, y: chipC.y }}>
+      <motion.div className="absolute left-[53cqw] top-[119cqw]" style={{ opacity: chipC.opacity, y: chipC.y }}>
         <Chip glow={C.cyan}>
           <span style={{ color: C.cyan }}>▦</span>
           <span>Now · Next · Tonight</span>
@@ -520,13 +492,10 @@ function LiveScene({ scene, clock, reducedMotion }: SceneProps<"live">) {
   );
 }
 
-const POSTERS = ["aurora", "neon", "harbor", "ocean"] as const;
-
 function MoviesScene({ scene, clock, reducedMotion }: SceneProps<"movies">) {
   const shell = useSceneShell(scene, clock, reducedMotion);
   const local = useLocal(scene, clock);
   const phone = useRise(local, 0.25, reducedMotion, 24);
-  const fan = useProgress(local, 0.6, 1.5, backOut);
   const search = useTransform(local, (t) => {
     const word = "Neon Run";
     const n = Math.max(0, Math.min(word.length, Math.floor((t - 1.3) / 0.09)));
@@ -537,29 +506,11 @@ function MoviesScene({ scene, clock, reducedMotion }: SceneProps<"movies">) {
   return (
     <Section {...shell}>
       <Headline local={local} reducedMotion={reducedMotion} kicker={scene.kicker} line1={scene.line1} line2={scene.line2} kickerColor={C.cyan} />
-      {/* posters fan out from behind the phone */}
-      <div className="absolute left-[44cqw] top-[96cqw]">
-        {POSTERS.map((name, i) => {
-          const side = i < 2 ? -1 : 1;
-          const depth = i % 2 === 0 ? 1 : 0.55;
-          return (
-            <PosterCard
-              key={name}
-              src={`/media/ns-poster-${name}-v1.jpg`}
-              fan={fan}
-              x={side * (16 + depth * 16)}
-              y={-6 + (1 - depth) * 14}
-              rotate={side * (6 + depth * 8)}
-              z={i}
-            />
-          );
-        })}
-      </div>
       <motion.div className="absolute left-[27cqw] top-[64cqw]" style={{ opacity: phone.opacity, y: phone.y, zIndex: 5 }}>
         <Phone src="/media/ns-phone-3-v1.jpg" width={42} />
       </motion.div>
       <motion.div
-        className="absolute left-[14cqw] top-[136cqw] z-10"
+        className="absolute left-[21cqw] top-[152cqw] z-10"
         style={{ opacity: searchRise.opacity, y: searchRise.y }}
       >
         <Chip glow={C.blue} style={{ fontSize: "3.4cqw", paddingInline: "4cqw", paddingBlock: "2.2cqw", minWidth: "58cqw" }}>
@@ -569,44 +520,6 @@ function MoviesScene({ scene, clock, reducedMotion }: SceneProps<"movies">) {
         </Chip>
       </motion.div>
     </Section>
-  );
-}
-
-function PosterCard({
-  src,
-  fan,
-  x,
-  y,
-  rotate,
-  z,
-}: {
-  src: string;
-  fan: MotionValue<number>;
-  x: number;
-  y: number;
-  rotate: number;
-  z: number;
-}) {
-  const tx = useTransform(fan, (v) => `${-10 + v * x}cqw`);
-  const ty = useTransform(fan, (v) => `${v * y}cqw`);
-  const r = useTransform(fan, (v) => v * rotate);
-  const o = useTransform(fan, [0, 0.25], [0, 1]);
-  return (
-    <motion.img
-      src={src}
-      alt=""
-      draggable={false}
-      className="absolute h-[30cqw] w-[20cqw] rounded-[2.4cqw] object-cover"
-      style={{
-        x: tx,
-        y: ty,
-        rotate: r,
-        opacity: o,
-        zIndex: z,
-        boxShadow: "0 3cqw 7cqw rgba(0,0,0,0.6)",
-        border: "0.3cqw solid rgba(255,255,255,0.12)",
-      }}
-    />
   );
 }
 
@@ -622,7 +535,7 @@ function ResumeScene({ scene, clock, reducedMotion }: SceneProps<"resume">) {
     <Section {...shell}>
       <Headline local={local} reducedMotion={reducedMotion} kicker={scene.kicker} line1={scene.line1} line2={scene.line2} />
       {/* TV */}
-      <motion.div className="absolute left-[5cqw] top-[66cqw] w-[84cqw]" style={{ opacity: tv.opacity, y: tv.y }}>
+      <motion.div className="absolute left-[12cqw] top-[62cqw] w-[76cqw]" style={{ opacity: tv.opacity, y: tv.y }}>
         <div
           className="overflow-hidden rounded-[2cqw] border-[0.8cqw] border-[#141B2E]"
           style={{ boxShadow: `0 4cqw 10cqw rgba(0,0,0,0.6), 0 0 8cqw ${C.cyan}22` }}
@@ -633,12 +546,12 @@ function ResumeScene({ scene, clock, reducedMotion }: SceneProps<"resume">) {
         <div className="mx-auto h-[0.8cqw] w-[34cqw] rounded-full bg-[#1B2440]" />
       </motion.div>
       {/* phone with Resume */}
-      <motion.div className="absolute left-[50cqw] top-[96cqw]" style={{ opacity: phone.opacity, y: phone.y }}>
-        <Phone src="/media/ns-phone-4-v1.jpg" width={34} />
+      <motion.div className="absolute left-[56cqw] top-[113cqw]" style={{ opacity: phone.opacity, y: phone.y }}>
+        <Phone src="/media/ns-phone-4-v1.jpg" width={30} />
       </motion.div>
       {/* continue-watching card */}
       <motion.div
-        className="absolute left-[7cqw] top-[118cqw] w-[40cqw] rounded-[3.4cqw] border p-[3.2cqw]"
+        className="absolute left-[8cqw] top-[124cqw] w-[42cqw] rounded-[3.4cqw] border p-[3.2cqw]"
         style={{
           ...BODY,
           opacity: sync,
@@ -683,17 +596,17 @@ function PlaylistScene({ scene, clock, reducedMotion }: SceneProps<"playlist">) 
   return (
     <Section {...shell}>
       <Headline local={local} reducedMotion={reducedMotion} kicker={scene.kicker} line1={scene.line1} line2={scene.line2} />
-      <motion.div className="absolute left-[6cqw] top-[64cqw]" style={{ opacity: phone.opacity, y: phone.y }}>
-        <Phone src="/media/ns-phone-7-v1.jpg" width={44} />
+      <motion.div className="absolute left-[4cqw] top-[64cqw]" style={{ opacity: phone.opacity, y: phone.y }}>
+        <Phone src="/media/ns-phone-7-v1.jpg" width={40} />
         {/* glow on the in-app website key */}
         <motion.div
-          className="absolute left-[24.6cqw] top-[36.4cqw] h-[7cqw] w-[15.4cqw] rounded-[2cqw] border-[0.45cqw]"
+          className="absolute left-[22.4cqw] top-[33.1cqw] h-[6.4cqw] w-[14cqw] rounded-[1.8cqw] border-[0.45cqw]"
           style={{ opacity: highlight, borderColor: C.cyan, boxShadow: `0 0 4cqw ${C.cyan}` }}
         />
       </motion.div>
       {/* browser card */}
       <motion.div
-        className="absolute left-[40cqw] top-[96cqw] w-[48cqw] overflow-hidden rounded-[3.4cqw] border"
+        className="absolute left-[47cqw] top-[90cqw] w-[48cqw] overflow-hidden rounded-[3.4cqw] border"
         style={{
           ...BODY,
           opacity: card.opacity,
@@ -736,7 +649,7 @@ function PlaylistScene({ scene, clock, reducedMotion }: SceneProps<"playlist">) 
         </div>
         <motion.div
           className="absolute inset-0 flex flex-col items-center justify-center gap-[1.6cqw]"
-          style={{ opacity: added, background: "rgba(8,24,22,0.94)" }}
+          style={{ opacity: added, background: "#08181A" }}
         >
           <motion.div
             className="flex h-[12cqw] w-[12cqw] items-center justify-center rounded-full text-[6.4cqw] font-black"
@@ -761,7 +674,7 @@ function TransferScene({ scene, clock, reducedMotion }: SceneProps<"transfer">) 
   // the licence travels on an arc from the old TV to the new one
   const travel = useProgress(local, 1.05, 2.1, easeInOut);
   const cardX = useTransform(travel, (v) => `${v * 44}cqw`);
-  const cardY = useTransform(travel, (v) => (reducedMotion ? "0cqw" : `${-Math.sin(v * Math.PI) * 16}cqw`));
+  const cardY = useTransform(travel, (v) => `${(reducedMotion ? 0 : -Math.sin(v * Math.PI) * 16) - v * 9}cqw`);
   const cardRotate = useTransform(travel, (v) => (reducedMotion ? 0 : Math.sin(v * Math.PI) * -8));
   const cardIn = useProgress(local, 0.7, 1.0);
   const oldDim = useProgress(local, 1.6, 2.1);
@@ -925,7 +838,6 @@ function CloseScene({ scene, clock, reducedMotion }: SceneProps<"close">) {
   const line = useRise(local, 0.6, reducedMotion, 4);
   const cta = useRise(local, 1.0, reducedMotion, 5);
   const fine = useRise(local, 1.4, reducedMotion, 2);
-  const shine = useTransform(local, (t) => `${-60 + ((Math.max(0, t - 1.6) * 90) % 260)}%`);
   return (
     <Section {...shell}>
       <div className="absolute left-1/2 top-[36cqw] h-[44cqw] w-[44cqw] -translate-x-1/2">
@@ -950,7 +862,7 @@ function CloseScene({ scene, clock, reducedMotion }: SceneProps<"close">) {
           {scene.line}
         </motion.p>
         <motion.div
-          className="relative mt-[6cqw] overflow-hidden rounded-full px-[7cqw] py-[3.4cqw] text-[4.4cqw] font-bold"
+          className="relative mt-[6cqw] rounded-full px-[7cqw] py-[3.4cqw] text-[4.4cqw] font-bold"
           style={{
             ...BODY,
             opacity: cta.opacity,
@@ -960,14 +872,10 @@ function CloseScene({ scene, clock, reducedMotion }: SceneProps<"close">) {
             boxShadow: `0 2cqw 8cqw ${C.blue}66`,
           }}
         >
-          <span className="relative z-[1] flex items-center gap-[2cqw]">
+          <span className="flex items-center gap-[2cqw]">
             <span className="text-[3.6cqw]">▶</span>
             {scene.cta}
           </span>
-          <motion.span
-            className="absolute inset-y-0 w-[30%] -skew-x-12"
-            style={{ left: shine, background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.55), transparent)" }}
-          />
         </motion.div>
         <motion.p
           className="mt-[5cqw] max-w-[74cqw] text-[2.6cqw]"
