@@ -31,6 +31,38 @@
       "settings": {
         "kind": "motion-video"
       }
+    },
+    {
+      "name": "NovaStream Tutorial 1",
+      "path": "motion-tutorial-1",
+      "framework": "web",
+      "settings": {
+        "kind": "motion-video"
+      }
+    },
+    {
+      "name": "NovaStream Tutorial 2",
+      "path": "motion-tutorial-2",
+      "framework": "web",
+      "settings": {
+        "kind": "motion-video"
+      }
+    },
+    {
+      "name": "NovaStream Short 1",
+      "path": "motion-short-1",
+      "framework": "web",
+      "settings": {
+        "kind": "motion-video"
+      }
+    },
+    {
+      "name": "NovaStream Short 2",
+      "path": "motion-short-2",
+      "framework": "web",
+      "settings": {
+        "kind": "motion-video"
+      }
     }
   ]
 }
