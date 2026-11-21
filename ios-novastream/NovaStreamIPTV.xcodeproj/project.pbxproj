@@ -410,7 +410,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "NovaStreamIOS-Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "Nova Stream IPTV";
+				INFOPLIST_KEY_CFBundleDisplayName = "NovaStream IPTV";
 				INFOPLIST_KEY_UIBackgroundModes = audio;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -446,7 +446,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "NovaStreamIOS-Info.plist";
-				INFOPLIST_KEY_CFBundleDisplayName = "Nova Stream IPTV";
+				INFOPLIST_KEY_CFBundleDisplayName = "NovaStream IPTV";
 				INFOPLIST_KEY_UIBackgroundModes = audio;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
