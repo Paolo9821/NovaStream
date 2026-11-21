@@ -63,6 +63,14 @@
       "settings": {
         "kind": "motion-video"
       }
+    },
+    {
+      "name": "NovaStream iOS",
+      "path": "ios-novastream",
+      "framework": "swift",
+      "settings": {
+        "swiftSibling": false
+      }
     }
   ]
 }
