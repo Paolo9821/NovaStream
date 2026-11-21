@@ -1,13 +1,13 @@
 //
-//  NovaStreamIOSUITestsLaunchTests.swift
-//  NovaStreamIOSUITests
+//  NovaStreamIPTVUITestsLaunchTests.swift
+//  NovaStreamIPTVUITests
 //
 //  Created by Rork on November 21, 2026.
 //
 
 import XCTest
 
-final class NovaStreamIOSUITestsLaunchTests: XCTestCase {
+final class NovaStreamIPTVUITestsLaunchTests: XCTestCase {
 
     override class var runsForEachTargetApplicationUIConfiguration: Bool {
         true

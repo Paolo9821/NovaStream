@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct NovaStreamIOSApp: App {
+struct NovaStreamIPTVApp: App {
     @State private var model = AppModel()
     @State private var license = LicenseManager()
     @Environment(\.scenePhase) private var scenePhase
