@@ -87,6 +87,7 @@ import com.rork.novastream.ui.components.PosterCard
 import com.rork.novastream.ui.components.SectionHeader
 import com.rork.novastream.ui.components.TvTextField
 import com.rork.novastream.ui.components.accentFor
+import com.rork.novastream.ui.components.tvFocusFrame
 import com.rork.novastream.ui.i18n.LocalStrings
 import com.rork.novastream.ui.i18n.Strings
 import com.rork.novastream.ui.i18n.failureText
@@ -179,7 +180,10 @@ fun HomeScreen(
                     title = strings.noPlaylistTitle,
                     body = strings.noPlaylistBody,
                     action = {
-                        Button(onClick = onOpenAccounts) {
+                        Button(
+                            onClick = onOpenAccounts,
+                            modifier = Modifier.tvFocusFrame(cornerRadius = 24.dp),
+                        ) {
                             Icon(Icons.Rounded.AddCircleOutline, contentDescription = null)
                             Spacer(Modifier.width(8.dp))
                             Text(strings.addPlaylistAction)

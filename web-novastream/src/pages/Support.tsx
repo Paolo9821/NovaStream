@@ -214,7 +214,7 @@ export default function Support() {
                 autoComplete="email"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
-                placeholder="tu@esempio.it"
+                placeholder={t("email.placeholder")}
                 className="mt-2 h-12 border-border/80 bg-secondary/60"
               />
               <p className="mt-2 text-xs text-muted-foreground">{t("support.emailHelp")}</p>

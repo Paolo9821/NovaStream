@@ -19,6 +19,11 @@ nonisolated struct PlaylistAccount: Codable, Identifiable, Hashable, Sendable {
     var playlistEpgUrl: String = ""
     /// Set when the playlist was sent from the website.
     var fromWeb: Bool = false
+    /// Private host number. The server it stands for is saved in `server`
+    /// but never shown; it is looked up again before each update.
+    var hostNumber: String? = nil
+
+    var isPrivateHost: Bool { !(hostNumber ?? "").isEmpty }
 
     var typeLabel: String { type == .xtream ? "Xtream" : "m3u" }
 
@@ -32,6 +37,7 @@ nonisolated struct PlaylistAccount: Codable, Identifiable, Hashable, Sendable {
     }
 
     var host: String {
+        if isPrivateHost { return "Host \(hostNumber ?? "")" }
         let raw = type == .xtream ? server : m3uUrl
         return URL(string: raw.hasPrefix("http") ? raw : "http://\(raw)")?.host ?? ""
     }

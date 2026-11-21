@@ -6,6 +6,10 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -24,8 +28,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Smartphone
 import androidx.compose.material.icons.rounded.Tv
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -47,6 +49,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rork.novastream.data.local.DeviceProfile
+import com.rork.novastream.ui.components.NovaPrimaryButton
+import com.rork.novastream.ui.components.RequestInitialFocus
+import com.rork.novastream.ui.components.rememberFocusRequester
+import com.rork.novastream.ui.components.tvFocusFrame
 import com.rork.novastream.ui.i18n.LocalStrings
 import com.rork.novastream.ui.theme.LocalNovaAccents
 
@@ -67,7 +73,11 @@ fun OnboardingScreen(
     val configuration = LocalConfiguration.current
     val wide = configuration.screenWidthDp >= 720
 
-    Box(
+    val continueFocus = rememberFocusRequester()
+    // A remote starts on the button, so OK confirms the suggested layout at once.
+    RequestInitialFocus(continueFocus, enabled = suggestedProfile == DeviceProfile.TV)
+
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(
@@ -78,11 +88,18 @@ fun OnboardingScreen(
                 )
             )
     ) {
+        // Landscape phones and TVs are short: spacing shrinks and the page
+        // scrolls, so the button is never pushed off screen or under the text.
+        val compact = maxHeight < 560.dp
+        val gap = if (compact) 14.dp else 28.dp
+        val screenHeight = maxHeight
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .heightIn(min = screenHeight)
                 .windowInsetsPadding(WindowInsets.safeDrawing)
-                .padding(horizontal = 24.dp, vertical = 20.dp),
+                .padding(horizontal = if (wide) 48.dp else 24.dp, vertical = if (compact) 12.dp else 20.dp),
             verticalArrangement = Arrangement.Center,
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -108,7 +125,7 @@ fun OnboardingScreen(
                 )
             }
 
-            Spacer(Modifier.height(28.dp))
+            Spacer(Modifier.height(gap))
 
             Text(
                 text = strings.welcomeTitle,
@@ -123,7 +140,7 @@ fun OnboardingScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            Spacer(Modifier.height(28.dp))
+            Spacer(Modifier.height(gap))
 
             val tvCard: @Composable (Modifier) -> Unit = { modifier ->
                 DeviceOptionCard(
@@ -167,24 +184,13 @@ fun OnboardingScreen(
                 phoneCard(Modifier.fillMaxWidth())
             }
 
-            Spacer(Modifier.height(28.dp))
+            Spacer(Modifier.height(gap))
 
-            Button(
+            NovaPrimaryButton(
+                text = strings.welcomeContinue,
                 onClick = { onConfirm(selected) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.primary,
-                ),
-            ) {
-                Text(
-                    text = strings.welcomeContinue,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-            }
+                focusRequester = continueFocus,
+            )
 
             Spacer(Modifier.height(12.dp))
             Text(
@@ -216,7 +222,9 @@ private fun DeviceOptionCard(
 
     Surface(
         onClick = onClick,
-        modifier = modifier.scale(scale),
+        modifier = modifier
+            .scale(scale)
+            .tvFocusFrame(cornerRadius = 20.dp),
         shape = RoundedCornerShape(20.dp),
         color = if (selected) container else MaterialTheme.colorScheme.surface,
         border = BorderStroke(if (selected) 2.dp else 1.dp, if (selected) accent else MaterialTheme.colorScheme.outlineVariant),

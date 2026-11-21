@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -31,6 +30,10 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rork.novastream.ui.components.BrandMark
+import com.rork.novastream.ui.components.NovaPrimaryButton
+import com.rork.novastream.ui.components.RequestInitialFocus
+import com.rork.novastream.ui.components.rememberFocusRequester
+import com.rork.novastream.ui.components.tvFocusFrame
 import com.rork.novastream.ui.i18n.LocalStrings
 
 /**
@@ -70,6 +73,8 @@ fun TermsScreen(
 ) {
     val strings = LocalStrings.current
     val scrollState = rememberScrollState()
+    val acceptFocus = rememberFocusRequester()
+    RequestInitialFocus(acceptFocus)
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -135,22 +140,18 @@ fun TermsScreen(
             }
 
             Spacer(Modifier.height(18.dp))
-            Button(
+            NovaPrimaryButton(
+                text = "Accept",
                 onClick = onAccept,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(54.dp),
-                shape = RoundedCornerShape(14.dp),
-            ) {
-                Text(
-                    text = "Accept",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-            }
+                height = 54.dp,
+                focusRequester = acceptFocus,
+            )
+            Spacer(Modifier.height(6.dp))
             TextButton(
                 onClick = onDecline,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .tvFocusFrame(cornerRadius = 24.dp),
                 contentPadding = PaddingValues(vertical = 14.dp),
                 colors = ButtonDefaults.textButtonColors(
                     contentColor = MaterialTheme.colorScheme.onSurfaceVariant,

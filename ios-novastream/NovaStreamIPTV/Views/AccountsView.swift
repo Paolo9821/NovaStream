@@ -14,7 +14,7 @@ struct AccountsView: View {
             ForEach(model.accounts) { account in
                 Button { model.select(account.id); Haptics.select() } label: {
                     HStack(spacing: 14) {
-                        IconTile(symbol: account.type == .xtream ? "server.rack" : "link", color: account.type == .xtream ? Nova.purple : Nova.blue, size: 42)
+                        IconTile(symbol: account.isPrivateHost ? "lock.shield" : (account.type == .xtream ? "server.rack" : "link"), color: account.type == .xtream ? Nova.purple : Nova.blue, size: 42)
                         VStack(alignment: .leading, spacing: 3) {
                             HStack(spacing: 6) {
                                 Text(account.name).font(.body.weight(.semibold)).foregroundStyle(Nova.ink)
@@ -77,6 +77,8 @@ struct AddAccountView: View {
     @State private var username = ""
     @State private var password = ""
     @State private var epgUrl = ""
+    @State private var privateHost = false
+    @State private var hostNumber = ""
     @State private var working = false
     @State private var error: String?
     @State private var loaded = false
@@ -102,17 +104,34 @@ struct AddAccountView: View {
                     Text(t("The link you received from your provider."))
                 }
             } else {
-                Section(t("Xtream Codes account")) {
-                    TextField(t("Server (e.g. http://example.com:8080)"), text: $server)
-                        .keyboardType(.URL)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
+                Section {
+                    Toggle(t("Private host"), isOn: $privateHost.animation())
+                    if privateHost {
+                        TextField(t("Host number"), text: $hostNumber)
+                            .keyboardType(.asciiCapable)
+                            .textInputAutocapitalization(.characters)
+                            .autocorrectionDisabled()
+                            .font(.body.monospaced())
+                            .onChange(of: hostNumber) { _, value in
+                                let cleaned = PrivateHosts.clean(value)
+                                if cleaned != value { hostNumber = cleaned }
+                            }
+                    } else {
+                        TextField(t("Server (e.g. http://example.com:8080)"), text: $server)
+                            .keyboardType(.URL)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                    }
                     TextField(t("Username"), text: $username)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .textContentType(.username)
                     SecureField(t("Password"), text: $password)
                         .textContentType(.password)
+                } header: { Text(t("Xtream Codes account")) } footer: {
+                    if privateHost {
+                        Text(t("Type the host number you received with your subscription. The server address is found automatically."))
+                    }
                 }
             }
             Section {
@@ -146,7 +165,9 @@ struct AddAccountView: View {
             type = existing.type
             name = existing.name
             m3uUrl = existing.m3uUrl
-            server = existing.server
+            server = existing.isPrivateHost ? "" : existing.server
+            privateHost = existing.isPrivateHost
+            hostNumber = existing.hostNumber ?? ""
             username = existing.username
             password = existing.password
             epgUrl = existing.epgUrl
@@ -160,7 +181,18 @@ struct AddAccountView: View {
         account.name = name
         account.type = type
         account.m3uUrl = m3uUrl
-        account.server = server
+        if type == .xtream && privateHost {
+            guard !PrivateHosts.clean(hostNumber).isEmpty else {
+                error = t("Enter the host number.")
+                working = false
+                Haptics.error()
+                return
+            }
+            account.hostNumber = PrivateHosts.clean(hostNumber)
+        } else {
+            account.hostNumber = nil
+            account.server = server
+        }
         account.username = username
         account.password = password
         account.epgUrl = epgUrl.trimmed

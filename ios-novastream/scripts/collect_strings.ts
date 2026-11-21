@@ -3,7 +3,7 @@
 import { readdirSync, readFileSync, statSync, writeFileSync } from "fs";
 import { join } from "path";
 
-const root = join(import.meta.dir, "..", "NovaStreamIOS");
+const root = join(import.meta.dir, "..", "NovaStreamIPTV");
 const keys = new Set<string>();
 
 function walk(dir: string) {

@@ -51,6 +51,7 @@ import com.rork.novastream.data.model.Programme
 import com.rork.novastream.ui.components.EmptyState
 import com.rork.novastream.ui.components.FavoriteHeart
 import com.rork.novastream.ui.components.FocusableSurface
+import com.rork.novastream.ui.components.LocalIsTv
 import com.rork.novastream.ui.components.RequestInitialFocus
 import com.rork.novastream.ui.components.rememberFocusRequester
 import com.rork.novastream.ui.components.tvFocusFrame
@@ -242,6 +243,10 @@ private fun ChannelRow(
 ) {
     val accents = LocalNovaAccents.current
     val strings = LocalStrings.current
+    // On a TV the guide sits on the same line as the channel: down/up move to
+    // the next/previous channel and right opens the guide. Below the channel
+    // it caught every press of down and the list felt stuck.
+    val isTv = LocalIsTv.current
 
     Surface(
         shape = RoundedCornerShape(16.dp),
@@ -318,6 +323,10 @@ private fun ChannelRow(
                         }
                     }
                 }
+                if (isTv) {
+                    Spacer(Modifier.width(8.dp))
+                    GuideChip(onClick = onOpenGuide)
+                }
                 Spacer(Modifier.width(6.dp))
                 FavoriteHeart(
                     isFavorite = isFavorite,
@@ -330,6 +339,7 @@ private fun ChannelRow(
                 programme = current,
                 nowMs = nowMs,
                 onOpenGuide = onOpenGuide,
+                showGuideButton = !isTv,
                 modifier = Modifier.padding(start = 16.dp, end = 12.dp, bottom = 12.dp),
             )
         }
@@ -342,6 +352,7 @@ private fun NowPlayingStrip(
     nowMs: Long,
     onOpenGuide: () -> Unit,
     modifier: Modifier = Modifier,
+    showGuideButton: Boolean = true,
 ) {
     val strings = LocalStrings.current
     val accents = LocalNovaAccents.current
@@ -388,30 +399,38 @@ private fun NowPlayingStrip(
                 )
             }
         }
-        Spacer(Modifier.width(10.dp))
-        Surface(
-            onClick = onOpenGuide,
-            shape = RoundedCornerShape(10.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant,
-            modifier = Modifier.tvFocusFrame(cornerRadius = 10.dp),
+        if (showGuideButton) {
+            Spacer(Modifier.width(10.dp))
+            GuideChip(onClick = onOpenGuide)
+        }
+    }
+}
+
+@Composable
+private fun GuideChip(onClick: () -> Unit) {
+    val strings = LocalStrings.current
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(10.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant,
+        modifier = Modifier.tvFocusFrame(cornerRadius = 10.dp),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(
-                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.CalendarMonth,
-                    contentDescription = null,
-                    modifier = Modifier.size(15.dp),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.width(6.dp))
-                Text(
-                    text = strings.guide,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            Icon(
+                imageVector = Icons.Rounded.CalendarMonth,
+                contentDescription = null,
+                modifier = Modifier.size(15.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(
+                text = strings.guide,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

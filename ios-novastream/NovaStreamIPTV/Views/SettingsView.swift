@@ -28,6 +28,9 @@ struct SettingsView: View {
                 Picker(t("Buffer"), selection: $model.settings.buffer) {
                     ForEach(BufferMode.allCases, id: \.self) { Text($0.label).tag($0) }
                 }
+                NavigationLink { NetworkSettingsView() } label: {
+                    Label(t("DNS and speed test"), systemImage: "network")
+                }
             }
 
             Section {

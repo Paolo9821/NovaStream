@@ -303,7 +303,7 @@ export default function Transfer() {
                       setEmail(event.target.value);
                       setError("");
                     }}
-                    placeholder="nome@email.com"
+                    placeholder={t("email.placeholder")}
                     autoComplete="email"
                     className="mt-2 h-12 border-border/80 bg-secondary/60"
                   />

@@ -53,18 +53,20 @@ nonisolated enum LicenseAPI {
         let install: [PlaylistAccount] = (json["install"] as? [[String: Any]] ?? []).compactMap { item in
             func text(_ k: String) -> String { (item[k] as? String) ?? "" }
             guard !text("id").isEmpty else { return nil }
-            let type: AccountType = text("type") == "xtream" ? .xtream : .m3u
-            if !text("hostNumber").isEmpty { return nil } // private hosts are Android-only for now
+            let hostNumber = PrivateHosts.clean(text("hostNumber"))
+            let type: AccountType = text("type") == "xtream" || !hostNumber.isEmpty ? .xtream : .m3u
+            let fallbackName = !hostNumber.isEmpty ? "Host \(hostNumber)" : (type == .xtream ? "Xtream" : "m3u")
             return PlaylistAccount(
                 id: text("id"),
-                name: text("name").isEmpty ? (type == .xtream ? "Xtream" : "m3u") : text("name"),
+                name: text("name").isEmpty ? fallbackName : text("name"),
                 type: type,
                 m3uUrl: text("m3uUrl"),
                 server: text("server"),
                 username: text("username"),
                 password: text("password"),
                 epgUrl: text("epgUrl"),
-                fromWeb: true
+                fromWeb: true,
+                hostNumber: hostNumber.isEmpty ? nil : hostNumber
             )
         }
         let skew: Double = ms(json["serverTime"]).map { Date().timeIntervalSince($0) } ?? 0

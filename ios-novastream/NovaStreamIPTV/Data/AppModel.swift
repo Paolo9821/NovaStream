@@ -88,6 +88,14 @@ final class AppModel {
         checked.name = checked.name.trimmed.isEmpty ? (account.type == .xtream ? (account.host.isEmpty ? "Xtream" : account.host) : t("My playlist")) : checked.name.trimmed
         switch account.type {
         case .xtream:
+            if account.isPrivateHost {
+                let number = PrivateHosts.clean(account.hostNumber ?? "")
+                checked.hostNumber = number
+                guard let server = await PrivateHosts.resolve(number) else {
+                    throw SyncError.invalid(t("Host %@ not found. Check the number you received.", number))
+                }
+                checked.server = server
+            }
             checked.server = checked.server.trimmed
             checked.username = checked.username.trimmed
             guard !checked.server.isEmpty, !checked.username.isEmpty else { throw SyncError.invalid(t("Fill in server, username and password.")) }
@@ -155,9 +163,10 @@ final class AppModel {
     // MARK: - Sync
 
     func sync() async {
-        guard let account = activeAccount else { return }
+        guard var account = activeAccount else { return }
         if case .running = syncState { return }
         syncState = .running(t("Connecting to the provider…"))
+        account = await refreshPrivateHost(account)
         do {
             let result: Catalog
             var playlistEpg = account.playlistEpgUrl
@@ -197,6 +206,20 @@ final class AppModel {
         }
     }
 
+    /// A private host may move: its number is looked up again before each
+    /// download, and the last known address is kept when the list is unreachable.
+    private func refreshPrivateHost(_ account: PlaylistAccount) async -> PlaylistAccount {
+        guard account.isPrivateHost, let server = await PrivateHosts.resolve(account.hostNumber ?? ""),
+              server != account.server else { return account }
+        var updated = account
+        updated.server = server
+        if let i = accounts.firstIndex(where: { $0.id == account.id }) {
+            accounts[i].server = server
+            persistAccounts()
+        }
+        return updated
+    }
+
     func refreshGuide() async {
         guard let account = activeAccount, !account.effectiveEpgUrl.isEmpty else { return }
         guideLoading = true
@@ -230,7 +253,12 @@ final class AppModel {
             accounts.removeAll { $0.id == id }
             changed = true
         }
-        for item in answer.install where !accounts.contains(where: { $0.id == item.id }) {
+        for var item in answer.install where !accounts.contains(where: { $0.id == item.id }) {
+            if item.isPrivateHost {
+                // Sent from the website by number: find its server first.
+                guard let server = await PrivateHosts.resolve(item.hostNumber ?? "") else { continue }
+                item.server = server
+            }
             accounts.append(item)
             changed = true
         }
