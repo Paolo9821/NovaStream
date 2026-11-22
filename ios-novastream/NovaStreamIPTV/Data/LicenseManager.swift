@@ -143,3 +143,17 @@ final class LicenseManager {
         }
     }
 }
+
+#if DEBUG && targetEnvironment(simulator)
+extension LicenseManager {
+    /// Trial for the app screens, ended trial (paywall) for the paywall capture.
+    func seedScreenshotAccess(paywall: Bool) {
+        if paywall {
+            access = .trialEnded
+            Task { await loadOffering() }
+        } else {
+            access = .trial(daysLeft: 6, ends: Date().addingTimeInterval(6 * 86400))
+        }
+    }
+}
+#endif

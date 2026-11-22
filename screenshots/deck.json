@@ -1,0 +1,135 @@
+{
+  "appContext": {
+    "appName": "NovaStream IPTV",
+    "category": "Entertainment",
+    "summary": "A fast, elegant player for your own IPTV playlists (M3U and Xtream Codes): live TV with EPG, movies and series, favorites, multiple playlists. No content included."
+  },
+  "devices": {
+    "iphone": {
+      "theme": {
+        "style": "Cinematic midnight-navy screening-room atmosphere with soft projector-like glows, electric cyan light accents, and occasional warm amber highlights for contrast. Smooth glossy gradients, faint lens bloom, and fine film grain give a premium home-theater feel. Backgrounds are rich but restrained, with dark calm upper regions so the headline reads clearly over every slide.",
+        "headlineFont": "font-family: 'Plus Jakarta Sans', sans-serif; weight 800; @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@800&display=swap');",
+        "headlineFontSize": 132,
+        "mockupIds": {
+          "iphone": "deep-blue",
+          "ipad": "space-gray"
+        },
+        "palette": {
+          "primary": "#0A1230",
+          "secondary": "#1E3A8A",
+          "accent": "#22D3EE"
+        },
+        "layoutId": "hero-clipped"
+      },
+      "slides": [
+        {
+          "label": "Home",
+          "capture": "screenshots/captures/iphone/01-home.png",
+          "prompt": "Hero: your own playlist turned into a beautiful personal TV home. Deep navy, cinematic glow.",
+          "backgroundPrompt": "Cinematic abstract digital art of a deep midnight navy void with a wide soft horizon glow of electric cyan and royal blue rising from the lower edge, like light spilling across a dark stage, with faint volumetric light rays fanning upward. Subtle lens bloom, drifting fine dust particles, and gentle film grain add depth, while the upper 30% stays near-black navy and calm. 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups",
+          "background": "screenshots/backgrounds/iphone-home.png"
+        },
+        {
+          "label": "Live TV",
+          "capture": "screenshots/captures/iphone/02-live-tv.png",
+          "prompt": "Live TV with a real programme guide: always know what is on now. Dark blue with electric accent.",
+          "backgroundPrompt": "Abstract digital art of sleek horizontal streaks of electric cyan and bright azure light racing across a dark sapphire-to-midnight navy field, with sharp motion trails and soft glow halos, lit from the left edge. Shallow depth of field blurs the outer streaks into bokeh, and a subtle glass sheen adds texture, while the top third remains dark and uncluttered. 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups",
+          "background": "screenshots/backgrounds/iphone-live-tv.png"
+        },
+        {
+          "label": "Movies",
+          "capture": "screenshots/captures/iphone/03-movies.png",
+          "prompt": "Your movies as a gorgeous poster library. Warm cinematic contrast slide.",
+          "backgroundPrompt": "Cinematic abstract scene with a large warm amber and burnished copper glow blooming from the lower right, contrasting against deep midnight navy and indigo shadows, with soft smoke wisps curling through the light. Dramatic rim lighting from below and fine film grain create a rich theatrical mood, and the upper region fades into calm dark navy. 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups",
+          "background": "screenshots/backgrounds/iphone-movies.png"
+        },
+        {
+          "label": "Series",
+          "capture": "screenshots/captures/iphone/04-series.png",
+          "prompt": "Series with seasons and episodes, pick up exactly where you left off. Teal night mood.",
+          "backgroundPrompt": "Abstract 3D render of layered flowing silk ribbons in deep teal, dark petrol blue, and soft cyan, sweeping diagonally from the bottom left across a midnight navy backdrop. Gentle moonlit light from the top right catches the ribbon edges, with soft depth of field and a velvety texture, and the upper 30% stays dark and serene. 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups",
+          "background": "screenshots/backgrounds/iphone-series.png"
+        },
+        {
+          "label": "Paywall",
+          "capture": "screenshots/captures/iphone/05-paywall.png",
+          "prompt": "Unlock every feature. Calm dark background.",
+          "backgroundPrompt": "Minimal abstract digital art of a calm midnight navy expanse with a single soft orb of diffused royal blue light glowing in the lower center, ringed by a faint thin halo of electric cyan. Quiet atmospheric haze, very subtle grain, and a gentle vignette keep the mood peaceful, with the top region open and dark. 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups",
+          "background": "screenshots/backgrounds/iphone-paywall.png"
+        }
+      ],
+      "headlines": {
+        "en": {
+          "Home": "Your TV<br>Your Way",
+          "Live TV": "Know What's<br>On Now",
+          "Movies": "Every Film<br>In Focus",
+          "Series": "Pick Up<br>Where You Left",
+          "Paywall": "Unlock<br>Everything"
+        }
+      }
+    },
+    "ipad": {
+      "theme": {
+        "style": "Late-night home cinema atmosphere: deep midnight navy darkness lit by soft screen-glow halos, electric cyan highlights, and occasional warm amber projector warmth. Backgrounds feel like a dark living room bathed in ambient display light, with volumetric haze, fine film grain, and glossy glass reflections. The mood is rich and immersive but restrained, with calm dark upper regions so the headlines read clearly and the iPad UI stays the star.",
+        "headlineFont": "font-family: 'Plus Jakarta Sans', sans-serif; weight 800; @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@800&display=swap');",
+        "headlineFontSize": 128,
+        "mockupIds": {
+          "iphone": "deep-blue",
+          "ipad": "space-gray"
+        },
+        "palette": {
+          "primary": "#0A1230",
+          "secondary": "#1E3A8A",
+          "accent": "#22D3EE"
+        },
+        "layoutId": "hero-clipped"
+      },
+      "slides": [
+        {
+          "label": "Home",
+          "capture": "screenshots/captures/ipad/01-home.png",
+          "prompt": "Hero: your own playlist turned into a beautiful personal TV home. Deep navy, cinematic glow.",
+          "backgroundPrompt": "Cinematic abstract digital art of a vast deep midnight navy space with a broad soft halo of electric cyan and royal blue light rising from the lower center, like a glowing horizon, with faint volumetric haze and drifting luminous particles. Gentle rim glow sweeps upward while the upper 30% fades into calm near-black navy, with subtle film grain and soft depth-of-field bokeh at the edges. 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups",
+          "background": "screenshots/backgrounds/ipad-home.png"
+        },
+        {
+          "label": "Live TV",
+          "capture": "screenshots/captures/ipad/02-live-tv.png",
+          "prompt": "Live TV with a real programme guide: always know what is on now. Dark blue with electric accent.",
+          "backgroundPrompt": "Abstract digital art with sharp diagonal streaks of electric cyan and bright azure light slicing across a dark sapphire blue base from the lower left, trailing soft motion blur and fine glowing sparks. Dramatic backlighting creates crisp highlights and deep shadows, while the top third stays dark and uncluttered in midnight navy with subtle grain texture. 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups",
+          "background": "screenshots/backgrounds/ipad-live-tv.png"
+        },
+        {
+          "label": "Movies",
+          "capture": "screenshots/captures/ipad/03-movies.png",
+          "prompt": "Your movies as a gorgeous poster library. Warm cinematic contrast slide.",
+          "backgroundPrompt": "Photorealistic atmospheric scene of a single warm beam of amber and burnished gold light cutting through dense velvety haze from the right side into a deep midnight navy darkness, with floating dust particles catching the glow. Rich warm-cool contrast, with soft cyan reflections pooling at the bottom and the upper region kept dark and calm, plus fine film grain and shallow depth of field. 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups",
+          "background": "screenshots/backgrounds/ipad-movies.png"
+        },
+        {
+          "label": "Series",
+          "capture": "screenshots/captures/ipad/04-series.png",
+          "prompt": "Series with seasons and episodes, pick up exactly where you left off. Teal night mood.",
+          "backgroundPrompt": "Abstract 3D render of flowing layered silk ribbons in deep teal, dark petrol, and soft aqua drifting horizontally across a midnight navy void, their edges lit by a delicate cyan rim light from the left. Soft volumetric mist sits between the layers, with gentle depth-of-field blur in the foreground and a calm dark upper third for text. 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups",
+          "background": "screenshots/backgrounds/ipad-series.png"
+        },
+        {
+          "label": "Paywall",
+          "capture": "screenshots/captures/ipad/05-paywall.png",
+          "prompt": "Unlock every feature. Calm dark background.",
+          "backgroundPrompt": "Minimal abstract digital art of a calm deep midnight navy field with one soft glowing orb of muted royal blue and faint cyan sitting low in the center, its light diffusing into smooth concentric gradients. Quiet, serene lighting with subtle frosted glass sheen and very fine grain, with the upper area kept dark, open, and tranquil. 8K quality, ultra smooth gradients, premium feel, no text, no letters, no UI elements, no device mockups",
+          "background": "screenshots/backgrounds/ipad-paywall.png"
+        }
+      ],
+      "headlines": {
+        "en": {
+          "Home": "Your TV<br>Your Way",
+          "Live TV": "Always Know<br>What's On",
+          "Movies": "Movie Night<br>Upgraded",
+          "Series": "Pick Up<br>Where You Left",
+          "Paywall": "Unlock<br>Everything"
+        }
+      }
+    }
+  }
+}

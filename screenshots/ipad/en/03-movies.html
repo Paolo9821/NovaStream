@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@800&display=swap');
+html,body{margin:0;padding:0;background:#0A1230;}
+.canvas{position:relative;width:2048px;height:2732px;overflow:hidden;background:#0A1230;}
+.bg{position:absolute;inset:0;background-image:url('../../backgrounds/ipad-movies.png');background-size:cover;background-position:center;}
+.bg-scrim{position:absolute;inset:0;background:linear-gradient(180deg,rgba(10,18,48,0.72) 0%,rgba(10,18,48,0.45) 18%,rgba(10,18,48,0) 34%),radial-gradient(ellipse 70% 22% at 50% 12%,rgba(6,10,28,0.5) 0%,rgba(6,10,28,0) 100%);}
+.headline{font-family:'Plus Jakarta Sans',sans-serif;font-weight:800;font-size:128px;line-height:1.08;letter-spacing:-2px;color:#FFFFFF;margin:0;text-shadow:0 4px 24px rgba(0,0,0,0.55),0 0 60px rgba(34,211,238,0.18);}
+</style>
+</head>
+<body>
+<div class="canvas">
+  <div class="bg"></div>
+  <div class="bg-scrim"></div>
+  <div style="position:absolute; top:0%; left:50%; width:78%; height:24%; transform:translateX(-50%); display:flex; align-items:center; justify-content:center; text-align:center;">
+    <h1 class="headline">Movie Night<br>Upgraded</h1>
+  </div>
+  <div style="position:absolute; left:50%; top:24%; width:74%; transform:translateX(-50%);">
+    <div style="position:relative; aspect-ratio:2245/2930;">
+      <div style="position:absolute; overflow:hidden; left:4.28%; top:3.48%; width:91.22%; height:93.24%; border-radius:1.4% / 1.0%;">
+        <img src="../../captures/ipad/03-movies.png" style="display:block; width:100%; height:100%; object-fit:cover; object-position:top;" draggable="false" />
+      </div>
+      <img src="https://r2-pub.rork.com/static/ipad-mockups/ipad-pro-13-space-gray-portrait.png" style="position:relative; z-index:10; display:block; width:100%; height:100%; pointer-events:none;" draggable="false" />
+    </div>
+  </div>
+</div>
+</body>
+</html>

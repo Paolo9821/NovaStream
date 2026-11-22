@@ -14,7 +14,7 @@ struct LiveView: View {
         var items = model.entries(.live)
         switch group {
         case GroupFilter.all: items = items.filter { !model.isLocked($0.group) }
-        case GroupFilter.favourites: items = items.filter { model.isFavorite($0.id) }
+        case GroupFilter.favourites: items = items.filter { model.isFavorite($0.id) && !model.isLocked($0.group) }
         default: items = items.filter { $0.inGroup(group) }
         }
         if !query.trimmed.isEmpty { items = items.filter { $0.title.localizedStandardContains(query.trimmed) } }

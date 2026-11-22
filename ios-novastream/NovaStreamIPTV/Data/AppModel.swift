@@ -47,7 +47,8 @@ final class AppModel {
 
     func play(episode: Episode, of series: MediaEntry, all: [Episode]) {
         let saved = progress[series.id]
-        let resume = saved?.episodeTitle == episode.title && saved?.season == episode.season && saved?.completed == false ? (saved?.position ?? 0) : 0
+        let sameEpisode = saved?.season == episode.season && (saved?.episodeNumber == episode.number || saved?.episodeTitle == episode.title)
+        let resume = sameEpisode && saved?.completed == false ? (saved?.position ?? 0) : 0
         let next = all.drop { $0.id != episode.id }.dropFirst()
         playback = PlaybackRequest(
             entryId: series.id,
@@ -366,7 +367,7 @@ final class AppModel {
     }
 
     func favoriteEntries(_ kind: MediaKind? = nil) -> [MediaEntry] {
-        catalog.entries.filter { favorites.contains($0.id) && (kind == nil || $0.kind == kind) }
+        catalog.entries.filter { favorites.contains($0.id) && (kind == nil || $0.kind == kind) && !isLocked($0.group) }
     }
 
     func saveProgress(_ item: WatchProgress) {
@@ -383,14 +384,21 @@ final class AppModel {
 
     var continueWatching: [WatchProgress] {
         progress.values
-            .filter { $0.kind != .live && !$0.completed && $0.position > 30 }
+            .filter { $0.kind != .live && !$0.completed && $0.position > 30 && !isLockedEntry($0.entryId) }
             .sorted { $0.updated > $1.updated }
             .prefix(15).map { $0 }
     }
 
     var recentChannels: [MediaEntry] {
         progress.values.filter { $0.kind == .live }.sorted { $0.updated > $1.updated }
-            .prefix(10).compactMap { entry($0.entryId) }
+            .compactMap { entry($0.entryId) }.filter { !isLocked($0.group) }
+            .prefix(10).map { $0 }
+    }
+
+    /// True when the saved item's category is behind the parental PIN.
+    private func isLockedEntry(_ id: String) -> Bool {
+        guard settings.parentalEnabled, !parentalUnlocked else { return false }
+        return entry(id).map { settings.lockedGroups.contains($0.group) } ?? false
     }
 
     private func persistProgress() {
@@ -410,3 +418,80 @@ final class AppModel {
         FileStore.size(prefix: "catalog-") + FileStore.size(prefix: "guide-") + FileStore.size(prefix: "progress-")
     }
 }
+
+#if DEBUG && targetEnvironment(simulator)
+extension AppModel {
+    /// Invented, non-sensitive demo library for App Store screenshots. Never saved.
+    func seedScreenshotData() {
+        var s = settings
+        s.onboardingDone = true
+        s.termsAccepted = true
+        s.theme = .dark
+        settings = s
+
+        let account = PlaylistAccount(id: "demo-home", name: "My Home Playlist", type: .m3u, m3uUrl: "https://playlist.example.com/home.m3u", lastSync: Date().addingTimeInterval(-3600))
+        accounts = [account]
+        activeAccountId = account.id
+
+        let now = Date().timeIntervalSince1970
+        var entries: [MediaEntry] = []
+        var guideMap: [String: [Programme]] = [:]
+        let channels: [(String, String, [String])] = [
+            ("Nova News 24", "News", ["Morning Briefing", "World Today", "Markets Live", "Evening Report"]),
+            ("Aurora Sports", "Sports", ["Matchday Live", "Highlights Show", "Locker Room", "Late Kick-off"]),
+            ("Terra Docs", "Documentaries", ["Wild Coasts", "The Deep Blue", "Mountain Kingdoms", "Ancient Rivers"]),
+            ("Lumen Kids", "Kids", ["Paper Planes", "Star Tales", "Little Builders", "Moon Club"]),
+            ("Vista Music", "Music", ["Fresh Hits", "Acoustic Hour", "Live Session", "Night Mix"]),
+            ("Coastline TV", "Entertainment", ["Kitchen Stories", "Home Rescue", "Quiz Night", "The Late Show"]),
+            ("Harbor News", "News", ["Local Today", "Weather Watch", "City Desk", "Night Edition"]),
+            ("Summit Sports 2", "Sports", ["Trail Running", "Cycling Classics", "Climb Week", "Board Masters"]),
+            ("Atlas Travel", "Documentaries", ["Island Hopping", "Street Food Trails", "Slow Trains", "Desert Roads"]),
+            ("Pulse Music", "Music", ["Chart Countdown", "Indie Corner", "Throwback Mix", "After Hours"]),
+        ]
+        let slotStart = (now / 1800).rounded(.down) * 1800 - 900
+        for (i, ch) in channels.enumerated() {
+            let tvg = "demo.ch\(i)"
+            entries.append(MediaEntry(id: "live_\(i)", title: ch.0, kind: .live, group: ch.1, streamUrl: "https://example.com/live/\(i).m3u8", providerOrder: i, added: now, quality: i % 3 == 0 ? "FHD" : "HD", tvgId: tvg))
+            guideMap[tvg] = ch.2.enumerated().map { j, title in
+                let start = slotStart + Double(j) * 3600 - Double(i % 3) * 600
+                return Programme(title: title, start: start, stop: start + 3600, desc: nil, category: ch.1)
+            }
+        }
+        let movies: [(String, String?, Int, String, [String], String)] = [
+            ("The Quiet Harbor", "demo_quiet_harbor", 2025, "Drama", ["Drama", "Mystery"], "A lighthouse keeper on a fog-bound island finds letters that rewrite her family's story, one tide at a time."),
+            ("Northbound", "demo_northbound", 2024, "Adventure", ["Adventure"], "Two strangers share the last train across the frozen north and a secret neither can afford to lose."),
+            ("Glass Orchard", "demo_glass_orchard", 2025, "Fantasy", ["Fantasy"], "A botanist discovers an orchard that only blooms at night, and the price of every fruit it bears."),
+            ("Echo Valley", "demo_echo_valley", 2023, "Adventure", ["Adventure", "Drama"], "An estranged father and daughter hike a desert canyon where every echo remembers something."),
+            ("Paper Lanterns", nil, 2024, "Drama", ["Drama"], "A festival night brings an old neighbourhood back together."),
+            ("Signal Lost", nil, 2025, "Thriller", ["Thriller"], "A radio operator hears a voice that should not exist."),
+        ]
+        for (i, m) in movies.enumerated() {
+            entries.append(MediaEntry(id: "movie_\(i)", title: m.0, kind: .movie, group: m.3, logoUrl: m.1.flatMap(ScreenshotMode.poster), streamUrl: "https://example.com/movie/\(i).mp4", year: m.2, providerOrder: 100 + i, added: now - Double(i) * 86400, plot: m.5, genres: m.4, quality: "4K"))
+        }
+        let series: [(String, String?, String, String)] = [
+            ("Coastline", "demo_coastline", "Crime", "In a neon-lit coastal town, a detective returns home to solve the case that made her leave."),
+            ("Midnight Lab", "demo_midnight_lab", "Sci-Fi", "A night-shift research team discovers their experiment is answering back."),
+            ("Small Kitchen", nil, "Lifestyle", "Big flavours from the tiniest kitchens in the city."),
+        ]
+        var episodes: [String: [Episode]] = [:]
+        for (i, s) in series.enumerated() {
+            let sid = "demo-series-\(i)"
+            entries.append(MediaEntry(id: "series_\(i)", title: s.0, kind: .series, group: s.2, logoUrl: s.1.flatMap(ScreenshotMode.poster), year: 2025, providerOrder: 200 + i, added: now, plot: s.3, genres: [s.2], quality: "HD", seriesId: sid))
+            episodes[sid] = (1...6).map { n in
+                Episode(id: "\(sid)-e\(n)", title: ["Arrival", "Low Tide", "The Signal", "Undertow", "Glass Night", "Daybreak"][n - 1], season: 1, number: n, streamUrl: "https://example.com/series/\(i)/\(n).mp4", plot: nil)
+            }
+        }
+        catalog = Catalog(accountId: account.id, entries: entries, synced: Date(), groupOrder: [:], m3uEpisodes: episodes)
+        guide = EpgGuide(sourceUrl: "demo", updated: Date(), byChannel: guideMap)
+        favorites = ["live_0", "live_2", "movie_0", "series_1"]
+        let ago = Date()
+        progress = [
+            "movie_1": WatchProgress(entryId: "movie_1", title: "Northbound", imageUrl: ScreenshotMode.poster("demo_northbound"), streamUrl: "", kind: .movie, position: 2700, duration: 6300, updated: ago.addingTimeInterval(-600)),
+            "series_1": WatchProgress(entryId: "series_1", title: "Midnight Lab", imageUrl: ScreenshotMode.poster("demo_midnight_lab"), streamUrl: "", kind: .series, position: 1200, duration: 2700, updated: ago.addingTimeInterval(-3600), season: 1, episodeNumber: 3, episodeTitle: "The Signal"),
+            "live_0": WatchProgress(entryId: "live_0", title: "Nova News 24", streamUrl: "", kind: .live, position: 0, duration: 0, updated: ago.addingTimeInterval(-120)),
+            "live_1": WatchProgress(entryId: "live_1", title: "Aurora Sports", streamUrl: "", kind: .live, position: 0, duration: 0, updated: ago.addingTimeInterval(-7200)),
+            "live_2": WatchProgress(entryId: "live_2", title: "Terra Docs", streamUrl: "", kind: .live, position: 0, duration: 0, updated: ago.addingTimeInterval(-9000)),
+        ]
+    }
+}
+#endif

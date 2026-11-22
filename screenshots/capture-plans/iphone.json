@@ -1,0 +1,7 @@
+{"version":2,"platform":"ios","scrollDirection":"page","screenshotScenario":"app-store","screenshotPrompts":[
+ {"label":"Home","screenshotTarget":"home","screenDescription":"Home with the playlist in use, continue watching and favourites","requiredLabels":["My Home Playlist","Continue watching"],"prompt":"Hero: your own playlist turned into a beautiful personal TV home. Deep navy, cinematic glow."},
+ {"label":"Live TV","screenshotTarget":"live","screenDescription":"Live TV channel list with what is on now from the guide","requiredLabels":["Nova News 24"],"prompt":"Live TV with a real programme guide: always know what is on now. Dark blue with electric accent."},
+ {"label":"Movies","screenshotTarget":"movies","screenDescription":"Movies poster library from the user's playlist","requiredLabels":["6 titles"],"prompt":"Your movies as a gorgeous poster library. Warm cinematic contrast slide."},
+ {"label":"Series","screenshotTarget":"detail","screenDescription":"Series detail with plot and episodes","requiredLabels":["Midnight Lab"],"prompt":"Series with seasons and episodes, pick up exactly where you left off. Teal night mood."},
+ {"label":"Paywall","screenshotTarget":"paywall","screenDescription":"Unlock NovaStream subscription screen","requiredLabels":["Restore Purchases"],"prompt":"Unlock every feature. Calm dark background."}
+]}

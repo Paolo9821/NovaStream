@@ -2,9 +2,27 @@ import SwiftUI
 
 @main
 struct NovaStreamIPTVApp: App {
-    @State private var model = AppModel()
-    @State private var license = LicenseManager()
+    @State private var model: AppModel
+    @State private var license: LicenseManager
     @Environment(\.scenePhase) private var scenePhase
+
+    init() {
+        let model = AppModel()
+        let license = LicenseManager()
+        #if DEBUG && targetEnvironment(simulator)
+        ScreenshotMode.bootstrap(model: model, license: license)
+        #endif
+        _model = State(initialValue: model)
+        _license = State(initialValue: license)
+    }
+
+    /// True only for App Store screenshot captures in a Debug simulator build.
+    private var screenshotFixture: Bool {
+        #if DEBUG && targetEnvironment(simulator)
+        if ScreenshotMode.isActive { return true }
+        #endif
+        return false
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -14,8 +32,12 @@ struct NovaStreamIPTVApp: App {
                 .tint(Nova.blue)
                 .preferredColorScheme(colorScheme)
                 .id(model.settings.language)
-                .task { await license.start() }
                 .task {
+                    if screenshotFixture { return }
+                    await license.start()
+                }
+                .task {
+                    if screenshotFixture { return }
                     await model.pushWebState()
                     await model.autoRefreshIfNeeded()
                 }
@@ -24,6 +46,7 @@ struct NovaStreamIPTVApp: App {
                     case .background:
                         model.parentalUnlocked = false
                     case .active:
+                        if screenshotFixture { return }
                         Task {
                             await license.refresh()
                             await model.pushWebState()

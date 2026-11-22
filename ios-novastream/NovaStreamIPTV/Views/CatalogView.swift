@@ -16,7 +16,7 @@ struct CatalogView: View {
         var list = model.entries(kind)
         switch group {
         case GroupFilter.all: list = list.filter { !model.isLocked($0.group) }
-        case GroupFilter.favourites: list = list.filter { model.isFavorite($0.id) }
+        case GroupFilter.favourites: list = list.filter { model.isFavorite($0.id) && !model.isLocked($0.group) }
         default: list = list.filter { $0.inGroup(group) }
         }
         if let year { list = list.filter { $0.year == year } }
