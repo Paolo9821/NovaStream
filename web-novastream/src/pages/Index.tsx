@@ -734,7 +734,7 @@ const BADGE_LINK =
 /**
  * Official Google Play and App Store download badges, side by side.
  * The Play PNG carries Google's built-in clear space (its visible badge is
- * about two thirds of the image height), so the Apple SVG is sized to match it.
+ * about 77% of the image height), so the Apple SVG is sized to match it.
  */
 export function StoreBadges({
   lang,
@@ -748,7 +748,7 @@ export function StoreBadges({
   const playSrc = PLAY_BADGE_BY_LANG[lang] ?? "/badges/en.png";
   const large = size === "lg";
   return (
-    <div className={cn("flex flex-wrap items-center gap-x-1 gap-y-2", className)}>
+    <div className={cn("flex flex-wrap items-center gap-x-3 gap-y-2", className)}>
       <a href={PLAY_STORE_URL} target="_blank" rel="noopener noreferrer" aria-label="Google Play" className={BADGE_LINK}>
         <img
           src={playSrc}
@@ -766,7 +766,7 @@ export function StoreBadges({
           width={120}
           height={40}
           loading="lazy"
-          className={large ? "h-[43px] w-auto sm:h-12" : "h-[30px] w-auto"}
+          className={large ? "h-[49px] w-auto sm:h-[55px]" : "h-[34px] w-auto"}
         />
       </a>
     </div>
