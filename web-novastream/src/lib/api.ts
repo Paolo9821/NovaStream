@@ -436,8 +436,6 @@ export const addDevicePlaylist = (input: {
   identifier: string;
   session: string;
   playlist: NewPlaylist;
-  captchaToken: string;
-  captchaAnswer: string;
 }): Promise<{ ok: true; playlists: DevicePlaylist[] }> =>
   post<{ ok: true; playlists: DevicePlaylist[] }>("/api/device/playlist-add", {
     ...input,

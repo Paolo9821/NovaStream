@@ -40,7 +40,6 @@ import { Label } from "@/components/ui/label";
 import {
   ApiError,
   addDevicePlaylist,
-  fetchCaptcha,
   formatDateTime,
   formatMac,
   isSessionExpired,
@@ -470,20 +469,7 @@ function AddPlaylistForm({
 }) {
   const { t } = useI18n();
   const [form, setForm] = useState<NewPlaylist>(EMPTY_FORM);
-  const [answer, setAnswer] = useState<string>("");
   const [error, setError] = useState<string>("");
-
-  const captcha = useQuery({
-    queryKey: ["captcha"],
-    queryFn: fetchCaptcha,
-    staleTime: 8 * 60 * 1000,
-    refetchInterval: 9 * 60 * 1000,
-  });
-
-  const newCaptcha = useCallback((): void => {
-    setAnswer("");
-    void captcha.refetch();
-  }, [captcha]);
 
   const update = <K extends keyof NewPlaylist>(field: K, value: NewPlaylist[K]): void => {
     setForm((current) => ({ ...current, [field]: value }));
@@ -496,21 +482,15 @@ function AddPlaylistForm({
         identifier: session.identifier,
         session: session.token,
         playlist: { ...form, name: form.name.trim() },
-        captchaToken: captcha.data?.token ?? "",
-        captchaAnswer: answer,
       }),
     onSuccess: () => {
       setForm(EMPTY_FORM);
-      newCaptcha();
       onAdded(t("pl.added"));
     },
     onError: (err: unknown) => {
-      // Every challenge is good for one try: a new one is ready either way.
-      newCaptcha();
       if (isSessionExpired(err)) return onExpired();
       const message = err instanceof Error ? err.message : "";
-      if (message.startsWith("captcha")) setError(t("pl.errCaptcha"));
-      else if (message === "too many playlists") setError(t("pl.errLimit"));
+      if (message === "too many playlists") setError(t("pl.errLimit"));
       else if (message === "invalid m3u url") setError(t("pl.errM3u"));
       else if (message === "invalid server") setError(t("pl.errServer"));
       else if (message === "missing credentials") setError(t("pl.errCreds"));
@@ -534,7 +514,6 @@ function AddPlaylistForm({
       if (!form.username.trim() || !form.password) return setError(t("pl.errCreds"));
     }
     if (form.type !== "host" && form.epgUrl.trim() && !isHttpUrl(form.epgUrl)) return setError(t("pl.errEpg"));
-    if (answer.trim().length < 4) return setError(t("pl.errCaptchaEmpty"));
     send.mutate();
   };
 
@@ -698,63 +677,12 @@ function AddPlaylistForm({
         </>
       )}
 
-      {/* Last step before sending: the bot check. */}
-      <div className="mt-7 rounded-2xl border border-border/80 bg-secondary/30 p-4 sm:p-5">
-        <div className="flex items-center gap-2 text-sm font-semibold">
-          <ShieldCheck className="h-4 w-4 text-primary" />
-          {t("pl.captcha")}
-        </div>
-        <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">{t("pl.captchaHelp")}</p>
-        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="flex items-center gap-2">
-            <div className="flex h-[84px] w-[260px] items-center justify-center overflow-hidden rounded-[14px] border border-border/70 bg-[#0B1220]">
-              {captcha.data ? (
-                <img
-                  src={captcha.data.image}
-                  alt={t("pl.captcha")}
-                  width={260}
-                  height={84}
-                  draggable={false}
-                  className="select-none"
-                />
-              ) : (
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-              )}
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="icon"
-              onClick={newCaptcha}
-              disabled={captcha.isFetching}
-              aria-label={t("pl.captchaRefresh")}
-              title={t("pl.captchaRefresh")}
-              className="h-11 w-11 shrink-0"
-            >
-              <RefreshCw className={cn("h-4 w-4", captcha.isFetching && "animate-spin")} />
-            </Button>
-          </div>
-          <Input
-            value={answer}
-            onChange={(event) => {
-              setAnswer(event.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 8));
-              setError("");
-            }}
-            placeholder={t("pl.captchaPlaceholder")}
-            aria-label={t("pl.captchaPlaceholder")}
-            autoComplete="off"
-            spellCheck={false}
-            className="mono h-12 flex-1 border-border/80 bg-background/60 text-lg uppercase tracking-[0.3em]"
-          />
-        </div>
-      </div>
-
       {error && <ErrorBox message={error} />}
       {disabled && <ErrorBox message={t("pl.errLimit")} />}
 
       <Button
         type="submit"
-        disabled={send.isPending || disabled || !captcha.data}
+        disabled={send.isPending || disabled}
         className="mt-6 h-13 w-full gap-2.5 text-base font-semibold"
       >
         {send.isPending ? <Loader2 className="h-4.5 w-4.5 animate-spin" /> : <Plus className="h-4.5 w-4.5" />}

@@ -69,6 +69,10 @@ const PLAY_STORE_URL: string =
   import.meta.env.VITE_PLAY_STORE_URL ??
   "https://play.google.com/store/apps/details?id=com.rork.novastream";
 
+/** App Store listing URL; override with VITE_APP_STORE_URL if it ever changes. */
+const APP_STORE_URL: string =
+  import.meta.env.VITE_APP_STORE_URL ?? "https://apps.apple.com/app/id6838075128";
+
 /** Official "Get it on Google Play" badge, localized per site language. */
 const PLAY_BADGE_BY_LANG: Record<string, string> = {
   it: "/badges/it.png",
@@ -382,7 +386,7 @@ export default function Index() {
           <p className="mx-auto mt-5 max-w-xl text-balance text-base leading-relaxed text-muted-foreground">
             {t("hero.sub")}
           </p>
-          <PlayStoreBadge lang={lang} className="mt-8" />
+          <StoreBadges lang={lang} className="mt-8 justify-center" />
         </section>
 
         <section className="mt-14 grid gap-5 lg:grid-cols-[1.05fr_0.95fr]">
@@ -724,29 +728,48 @@ function GiftCard({ quote }: { quote: PromoQuote }) {
   );
 }
 
-/** Official Google Play download badge for the Android app. */
-export function PlayStoreBadge({ lang, className }: { lang: string; className?: string }) {
-  const src = PLAY_BADGE_BY_LANG[lang] ?? "/badges/en.png";
+const BADGE_LINK =
+  "inline-flex items-center transition duration-300 hover:-translate-y-0.5 hover:drop-shadow-[0_8px_20px_rgba(0,0,0,0.45)] active:translate-y-0";
+
+/**
+ * Official Google Play and App Store download badges, side by side.
+ * The Play PNG carries Google's built-in clear space (its visible badge is
+ * about two thirds of the image height), so the Apple SVG is sized to match it.
+ */
+export function StoreBadges({
+  lang,
+  size = "lg",
+  className,
+}: {
+  lang: string;
+  size?: "lg" | "sm";
+  className?: string;
+}) {
+  const playSrc = PLAY_BADGE_BY_LANG[lang] ?? "/badges/en.png";
+  const large = size === "lg";
   return (
-    <a
-      href={PLAY_STORE_URL}
-      target="_blank"
-      rel="noopener noreferrer"
-      aria-label="Google Play"
-      className={cn(
-        "inline-block transition duration-300 hover:-translate-y-0.5 hover:drop-shadow-[0_8px_20px_rgba(0,0,0,0.45)] active:translate-y-0",
-        className,
-      )}
-    >
-      <img
-        src={src}
-        alt="Google Play"
-        width={172}
-        height={67}
-        loading="lazy"
-        className="h-16 w-auto sm:h-[4.5rem]"
-      />
-    </a>
+    <div className={cn("flex flex-wrap items-center gap-x-1 gap-y-2", className)}>
+      <a href={PLAY_STORE_URL} target="_blank" rel="noopener noreferrer" aria-label="Google Play" className={BADGE_LINK}>
+        <img
+          src={playSrc}
+          alt="Google Play"
+          width={172}
+          height={67}
+          loading="lazy"
+          className={large ? "h-16 w-auto sm:h-[4.5rem]" : "h-11 w-auto"}
+        />
+      </a>
+      <a href={APP_STORE_URL} target="_blank" rel="noopener noreferrer" aria-label="App Store" className={BADGE_LINK}>
+        <img
+          src="/badges/app-store-en.svg"
+          alt="Download on the App Store"
+          width={120}
+          height={40}
+          loading="lazy"
+          className={large ? "h-[43px] w-auto sm:h-12" : "h-[30px] w-auto"}
+        />
+      </a>
+    </div>
   );
 }
 
@@ -823,7 +846,7 @@ function SiteFooter() {
   return (
     <footer className="relative border-t border-border/60 py-8">
       <div className="mx-auto flex max-w-5xl flex-col items-center gap-4 px-5 text-xs text-muted-foreground sm:flex-row sm:justify-between">
-        <PlayStoreBadge lang={lang} className="h-11" />
+        <StoreBadges lang={lang} size="sm" />
         <span>{t("footer")}</span>
         <nav className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
           <Link to="/termini" className="transition hover:text-foreground">

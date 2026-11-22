@@ -339,23 +339,8 @@ export default {
         const identifier = normalizeDeviceId(String(body.identifier ?? ""));
         if (!isValidDeviceId(identifier)) return fail("invalid device id");
 
-        // The CAPTCHA is checked before anything else and is good for one try.
-        const check = await checkChallenge(
-          await generatedSecret(env, CAPTCHA_SECRET),
-          String(body.captchaToken ?? ""),
-          String(body.captchaAnswer ?? ""),
-        );
-        if (check.nonce) {
-          const burn = await registryJson<{ fresh: boolean }>(env, "/captcha-burn", {
-            nonce: check.nonce,
-            expiresAt: check.expiresAt,
-          });
-          if (!burn.fresh) return json({ error: "captcha used", captcha: true }, 400);
-        }
-        if (!check.ok) {
-          return json({ error: check.reason === "expired" ? "captcha expired" : "captcha wrong", captcha: true }, 400);
-        }
-
+        // No CAPTCHA here: the short-lived device session (one code from the TV,
+        // good for 5 minutes) and the registry's lockouts already gate this.
         const parsed = readPlaylist(body.playlist);
         if (!parsed.ok) return fail(parsed.error);
         const playlist = parsed.value;
