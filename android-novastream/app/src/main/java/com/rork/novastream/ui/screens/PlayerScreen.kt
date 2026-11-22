@@ -511,6 +511,28 @@ fun PlayerScreen(
 
     fun playChannel(channel: MediaEntry) = switchTo(channel.id, channel.streamUrl)
 
+    /** Bumped on every left/right zap; a small banner names the new channel. */
+    var zapTick by remember { mutableLongStateOf(0L) }
+    var zapBannerVisible by remember { mutableStateOf(false) }
+    LaunchedEffect(zapTick) {
+        if (zapTick == 0L) return@LaunchedEffect
+        zapBannerVisible = true
+        delay(2_500)
+        zapBannerVisible = false
+    }
+
+    /**
+     * Left/right on the remote while watching live TV: the channel changes at
+     * once and the controls stay hidden, so the next press zaps again instead
+     * of walking the buttons.
+     */
+    fun zapChannel(channel: MediaEntry?) {
+        if (channel == null || channel.streamUrl.isBlank()) return
+        switchTo(channel.id, channel.streamUrl)
+        controlsVisible = false
+        zapTick += 1
+    }
+
     /**
      * Queues another attempt at the same stream. Anything already playing keeps
      * its position, so a movie resumes exactly where the connection dropped.
@@ -1127,6 +1149,13 @@ fun PlayerScreen(
                     return@onPreviewKeyEvent false
                 }
 
+                // Live TV only: left/right zap straight to the neighbouring channel.
+                // (Not over the error card, whose buttons sit side by side.)
+                if (isLiveStream && error == null && (event.key == Key.DirectionLeft || event.key == Key.DirectionRight)) {
+                    zapChannel(if (event.key == Key.DirectionRight) nextChannel else previousChannel)
+                    return@onPreviewKeyEvent true
+                }
+
                 when (event.key) {
                     Key.DirectionLeft, Key.MediaRewind -> {
                         nudgeSeek(-SEEK_STEP_MS)
@@ -1243,6 +1272,40 @@ fun PlayerScreen(
                 onClose = onBack,
                 modifier = Modifier.align(Alignment.Center),
             )
+        }
+
+        AnimatedVisibility(
+            visible = isLiveStream && zapBannerVisible && !controlsVisible,
+            enter = fadeIn(tween(150)),
+            exit = fadeOut(tween(250)),
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .padding(24.dp),
+        ) {
+            Column(
+                modifier = Modifier
+                    .background(Color.Black.copy(alpha = 0.72f), RoundedCornerShape(14.dp))
+                    .padding(horizontal = 18.dp, vertical = 12.dp)
+            ) {
+                Text(
+                    text = entry?.title.orEmpty(),
+                    color = Color.White,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                guideNow?.title?.let { programme ->
+                    Text(
+                        text = programme,
+                        color = Color.White.copy(alpha = 0.72f),
+                        fontSize = 14.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
         }
 
         AnimatedVisibility(
