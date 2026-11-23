@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { BrandMark } from "@/components/BrandMark";
 import { Link } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 import {
@@ -22,7 +23,6 @@ import {
   Settings,
   TicketPercent,
   Users,
-  Zap,
   type LucideIcon,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -244,9 +244,7 @@ function Console({ token, onSignOut }: { token: string; onSignOut: () => void })
       <header className="sticky top-0 z-30 border-b border-border/60 bg-background/80 backdrop-blur-xl">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-5 py-3">
           <div className="flex items-center gap-2.5">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/15 text-primary">
-              <Zap className="h-4.5 w-4.5" strokeWidth={2.5} />
-            </div>
+            <BrandMark />
             <div>
               <div className="text-sm font-bold leading-tight">NovaStream</div>
               <div className="text-[11px] text-muted-foreground">Area gestione</div>

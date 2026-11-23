@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { BrandMark } from "@/components/BrandMark";
 import { Link } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 import {
@@ -15,7 +16,6 @@ import {
   Search,
   ShieldX,
   Smartphone,
-  Zap,
   type LucideIcon,
 } from "lucide-react";
 
@@ -94,9 +94,7 @@ export default function Device() {
 
       <header className="relative mx-auto flex max-w-3xl items-center justify-between gap-3 px-5 py-6">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/15 text-primary">
-            <Zap className="h-4.5 w-4.5" strokeWidth={2.5} />
-          </div>
+          <BrandMark />
           <span className="text-lg font-bold tracking-tight">NovaStream</span>
         </div>
         <LanguagePicker />
