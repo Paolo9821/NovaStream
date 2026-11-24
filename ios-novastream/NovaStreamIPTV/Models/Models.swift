@@ -25,7 +25,7 @@ nonisolated struct PlaylistAccount: Codable, Identifiable, Hashable, Sendable {
 
     var isPrivateHost: Bool { !(hostNumber ?? "").isEmpty }
 
-    var typeLabel: String { type == .xtream ? "Xtream" : "m3u" }
+    var typeLabel: String { isPrivateHost ? t("Private host") : (type == .xtream ? "Xtream" : "m3u") }
 
     var effectiveEpgUrl: String {
         if !epgUrl.isEmpty { return epgUrl }

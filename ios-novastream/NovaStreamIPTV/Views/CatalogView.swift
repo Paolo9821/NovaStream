@@ -11,6 +11,21 @@ struct CatalogView: View {
     @State private var pendingGroup: String?
     @State private var askPin = false
     @State private var didInit = false
+    @State private var anchor: String?
+
+    private func memoryKey(_ group: String) -> String {
+        ScrollMemory.key(account: model.activeAccountId, kind: kind, group: group)
+    }
+
+    private func restore(_ proxy: ScrollViewProxy, in list: [MediaEntry], orTop: Bool = false) {
+        guard query.trimmed.isEmpty, year == nil else { return }
+        let saved = ScrollMemory.shared.spot(memoryKey(group)).flatMap { id in list.contains { $0.id == id } ? id : nil }
+        guard let target = saved ?? (orTop ? "catalog-top" : nil) else { return }
+        Task { @MainActor in
+            await Task.yield()
+            proxy.scrollTo(target, anchor: .top)
+        }
+    }
 
     private var items: [MediaEntry] {
         var list = model.entries(kind)
@@ -31,6 +46,7 @@ struct CatalogView: View {
     var body: some View {
         @Bindable var model = model
         let list = items
+        ScrollViewReader { proxy in
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 12, pinnedViews: [.sectionHeaders]) {
                 Section {
@@ -38,6 +54,7 @@ struct CatalogView: View {
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(Nova.inkSecondary)
                         .padding(.horizontal, 16)
+                        .id("catalog-top")
                     LazyVGrid(columns: [GridItem(.adaptive(minimum: 108, maximum: 170), spacing: 12, alignment: .top)], spacing: 18) {
                         ForEach(list) { entry in
                             NavigationLink(value: Route.detail(entry)) {
@@ -51,6 +68,7 @@ struct CatalogView: View {
                             }
                         }
                     }
+                    .scrollTargetLayout()
                     .padding(.horizontal, 16)
                 } header: {
                     GroupChips(kind: kind, groups: model.groups(kind), selection: $group) { locked in
@@ -61,6 +79,17 @@ struct CatalogView: View {
                 }
             }
             .padding(.bottom, 30)
+        }
+        .scrollPosition(id: $anchor, anchor: .top)
+        .onChange(of: anchor) { _, id in
+            guard let id, query.trimmed.isEmpty, year == nil else { return }
+            ScrollMemory.shared.save(id, for: memoryKey(group))
+        }
+        .onAppear { restore(proxy, in: list) }
+        .onChange(of: group) { _, _ in restore(proxy, in: list, orTop: true) }
+        .onChange(of: list.isEmpty) { _, empty in
+            if !empty { restore(proxy, in: list) }
+        }
         }
         .background(NovaBackdrop())
         .overlay {

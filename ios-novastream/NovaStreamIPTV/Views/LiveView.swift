@@ -9,6 +9,26 @@ struct LiveView: View {
     @State private var askPin = false
     @State private var guideFor: MediaEntry?
     @State private var didInit = false
+    @State private var visible = VisibleRows()
+
+    private func memoryKey(_ group: String) -> String {
+        ScrollMemory.key(account: model.activeAccountId, kind: .live, group: group)
+    }
+
+    private func remember(_ group: String) {
+        guard query.trimmed.isEmpty, let top = visible.top else { return }
+        ScrollMemory.shared.save(top, for: memoryKey(group))
+    }
+
+    private func restore(_ proxy: ScrollViewProxy, in list: [MediaEntry], orTop: Bool = false) {
+        guard query.trimmed.isEmpty else { return }
+        let saved = ScrollMemory.shared.spot(memoryKey(group)).flatMap { id in list.contains { $0.id == id } ? id : nil }
+        guard let target = saved ?? (orTop ? list.first?.id : nil) else { return }
+        Task { @MainActor in
+            await Task.yield()
+            proxy.scrollTo(target, anchor: .top)
+        }
+    }
 
     private var channels: [MediaEntry] {
         var items = model.entries(.live)
@@ -23,15 +43,21 @@ struct LiveView: View {
 
     var body: some View {
         let list = channels
+        ScrollViewReader { proxy in
         TimelineView(.periodic(from: .now, by: 60)) { context in
             List {
                 Section {
-                    ForEach(list) { entry in
-                        Button { model.play(entry, channels: list) } label: {
+                    ForEach(Array(list.enumerated()), id: \.element.id) { index, entry in
+                        Button {
+                            remember(group)
+                            model.play(entry, channels: list)
+                        } label: {
                             ChannelRow(entry: entry, now: context.date)
                         }
                         .buttonStyle(.plain)
                         .listRowBackground(Color.clear)
+                        .onAppear { visible.appeared(entry.id, at: index) }
+                        .onDisappear { visible.disappeared(entry.id) }
                         .swipeActions(edge: .trailing) {
                             Button {
                                 model.toggleFavorite(entry.id)
@@ -67,6 +93,20 @@ struct LiveView: View {
                     EmptyStateView(symbol: group == GroupFilter.favourites ? "star" : "magnifyingglass", title: t("No channels"), message: group == GroupFilter.favourites ? t("Swipe left on a channel to add it to your favourites.") : t("Nothing matches this filter."))
                 }
             }
+        }
+        .onAppear { restore(proxy, in: list) }
+        .onDisappear { remember(group) }
+        .onChange(of: group) { old, _ in
+            remember(old)
+            visible.reset()
+            restore(proxy, in: list, orTop: true)
+        }
+        .onChange(of: list.isEmpty) { _, empty in
+            if !empty { restore(proxy, in: list) }
+        }
+        .onChange(of: model.playback == nil) { _, closed in
+            if closed { restore(proxy, in: list) }
+        }
         }
         .background(NovaBackdrop())
         .navigationTitle(MediaKind.live.title)

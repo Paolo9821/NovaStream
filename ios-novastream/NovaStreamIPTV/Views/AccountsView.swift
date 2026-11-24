@@ -70,14 +70,18 @@ struct AddAccountView: View {
     @Environment(\.dismiss) private var dismiss
     var existing: PlaylistAccount?
 
-    @State private var type: AccountType = .m3u
+    /// What the form asks for: a link, a full Xtream account, or a host number.
+    private enum FormKind: Hashable { case m3u, xtream, privateHost }
+
+    @State private var kind: FormKind = .m3u
+    private var type: AccountType { kind == .m3u ? .m3u : .xtream }
+    private var privateHost: Bool { kind == .privateHost }
     @State private var name = ""
     @State private var m3uUrl = ""
     @State private var server = ""
     @State private var username = ""
     @State private var password = ""
     @State private var epgUrl = ""
-    @State private var privateHost = false
     @State private var hostNumber = ""
     @State private var working = false
     @State private var error: String?
@@ -86,9 +90,10 @@ struct AddAccountView: View {
     var body: some View {
         Form {
             Section {
-                Picker(t("Type"), selection: $type) {
-                    Text("m3u / m3u8").tag(AccountType.m3u)
-                    Text("Xtream Codes").tag(AccountType.xtream)
+                Picker(t("Type"), selection: $kind.animation()) {
+                    Text("m3u / m3u8").tag(FormKind.m3u)
+                    Text("Xtream Codes").tag(FormKind.xtream)
+                    Text(t("Private host")).tag(FormKind.privateHost)
                 }
                 .pickerStyle(.segmented)
                 .disabled(existing != nil)
@@ -105,7 +110,6 @@ struct AddAccountView: View {
                 }
             } else {
                 Section {
-                    Toggle(t("Private host"), isOn: $privateHost.animation())
                     if privateHost {
                         TextField(t("Host number"), text: $hostNumber)
                             .keyboardType(.asciiCapable)
@@ -128,7 +132,7 @@ struct AddAccountView: View {
                         .textContentType(.username)
                     SecureField(t("Password"), text: $password)
                         .textContentType(.password)
-                } header: { Text(t("Xtream Codes account")) } footer: {
+                } header: { Text(privateHost ? t("Private host") : t("Xtream Codes account")) } footer: {
                     if privateHost {
                         Text(t("Type the host number you received with your subscription. The server address is found automatically."))
                     }
@@ -162,11 +166,10 @@ struct AddAccountView: View {
         .onAppear {
             guard !loaded, let existing else { return }
             loaded = true
-            type = existing.type
+            kind = existing.isPrivateHost ? .privateHost : (existing.type == .m3u ? .m3u : .xtream)
             name = existing.name
             m3uUrl = existing.m3uUrl
             server = existing.isPrivateHost ? "" : existing.server
-            privateHost = existing.isPrivateHost
             hostNumber = existing.hostNumber ?? ""
             username = existing.username
             password = existing.password

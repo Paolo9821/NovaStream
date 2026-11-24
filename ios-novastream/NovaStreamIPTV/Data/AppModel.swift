@@ -187,7 +187,15 @@ final class AppModel {
                 guard !loaded.entries.isEmpty else { throw SyncError.empty }
                 result = Catalog(accountId: account.id, entries: loaded.entries, synced: Date(), groupOrder: loaded.groupOrder)
             }
-            guard account.id == activeAccountId else { syncState = .idle; return }
+            guard account.id == activeAccountId else {
+                // The user switched playlist meanwhile: keep this result for
+                // later and load the playlist now selected if it has nothing yet.
+                let finished = result
+                Task.detached(priority: .utility) { FileStore.save(finished, to: "catalog-\(account.id).json") }
+                syncState = .idle
+                if activeAccountId != nil, catalog.entries.isEmpty { await sync() }
+                return
+            }
             catalog = result
             let snapshot = result
             Task.detached(priority: .utility) { FileStore.save(snapshot, to: "catalog-\(account.id).json") }
@@ -202,6 +210,11 @@ final class AppModel {
             Haptics.success()
             await refreshGuide()
         } catch {
+            guard account.id == activeAccountId else {
+                syncState = .idle
+                if activeAccountId != nil, catalog.entries.isEmpty { await sync() }
+                return
+            }
             syncState = .failed(error.localizedDescription)
             Haptics.error()
         }
