@@ -44,7 +44,8 @@ final class PlayerController {
             phase = .failed(t("This address is not valid."))
             return
         }
-        let item = AVPlayerItem(url: url)
+        let asset = AVURLAsset(url: url, options: [AVURLAssetHTTPUserAgentKey: Net.playerAgent])
+        let item = AVPlayerItem(asset: asset)
         if let seconds = model?.settings.buffer.seconds, seconds > 0 {
             item.preferredForwardBufferDuration = seconds
         }

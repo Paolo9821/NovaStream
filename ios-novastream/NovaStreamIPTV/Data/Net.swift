@@ -23,15 +23,54 @@ nonisolated enum Net {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 30
         config.timeoutIntervalForResource = 300
-        config.httpAdditionalHeaders = ["User-Agent": "NovaStream/1.0 (iOS)"]
         config.requestCachePolicy = .reloadIgnoringLocalCacheData
         return URLSession(configuration: config)
     }()
 
+    /// Identities presented to IPTV panels, as on Android. Many panels (often
+    /// behind Cloudflare) drop requests from unknown agents, which surfaces as a
+    /// 5xx such as 520 or a closed connection. A media player identity is what
+    /// they expect; a browser and a common IPTV player are the fallbacks.
+    static let userAgents = [
+        "VLC/3.0.21 LibVLC/3.0.21",
+        "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1",
+        "IPTVSmartersPlayer",
+    ]
+    static var playerAgent: String { userAgents[0] }
+
+    private static let maxAttempts = 3
+
     static func get(_ urlString: String) async throws -> Data {
         guard let url = URL(string: urlString.trimmed) else { throw SyncError.invalid(t("The address is not valid.")) }
+        var last: SyncError = .unreachable
+        for attempt in 0..<maxAttempts {
+            do {
+                return try await fetch(url, agent: userAgents[attempt % userAgents.count])
+            } catch let error as SyncError {
+                last = error
+                guard retryable(error), attempt < maxAttempts - 1 else { throw error }
+                try? await Task.sleep(for: .milliseconds(1_200 * (attempt + 1)))
+            }
+        }
+        throw last
+    }
+
+    /// Dropped connections, timeouts, 5xx (Cloudflare's 520-530 included) and
+    /// agent-based refusals usually pass with a fresh connection or another identity.
+    private static func retryable(_ error: SyncError) -> Bool {
+        switch error {
+        case .unreachable, .timeout, .refused: true
+        case .server(let code): code >= 500 || code == 429 || code == 406
+        default: false
+        }
+    }
+
+    private static func fetch(_ url: URL, agent: String) async throws -> Data {
+        var request = URLRequest(url: url)
+        request.setValue(agent, forHTTPHeaderField: "User-Agent")
+        request.setValue("*/*", forHTTPHeaderField: "Accept")
         do {
-            let (data, response) = try await session.data(from: url)
+            let (data, response) = try await session.data(for: request)
             if let http = response as? HTTPURLResponse, !(200...299).contains(http.statusCode) {
                 if http.statusCode == 404 { throw SyncError.notFound }
                 if http.statusCode == 401 || http.statusCode == 403 { throw SyncError.refused }
