@@ -73,6 +73,22 @@
         "iosBundleId": "app.rork.novastream",
         "swiftSibling": false
       }
+    },
+    {
+      "name": "NovaStream iOS Launch",
+      "path": "motion-ios-launch",
+      "framework": "web",
+      "settings": {
+        "kind": "motion-video"
+      }
+    },
+    {
+      "name": "NovaStream iOS Short",
+      "path": "motion-ios-short",
+      "framework": "web",
+      "settings": {
+        "kind": "motion-video"
+      }
     }
   ]
 }

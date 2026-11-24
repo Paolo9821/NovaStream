@@ -2,6 +2,7 @@ Faster channel switching and better remote navigation.
 
 • Live TV: left and right arrows switch to the next or previous channel
 • Up and down in the list highlight the channel, right opens the TV guide
+• The list stays where you were when you come back
 • Buttons readable again on TV
 • Licence can be moved to a new device from the website
 • Version 1.3.6

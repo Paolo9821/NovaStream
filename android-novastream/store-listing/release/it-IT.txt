@@ -2,6 +2,7 @@ Cambio canale più rapido e navigazione con telecomando migliorata.
 
 • TV in diretta: frecce destra e sinistra per passare al canale successivo o precedente
 • Su e giù nella lista evidenziano il canale, freccia destra per la Guida TV
+• La lista resta dove eri quando torni dal player
 • Pulsanti di nuovo ben leggibili su TV
 • Licenza trasferibile su un nuovo dispositivo dal sito
 • Versione 1.3.6

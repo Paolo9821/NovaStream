@@ -35,10 +35,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
@@ -99,8 +102,25 @@ fun LiveScreen(
         viewModel.visibleGroupsOf(MediaKind.LIVE)
     }
     val counts = remember(catalog, settings, unlocked) { viewModel.groupCountsOf(MediaKind.LIVE) }
-    // Each category opens on its first channel.
-    val listState = remember(query.group, query.sort, query.favoritesOnly) { LazyListState() }
+    // Each category opens on its first channel, but coming back from the
+    // player restores the exact scroll position (saved with the back stack).
+    val listState = rememberSaveable(
+        query.group, query.sort, query.favoritesOnly,
+        saver = LazyListState.Saver,
+    ) { LazyListState() }
+    // The channel last started: on a TV the highlight goes back to it.
+    var lastOpenedId by rememberSaveable { mutableStateOf<String?>(null) }
+    val lastOpenedFocus = rememberFocusRequester()
+    val isTvDevice = LocalIsTv.current
+    LaunchedEffect(Unit) {
+        val id = lastOpenedId ?: return@LaunchedEffect
+        if (!isTvDevice || entries.none { it.id == id }) return@LaunchedEffect
+        // After the category column has taken its initial focus.
+        withFrameNanos { }
+        withFrameNanos { }
+        delay(80)
+        runCatching { lastOpenedFocus.requestFocus() }
+    }
 
     SectionBrowser(
         sectionTitle = strings.tabLive,
@@ -147,9 +167,13 @@ fun LiveScreen(
                         isFavorite = favorites.contains(entry.id),
                         onToggleFavorite = { viewModel.toggleFavorite(entry.id) },
                         onOpenGuide = { guideEntryId = entry.id },
+                        focusRequester = if (entry.id == lastOpenedId) lastOpenedFocus else null,
                         // A channel is meant to be watched: OK starts it straight
                         // away instead of opening a page with a second button.
-                        onClick = { onPlay(entry.id, entry.streamUrl) },
+                        onClick = {
+                            lastOpenedId = entry.id
+                            onPlay(entry.id, entry.streamUrl)
+                        },
                     )
                 }
             }
@@ -191,6 +215,7 @@ fun LiveScreen(
                     Button(
                         onClick = {
                             guideEntryId = null
+                            lastOpenedId = guideEntry.id
                             onPlay(guideEntry.id, guideEntry.streamUrl)
                         },
                         modifier = Modifier
@@ -240,6 +265,7 @@ private fun ChannelRow(
     onToggleFavorite: () -> Unit,
     onOpenGuide: () -> Unit,
     onClick: () -> Unit,
+    focusRequester: FocusRequester? = null,
 ) {
     val accents = LocalNovaAccents.current
     val strings = LocalStrings.current
@@ -260,7 +286,9 @@ private fun ChannelRow(
             ) {
                 FocusableSurface(
                     onClick = onClick,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier),
                     color = MaterialTheme.colorScheme.surface,
                     focusRingColor = accents.live,
                 ) {

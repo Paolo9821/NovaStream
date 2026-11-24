@@ -15,6 +15,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.foundation.focusGroup
+import androidx.compose.ui.focus.focusRequester
+import com.rork.novastream.ui.components.rememberFocusRequester
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -56,8 +63,24 @@ fun CatalogScreen(
     }
     val groups = remember(catalog, kind, settings, unlocked) { viewModel.visibleGroupsOf(kind) }
     val counts = remember(catalog, kind, settings, unlocked) { viewModel.groupCountsOf(kind) }
-    // A new category starts from its first row instead of where the last one was left.
-    val gridState = remember(query.group, query.sort, query.year, query.favoritesOnly) { LazyGridState() }
+    // A new category starts from its first row instead of where the last one was
+    // left, but coming back from a title restores the exact scroll position.
+    val gridState = rememberSaveable(
+        query.group, query.sort, query.year, query.favoritesOnly,
+        saver = LazyGridState.Saver,
+    ) { LazyGridState() }
+    // The title last opened: on a TV the highlight goes back to it.
+    var lastOpenedId by rememberSaveable { mutableStateOf<String?>(null) }
+    val lastOpenedFocus = rememberFocusRequester()
+    LaunchedEffect(Unit) {
+        val id = lastOpenedId ?: return@LaunchedEffect
+        if (!isTv || entries.none { it.id == id }) return@LaunchedEffect
+        // After the category column has taken its initial focus.
+        withFrameNanos { }
+        withFrameNanos { }
+        delay(80)
+        runCatching { lastOpenedFocus.requestFocus() }
+    }
     val accent = if (kind == MediaKind.MOVIE) accents.movie else accents.series
 
     SectionBrowser(
@@ -111,7 +134,13 @@ fun CatalogScreen(
                 items(entries, key = { it.id }) { entry ->
                     PosterCard(
                         entry = entry,
-                        onClick = { onOpenDetail(entry.id) },
+                        onClick = {
+                            lastOpenedId = entry.id
+                            onOpenDetail(entry.id)
+                        },
+                        modifier = if (entry.id == lastOpenedId) {
+                            Modifier.focusRequester(lastOpenedFocus).focusGroup()
+                        } else Modifier,
                         isFavorite = favorites.contains(entry.id),
                         onToggleFavorite = { viewModel.toggleFavorite(entry.id) },
                     )
