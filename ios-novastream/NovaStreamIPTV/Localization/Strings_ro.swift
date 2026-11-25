@@ -24,7 +24,7 @@ nonisolated extension Strings {
         "Add a playlist from the Home tab to browse the catalog.": "Adaugă o listă din Acasă pentru a explora catalogul.",
         "Add a playlist from the Home tab to see your channels.": "Adaugă o listă din Acasă pentru a-ți vedea canalele.",
         "Add a playlist from the Home tab, then search channels, movies and series here.": "Adaugă o listă din Acasă, apoi caută aici canale, filme și seriale.",
-        "Add m3u links or Xtream Codes accounts. Credentials stay in this iPhone's Keychain.": "Adaugă linkuri m3u sau conturi Xtream Codes. Datele de acces rămân în Keychain-ul acestui iPhone.",
+        "Add m3u links, Xtream Codes accounts or a private host. Credentials stay only on this iPhone.": "Adaugă linkuri m3u, conturi Xtream Codes sau un host privat. Datele de acces rămân doar pe acest iPhone.",
         "Add or delete playlists from a computer with this device and key. The key is single use and changes every 5 minutes. Do not share it.": "Adaugă sau șterge liste de pe un computer cu acest dispozitiv și această cheie. Cheia este de unică folosință și se schimbă la fiecare 5 minute. Nu o distribui.",
         "Add playlist": "Adaugă listă",
         "Add to favourites": "Adaugă la favorite",
@@ -60,7 +60,7 @@ nonisolated extension Strings {
         "Continue watching": "Continuă vizionarea",
         "Continue — %@": "Continuă — %@",
         "Copy ID": "Copiază ID-ul",
-        "Credentials are stored only in this iPhone's Keychain.": "Datele de acces sunt salvate doar în Keychain-ul acestui iPhone.",
+        "Credentials are stored only on this iPhone.": "Datele de acces sunt salvate doar pe acest iPhone.",
         "Credentials rejected by the server.": "Date de acces respinse de server.",
         "Dark": "Întunecat",
         "Data on this iPhone": "Date pe acest iPhone",
@@ -277,6 +277,7 @@ nonisolated extension Strings {
         "Use your network's DNS": "Folosește DNS-ul rețelei tale",
         "Your network's DNS does not find this server, but %@ does: the network may be blocking it.": "DNS-ul rețelei tale nu găsește acest server, dar %@ îl găsește: rețeaua poate să-l blocheze.",
         "Your own resolver": "Propriul tău resolver",
-        "iOS plays video with the iPhone's own DNS. Use this check to see whether your network hides the playlist server; to change the DNS of the whole iPhone, open Settings > Wi-Fi > (i) > Configure DNS.": "iOS redă videoclipurile cu DNS-ul iPhone-ului. Folosește această verificare pentru a vedea dacă rețeaua ascunde serverul listei; pentru a schimba DNS-ul întregului iPhone, deschide Setări > Wi-Fi > (i) > Configurează DNS.",
+        "System default uses the iPhone's DNS and switches by itself to encrypted DNS (DNS-over-HTTPS) when your operator hides the playlist server. The other choices use encrypted DNS for playlists, TV guide and covers from the start.": "Implicit sistem folosește DNS-ul iPhone-ului și trece singur la DNS criptat (DNS-over-HTTPS) dacă operatorul ascunde serverul playlistului. Celelalte opțiuni folosesc DNS criptat de la început pentru playlisturi, ghid TV și coperți.",
+        "Your operator's DNS hides the playlist server: the app is using encrypted DNS.": "DNS-ul operatorului ascunde serverul playlistului: aplicația folosește DNS criptat.",
     ]
 }

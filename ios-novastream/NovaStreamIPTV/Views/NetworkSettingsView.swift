@@ -6,6 +6,7 @@ struct NetworkSettingsView: View {
     @State private var dns = DnsSettings.load()
     @State private var checking = false
     @State private var dnsResult: DnsResult?
+    @State private var autoEncrypted = EncryptedDNS.autoEnabled
     @State private var testing = false
     @State private var speed: SpeedResult?
     @State private var speedError: String?
@@ -33,8 +34,13 @@ struct NetworkSettingsView: View {
                 }
                 .pickerStyle(.inline)
                 .labelsHidden()
+                if dns.preset == .system && autoEncrypted {
+                    Label(t("Your operator's DNS hides the playlist server: the app is using encrypted DNS."), systemImage: "lock.shield.fill")
+                        .font(.subheadline)
+                        .foregroundStyle(Nova.amber)
+                }
             } header: { Text("DNS") } footer: {
-                Text(t("iOS plays video with the iPhone's own DNS. Use this check to see whether your network hides the playlist server; to change the DNS of the whole iPhone, open Settings > Wi-Fi > (i) > Configure DNS."))
+                Text(t("System default uses the iPhone's DNS and switches by itself to encrypted DNS (DNS-over-HTTPS) when your operator hides the playlist server. The other choices use encrypted DNS for playlists, TV guide and covers from the start."))
             }
 
             if dns.preset == .custom {
@@ -100,6 +106,8 @@ struct NetworkSettingsView: View {
         .navigationTitle(t("Network"))
         .onChange(of: dns) { _, value in
             value.save()
+            EncryptedDNS.userChanged(value)
+            autoEncrypted = EncryptedDNS.autoEnabled
             dnsResult = nil
         }
     }

@@ -35,7 +35,7 @@ struct OnboardingView: View {
                     }
 
                     VStack(spacing: 12) {
-                        feature("list.bullet.rectangle.fill", Nova.blue, t("Your playlists"), t("Add m3u links or Xtream Codes accounts. Credentials stay in this iPhone's Keychain."))
+                        feature("list.bullet.rectangle.fill", Nova.blue, t("Your playlists"), t("Add m3u links, Xtream Codes accounts or a private host. Credentials stay only on this iPhone."))
                         feature("play.tv.fill", Nova.green, t("Live TV with guide"), t("See what's on now and next, with the TV guide from your provider."))
                         feature("film.stack.fill", Nova.purple, t("Movies and series"), t("Posters, plots, seasons and Continue Watching where you left off."))
                         feature("exclamationmark.shield.fill", Nova.amber, t("No content included"), t("NovaStream does not provide channels or videos: you need a playlist from your own provider."))

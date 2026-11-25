@@ -24,7 +24,7 @@ nonisolated extension Strings {
         "Add a playlist from the Home tab to browse the catalog.": "Kataloğa göz atmak için Ana Sayfa'dan bir liste ekle.",
         "Add a playlist from the Home tab to see your channels.": "Kanallarını görmek için Ana Sayfa'dan bir liste ekle.",
         "Add a playlist from the Home tab, then search channels, movies and series here.": "Ana Sayfa'dan bir liste ekle, sonra kanalları, filmleri ve dizileri burada ara.",
-        "Add m3u links or Xtream Codes accounts. Credentials stay in this iPhone's Keychain.": "m3u bağlantıları veya Xtream Codes hesapları ekle. Giriş bilgileri bu iPhone'un Anahtar Zinciri'nde kalır.",
+        "Add m3u links, Xtream Codes accounts or a private host. Credentials stay only on this iPhone.": "m3u bağlantıları, Xtream Codes hesapları veya özel bir host ekle. Giriş bilgileri yalnızca bu iPhone'da kalır.",
         "Add or delete playlists from a computer with this device and key. The key is single use and changes every 5 minutes. Do not share it.": "Bu cihaz ve anahtarla bir bilgisayardan liste ekle veya sil. Anahtar tek kullanımlıktır ve her 5 dakikada bir değişir. Kimseyle paylaşma.",
         "Add playlist": "Liste ekle",
         "Add to favourites": "Favorilere ekle",
@@ -60,7 +60,7 @@ nonisolated extension Strings {
         "Continue watching": "İzlemeye devam et",
         "Continue — %@": "Devam — %@",
         "Copy ID": "ID'yi kopyala",
-        "Credentials are stored only in this iPhone's Keychain.": "Giriş bilgileri yalnızca bu iPhone'un Anahtar Zinciri'nde saklanır.",
+        "Credentials are stored only on this iPhone.": "Giriş bilgileri yalnızca bu iPhone'da saklanır.",
         "Credentials rejected by the server.": "Giriş bilgileri sunucu tarafından reddedildi.",
         "Dark": "Koyu",
         "Data on this iPhone": "Bu iPhone'daki veriler",
@@ -277,6 +277,7 @@ nonisolated extension Strings {
         "Use your network's DNS": "Ağının DNS'ini kullan",
         "Your network's DNS does not find this server, but %@ does: the network may be blocking it.": "Ağının DNS'i bu sunucuyu bulamıyor ama %@ buluyor: ağ onu engelliyor olabilir.",
         "Your own resolver": "Kendi çözümleyicin",
-        "iOS plays video with the iPhone's own DNS. Use this check to see whether your network hides the playlist server; to change the DNS of the whole iPhone, open Settings > Wi-Fi > (i) > Configure DNS.": "iOS videoları iPhone'un kendi DNS'iyle oynatır. Ağının liste sunucusunu gizleyip gizlemediğini görmek için bu kontrolü kullan; tüm iPhone'un DNS'ini değiştirmek için Ayarlar > Wi-Fi > (i) > DNS'i Yapılandır'ı aç.",
+        "System default uses the iPhone's DNS and switches by itself to encrypted DNS (DNS-over-HTTPS) when your operator hides the playlist server. The other choices use encrypted DNS for playlists, TV guide and covers from the start.": "Sistem varsayılanı iPhone'un DNS'ini kullanır ve operatör liste sunucusunu gizlerse kendiliğinden şifreli DNS'e (DNS-over-HTTPS) geçer. Diğer seçenekler listeler, TV rehberi ve kapaklar için baştan şifreli DNS kullanır.",
+        "Your operator's DNS hides the playlist server: the app is using encrypted DNS.": "Operatörünüzün DNS'i liste sunucusunu gizliyor: uygulama şifreli DNS kullanıyor.",
     ]
 }

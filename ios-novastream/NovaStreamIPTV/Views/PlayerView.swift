@@ -22,6 +22,10 @@ final class PlayerController {
     @ObservationIgnored private var endTask: Task<Void, Never>?
     @ObservationIgnored private var countdownTask: Task<Void, Never>?
     @ObservationIgnored private var retries = 0
+    /// Stream asked for by the address encrypted DNS found, for when the
+    /// operator's DNS hides the server from the iPhone player.
+    @ObservationIgnored private var resolved: (original: String, url: URL, host: String)?
+    @ObservationIgnored private var resolvedTried: String?
 
     init(request: PlaybackRequest, model: AppModel) {
         self.request = request
@@ -40,11 +44,18 @@ final class PlayerController {
         phase = .loading
         countdown = nil
         countdownTask?.cancel()
-        guard let url = URL(string: StreamURLs.forPlayback(request.url, kind: request.kind)) else {
+        let address = StreamURLs.forPlayback(request.url, kind: request.kind)
+        guard let url = URL(string: address) else {
             phase = .failed(t("This address is not valid."))
             return
         }
-        let asset = AVURLAsset(url: url, options: [AVURLAssetHTTPUserAgentKey: Net.playerAgent])
+        var options: [String: Any] = [AVURLAssetHTTPUserAgentKey: Net.playerAgent]
+        var target = url
+        if let resolved, resolved.original == address {
+            target = resolved.url
+            options["AVURLAssetHTTPHeaderFieldsKey"] = ["Host": resolved.host]
+        }
+        let asset = AVURLAsset(url: target, options: options)
         let item = AVPlayerItem(asset: asset)
         if let seconds = model?.settings.buffer.seconds, seconds > 0 {
             item.preferredForwardBufferDuration = seconds
@@ -80,6 +91,7 @@ final class PlayerController {
     }
 
     private func handleFailure(_ error: Error?) {
+        if tryResolvedAddress() { return }
         if model?.settings.autoReconnect == true, retries < 3 {
             retries += 1
             phase = .loading
@@ -97,6 +109,32 @@ final class PlayerController {
             phase = .failed(error?.localizedDescription ?? t("The stream could not be played."))
         }
         Haptics.error()
+    }
+
+    /// With encrypted DNS on, a plain http stream the player cannot reach is
+    /// asked for once more at the address encrypted DNS finds, with its name
+    /// in the Host header.
+    private func tryResolvedAddress() -> Bool {
+        let address = StreamURLs.forPlayback(request.url, kind: request.kind)
+        guard EncryptedDNS.isActive, resolvedTried != address,
+              let url = URL(string: address), url.scheme?.lowercased() == "http",
+              let host = url.host(), !DnsCheck.isIPv4(host) else { return false }
+        resolvedTried = address
+        phase = .loading
+        let resume = request.kind == .live ? 0 : player.currentTime().seconds
+        Task {
+            let ips = (try? await DnsCheck.dohLookup(host, url: "https://cloudflare-dns.com/dns-query")) ?? []
+            guard let ip = ips.first, var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+                self.handleFailure(nil)
+                return
+            }
+            parts.host = ip
+            guard let target = parts.url else { self.handleFailure(nil); return }
+            let hostHeader = url.port.map { "\(host):\($0)" } ?? host
+            self.resolved = (address, target, hostHeader)
+            self.load(startAt: resume.isFinite ? resume : 0)
+        }
+        return true
     }
 
     func retry() {

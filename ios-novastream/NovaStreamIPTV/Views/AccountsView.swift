@@ -48,7 +48,7 @@ struct AccountsView: View {
                     Label(t("Add playlist"), systemImage: "plus.circle.fill").font(.body.weight(.semibold))
                 }
             } footer: {
-                Text(t("Credentials are stored only in this iPhone's Keychain."))
+                Text(t("Credentials are stored only on this iPhone."))
             }
         }
         .navigationTitle(t("Playlists"))

@@ -7,6 +7,7 @@ struct NovaStreamIPTVApp: App {
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
+        EncryptedDNS.configure()
         let model = AppModel()
         let license = LicenseManager()
         #if DEBUG && targetEnvironment(simulator)

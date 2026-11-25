@@ -1,6 +1,7 @@
 import Foundation
+import os
 
-nonisolated enum SyncError: LocalizedError, Sendable {
+nonisolated enum SyncError: LocalizedError, Sendable, Equatable {
     case unreachable, timeout, secure, notFound, server(Int), refused, invalid(String), empty
 
     var errorDescription: String? {
@@ -19,13 +20,28 @@ nonisolated enum SyncError: LocalizedError, Sendable {
 
 /// Shared HTTP access for provider servers.
 nonisolated enum Net {
-    static let session: URLSession = {
+    private static let current = OSAllocatedUnfairLock(initialState: makeSession())
+
+    static var session: URLSession { current.withLock { $0 } }
+
+    private static func makeSession() -> URLSession {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 30
         config.timeoutIntervalForResource = 300
         config.requestCachePolicy = .reloadIgnoringLocalCacheData
         return URLSession(configuration: config)
-    }()
+    }
+
+    /// Fresh connections after the DNS choice changes, so nothing resolved
+    /// with the old one is reused.
+    static func resetSession() {
+        let old = current.withLock { session in
+            let previous = session
+            session = makeSession()
+            return previous
+        }
+        old.finishTasksAndInvalidate()
+    }
 
     /// Identities presented to IPTV panels, as on Android. Many panels (often
     /// behind Cloudflare) drop requests from unknown agents, which surfaces as a
@@ -43,11 +59,20 @@ nonisolated enum Net {
     static func get(_ urlString: String) async throws -> Data {
         guard let url = URL(string: urlString.trimmed) else { throw SyncError.invalid(t("The address is not valid.")) }
         var last: SyncError = .unreachable
+        var checkedDNS = false
         for attempt in 0..<maxAttempts {
             do {
                 return try await fetch(url, agent: userAgents[attempt % userAgents.count])
             } catch let error as SyncError {
                 last = error
+                // The operator's DNS may hide the server: switch to encrypted DNS and try again.
+                if !checkedDNS, error == .unreachable || error == .timeout, !EncryptedDNS.isActive {
+                    checkedDNS = true
+                    if await EncryptedDNS.networkHides(DnsCheck.hostName(from: url.absoluteString)),
+                       EncryptedDNS.enableAutomatically() {
+                        if let data = try? await fetch(url, agent: userAgents[attempt % userAgents.count]) { return data }
+                    }
+                }
                 guard retryable(error), attempt < maxAttempts - 1 else { throw error }
                 try? await Task.sleep(for: .milliseconds(1_200 * (attempt + 1)))
             }

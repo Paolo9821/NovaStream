@@ -24,7 +24,7 @@ nonisolated extension Strings {
         "Add a playlist from the Home tab to browse the catalog.": "Añade una lista desde Inicio para explorar el catálogo.",
         "Add a playlist from the Home tab to see your channels.": "Añade una lista desde Inicio para ver tus canales.",
         "Add a playlist from the Home tab, then search channels, movies and series here.": "Añade una lista desde Inicio y busca aquí canales, películas y series.",
-        "Add m3u links or Xtream Codes accounts. Credentials stay in this iPhone's Keychain.": "Añade enlaces m3u o cuentas Xtream Codes. Las credenciales se quedan en el Llavero de este iPhone.",
+        "Add m3u links, Xtream Codes accounts or a private host. Credentials stay only on this iPhone.": "Añade enlaces m3u, cuentas Xtream Codes o un host privado. Las credenciales se quedan solo en este iPhone.",
         "Add or delete playlists from a computer with this device and key. The key is single use and changes every 5 minutes. Do not share it.": "Añade o elimina listas desde un ordenador con este dispositivo y esta clave. La clave es de un solo uso y cambia cada 5 minutos. No la compartas.",
         "Add playlist": "Añadir lista",
         "Add to favourites": "Añadir a favoritos",
@@ -60,7 +60,7 @@ nonisolated extension Strings {
         "Continue watching": "Seguir viendo",
         "Continue — %@": "Continuar — %@",
         "Copy ID": "Copiar ID",
-        "Credentials are stored only in this iPhone's Keychain.": "Las credenciales se guardan solo en el Llavero de este iPhone.",
+        "Credentials are stored only on this iPhone.": "Las credenciales se guardan solo en este iPhone.",
         "Credentials rejected by the server.": "El servidor ha rechazado las credenciales.",
         "Dark": "Oscuro",
         "Data on this iPhone": "Datos en este iPhone",
@@ -277,6 +277,7 @@ nonisolated extension Strings {
         "Use your network's DNS": "Usa el DNS de tu red",
         "Your network's DNS does not find this server, but %@ does: the network may be blocking it.": "El DNS de tu red no encuentra este servidor, pero %@ sí: puede que la red lo esté bloqueando.",
         "Your own resolver": "Tu propio resolutor",
-        "iOS plays video with the iPhone's own DNS. Use this check to see whether your network hides the playlist server; to change the DNS of the whole iPhone, open Settings > Wi-Fi > (i) > Configure DNS.": "iOS reproduce los vídeos con el DNS del iPhone. Usa esta comprobación para ver si tu red oculta el servidor de la lista; para cambiar el DNS de todo el iPhone, abre Ajustes > Wi-Fi > (i) > Configurar DNS.",
+        "System default uses the iPhone's DNS and switches by itself to encrypted DNS (DNS-over-HTTPS) when your operator hides the playlist server. The other choices use encrypted DNS for playlists, TV guide and covers from the start.": "Predeterminado del sistema usa el DNS del iPhone y cambia solo al DNS cifrado (DNS-over-HTTPS) si tu operador oculta el servidor de la lista. Las demás opciones usan DNS cifrado desde el principio para listas, guía TV y carátulas.",
+        "Your operator's DNS hides the playlist server: the app is using encrypted DNS.": "El DNS de tu operador oculta el servidor de la lista: la app está usando DNS cifrado.",
     ]
 }
