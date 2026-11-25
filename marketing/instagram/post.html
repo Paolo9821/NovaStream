@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8" />
+<!-- Instagram post 1080x1350. Open post.html?store=gplay or post.html?store=ios -->
+<style>
+  @font-face { font-family: "Archivo"; src: url("assets/archivo.woff2") format("woff2"); font-weight: 100 900; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1080px; height: 1350px; overflow: hidden; background: #030816; }
+  body { font-family: "Archivo", sans-serif; color: #EAF2FF; -webkit-font-smoothing: antialiased; }
+
+  .post { position: relative; width: 1080px; height: 1350px; overflow: hidden;
+    background:
+      radial-gradient(900px 700px at 78% 72%, rgba(22, 92, 255, .55), transparent 62%),
+      radial-gradient(620px 520px at 12% 96%, rgba(24, 220, 120, .30), transparent 65%),
+      radial-gradient(700px 500px at 90% -5%, rgba(40, 200, 255, .22), transparent 60%),
+      linear-gradient(180deg, #040A1F 0%, #030816 100%); }
+
+  /* orbit ring echoing the icon */
+  .orbit { position: absolute; left: 470px; top: 720px; width: 1100px; height: 460px; border-radius: 50%;
+    border: 3px solid transparent; transform: rotate(-24deg);
+    background: linear-gradient(90deg, #22E36B, #2BD9FF 45%, rgba(43,140,255,0) 85%) border-box;
+    -webkit-mask: linear-gradient(#000 0 0) padding-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor; mask-composite: exclude; opacity: .55; filter: drop-shadow(0 0 14px rgba(43,217,255,.6)); }
+  .stars { position: absolute; color: #8FF3FF; text-shadow: 0 0 18px #2BD9FF; }
+
+  .grain { position: absolute; inset: 0; opacity: .07; pointer-events: none;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2'/></filter><rect width='200' height='200' filter='url(%23n)'/></svg>"); }
+
+  .top { position: absolute; left: 72px; top: 72px; right: 72px; display: flex; align-items: center; gap: 22px; }
+  .icon { width: 96px; height: 96px; border-radius: 24px; overflow: hidden;
+    box-shadow: 0 0 0 1px rgba(120,170,255,.25), 0 16px 40px rgba(0,60,255,.45); }
+  .icon img { width: 100%; height: 100%; object-fit: cover; transform: scale(1.32); }
+  .brand { font-size: 44px; font-weight: 800; letter-spacing: -.02em; }
+  .brand small { display: block; font-size: 19px; font-weight: 500; letter-spacing: .16em; text-transform: uppercase; color: #7FA3D9; margin-top: 4px; }
+
+  .pill { position: absolute; left: 72px; top: 222px; display: inline-flex; align-items: center; gap: 12px;
+    padding: 12px 22px; border-radius: 999px; font-size: 22px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+    color: #0B1A10; background: linear-gradient(90deg, #22E36B, #2BD9FF); box-shadow: 0 8px 30px rgba(34,227,107,.35); }
+  .pill i { width: 10px; height: 10px; border-radius: 50%; background: #0B1A10; }
+
+  h1 { position: absolute; left: 68px; top: 300px; font-size: 112px; line-height: .94; font-weight: 850; letter-spacing: -.045em; }
+  h1 em { font-style: normal; background: linear-gradient(95deg, #5FB2FF 0%, #2BD9FF 45%, #3BEA8C 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+  .sub { position: absolute; left: 72px; top: 560px; width: 460px; font-size: 30px; line-height: 1.3; font-weight: 450; color: #B7C8E6; }
+
+  .feats { position: absolute; left: 72px; top: 740px; width: 440px; display: flex; flex-direction: column; gap: 18px; }
+  .feat { display: flex; align-items: center; gap: 16px; font-size: 26px; font-weight: 600; color: #DCE7FA; }
+  .feat b { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; font-size: 20px;
+    background: rgba(43,140,255,.18); border: 1px solid rgba(95,178,255,.35); color: #7CC4FF; }
+
+  .cta { position: absolute; left: 72px; bottom: 72px; display: flex; flex-direction: column; gap: 22px; }
+  .trial { font-size: 24px; font-weight: 600; color: #3BEA8C; letter-spacing: .02em; }
+  .badge { height: 92px; display: block; }
+  .badge.gplay { height: 104px; margin-left: -10px; }
+
+  /* phones */
+  .phone { position: absolute; border-radius: 64px; padding: 14px; background: linear-gradient(150deg, #3A4560, #121827 40%, #0A0E18);
+    box-shadow: 0 0 0 2px rgba(150,180,255,.18), 0 50px 120px rgba(0,0,0,.65), 0 0 90px rgba(30,110,255,.35); }
+  .phone .screen { width: 100%; height: 100%; border-radius: 52px; overflow: hidden; background: #000; }
+  .phone .screen img { width: 100%; height: 100%; object-fit: cover; object-position: top; display: block; }
+  .phone.android { border-radius: 54px; } .phone.android .screen { border-radius: 42px; }
+  .phone.android .cam { position: absolute; top: 34px; left: 50%; width: 22px; height: 22px; margin-left: -11px; border-radius: 50%; background: #05070c; box-shadow: 0 0 0 3px #1b2233; }
+
+  .front { width: 430px; height: 920px; left: 590px; top: 540px; transform: rotate(-4deg); z-index: 3; }
+  .back  { width: 390px; height: 840px; left: 800px; top: 470px; transform: rotate(8deg); z-index: 2; opacity: .92; filter: saturate(.9) brightness(.8); }
+</style>
+</head>
+<body>
+<div class="post" id="post">
+  <div class="orbit"></div>
+  <div class="stars" style="left:930px;top:120px;font-size:54px">✦</div>
+  <div class="stars" style="left:992px;top:175px;font-size:28px">✦</div>
+
+  <div class="top">
+    <div class="icon"><img src="assets/icon.png" alt="" /></div>
+    <div class="brand">NovaStream<small>Player IPTV</small></div>
+  </div>
+
+  <div class="pill"><i></i><span id="pill"></span></div>
+  <h1 id="title"></h1>
+  <p class="sub" id="sub"></p>
+
+  <div class="feats" id="feats"></div>
+
+  <div class="phone back" id="backPhone"><div class="screen"><img id="backImg" alt="" /></div></div>
+  <div class="phone front" id="frontPhone"><div class="screen"><img id="frontImg" alt="" /></div></div>
+
+  <div class="cta">
+    <div class="trial">7 giorni di prova gratuita</div>
+    <img class="badge" id="badge" alt="" />
+  </div>
+  <div class="grain"></div>
+</div>
+<script>
+  const store = new URLSearchParams(location.search).get("store") || "ios";
+  const cfg = {
+    gplay: {
+      pill: "Disponibile ora", title: 'Ora su<br><em>Google Play</em>',
+      sub: "Il player elegante per le playlist IPTV che hai già.",
+      feats: [["▶", "TV in diretta con guida EPG"], ["◎", "M3U, Xtream e host privato"], ["★", "Film, serie e preferiti"]],
+      front: "assets/android-home.jpg", back: "assets/android-2.jpg", badge: "assets/badge-gplay.png", android: true,
+    },
+    ios: {
+      pill: "Disponibile ora", title: 'Ora su<br><em>App Store</em>',
+      sub: "Il player elegante per le playlist IPTV che hai già. Su iPhone e iPad.",
+      feats: [["▶", "TV in diretta con guida EPG"], ["◎", "M3U, Xtream e host privato"], ['<svg width="22" height="18" viewBox="0 0 22 18" fill="none"><rect x="1" y="1" width="20" height="16" rx="3" stroke="currentColor" stroke-width="2"/><rect x="11" y="9" width="7" height="5" rx="1" fill="currentColor"/></svg>', "AirPlay e Picture in Picture"]],
+      front: "assets/iphone-home.jpg", back: "assets/iphone-live.jpg", badge: "assets/badge-appstore.svg", android: false,
+    },
+  }[store];
+  document.getElementById("pill").textContent = cfg.pill;
+  document.getElementById("title").innerHTML = cfg.title;
+  document.getElementById("sub").textContent = cfg.sub;
+  document.getElementById("feats").innerHTML = cfg.feats.map(([i, t]) => `<div class="feat"><b>${i}</b>${t}</div>`).join("");
+  document.getElementById("frontImg").src = cfg.front;
+  document.getElementById("backImg").src = cfg.back;
+  const badge = document.getElementById("badge");
+  badge.src = cfg.badge; if (cfg.android) badge.classList.add("gplay");
+  if (cfg.android) {
+    for (const id of ["frontPhone", "backPhone"]) {
+      const p = document.getElementById(id); p.classList.add("android");
+      const c = document.createElement("div"); c.className = "cam"; p.appendChild(c);
+    }
+  }
+</script>
+</body>
+</html>
