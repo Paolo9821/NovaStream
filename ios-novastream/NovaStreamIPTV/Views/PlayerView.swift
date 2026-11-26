@@ -14,13 +14,15 @@ final class PlayerController {
     private(set) var request: PlaybackRequest
     private(set) var phase: Phase = .loading
     private(set) var countdown: Int?
-    var showChannels = false
 
     @ObservationIgnored private weak var model: AppModel?
     @ObservationIgnored private var timeObserver: Any?
-    @ObservationIgnored private var statusTask: Task<Void, Never>?
-    @ObservationIgnored private var endTask: Task<Void, Never>?
+    @ObservationIgnored private var statusObservation: NSKeyValueObservation?
+    @ObservationIgnored private var rateObservation: NSKeyValueObservation?
+    @ObservationIgnored private var endObserver: NSObjectProtocol?
     @ObservationIgnored private var countdownTask: Task<Void, Never>?
+    @ObservationIgnored private var tickObserver: Any?
+    @ObservationIgnored private var lastTick: Double = -1
     @ObservationIgnored private var retries = 0
     /// Stream asked for by the address encrypted DNS found, for when the
     /// operator's DNS hides the server from the iPhone player.
@@ -35,13 +37,49 @@ final class PlayerController {
         timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 10, preferredTimescale: 1), queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.saveProgress() }
         }
+        // Live streams do not always report readyToPlay even though frames are
+        // on screen: time moving forward is the surest sign that it plays.
+        tickObserver = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 2), queue: .main) { [weak self] time in
+            MainActor.assumeIsolated { self?.tick(time.seconds) }
+        }
+        rateObservation = Self.watchRate(player) { [weak self] status in
+            Task { @MainActor in
+                #if DEBUG
+                print("player_rate status=\(status.rawValue)")
+                #endif
+                if status == .playing { self?.markPlaying() }
+            }
+        }
         load(startAt: request.startAt)
+    }
+
+    // KVO fires on AVFoundation's own threads, so these are built outside the
+    // main actor and hop back to it.
+    nonisolated private static func watchStatus(_ item: AVPlayerItem, _ handler: @escaping @Sendable (AVPlayerItem.Status) -> Void) -> NSKeyValueObservation {
+        item.observe(\.status, options: [.initial, .new]) { item, _ in handler(item.status) }
+    }
+
+    nonisolated private static func watchRate(_ player: AVPlayer, _ handler: @escaping @Sendable (AVPlayer.TimeControlStatus) -> Void) -> NSKeyValueObservation {
+        player.observe(\.timeControlStatus, options: [.initial, .new]) { player, _ in handler(player.timeControlStatus) }
     }
 
     var currentIndex: Int? { request.channels.firstIndex { $0.id == request.entryId } }
 
+    private func markPlaying() {
+        guard phase == .loading else { return }
+        phase = .playing
+        retries = 0
+    }
+
+    private func tick(_ seconds: Double) {
+        defer { lastTick = seconds }
+        guard seconds.isFinite, lastTick >= 0, seconds > lastTick + 0.1, player.rate > 0 else { return }
+        markPlaying()
+    }
+
     func load(startAt: Double) {
         phase = .loading
+        lastTick = -1
         countdown = nil
         countdownTask?.cancel()
         let address = StreamURLs.forPlayback(request.url, kind: request.kind)
@@ -61,6 +99,9 @@ final class PlayerController {
             item.preferredForwardBufferDuration = seconds
         }
         player.replaceCurrentItem(with: item)
+        #if DEBUG
+        debugProbe(target, item: item)
+        #endif
         if startAt > 5 { player.seek(to: CMTime(seconds: startAt, preferredTimescale: 600)) }
         player.play()
         if request.kind == .live { recordLive() }
@@ -68,29 +109,54 @@ final class PlayerController {
     }
 
     private func observe(_ item: AVPlayerItem) {
-        statusTask?.cancel()
-        statusTask = Task { [weak self] in
-            for await status in item.publisher(for: \.status).values {
-                guard let self else { return }
+        statusObservation?.invalidate()
+        statusObservation = Self.watchStatus(item) { [weak self] status in
+            Task { @MainActor in
+                guard let self, self.player.currentItem === item else { return }
+                #if DEBUG
+                print("player_item status=\(status.rawValue) error=\(item.error?.localizedDescription ?? "-")")
+                #endif
                 switch status {
                 case .readyToPlay:
-                    self.phase = .playing
-                    self.retries = 0
+                    self.markPlaying()
                 case .failed:
                     self.handleFailure(item.error)
                 default: break
                 }
             }
         }
-        endTask?.cancel()
-        endTask = Task { [weak self] in
-            for await _ in NotificationCenter.default.notifications(named: AVPlayerItem.didPlayToEndTimeNotification, object: item) {
-                self?.didFinish()
-            }
+        if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
+        endObserver = NotificationCenter.default.addObserver(forName: AVPlayerItem.didPlayToEndTimeNotification, object: item, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.didFinish() }
         }
     }
 
+    /// Errors that say the stream arrived but iOS cannot decode it: asking for
+    /// it again cannot help.
+    private static func isUnsupportedFormat(_ error: Error?) -> Bool {
+        var current = error as NSError?
+        while let e = current {
+            if e.domain == "CoreMediaErrorDomain", e.code == 1718449215 { return true } // 'fmt?'
+            if e.domain == AVFoundationErrorDomain, [
+                AVError.Code.fileFormatNotRecognized.rawValue,
+                AVError.Code.decoderNotFound.rawValue,
+                AVError.Code.decodeFailed.rawValue,
+                AVError.Code.failedToParse.rawValue,
+            ].contains(e.code) { return true }
+            current = e.userInfo[NSUnderlyingErrorKey] as? NSError
+        }
+        return false
+    }
+
     private func handleFailure(_ error: Error?) {
+        if Self.isUnsupportedFormat(error) {
+            let ext = URL(string: request.url)?.pathExtension.uppercased() ?? ""
+            phase = .failed(request.kind == .live || ext.isEmpty
+                ? t("This channel uses an audio or video format the iPhone player does not support. Try another version of the channel, such as SD or HD.")
+                : t("This video format (%@) is not supported by the iPhone player.", ext))
+            Haptics.error()
+            return
+        }
         if tryResolvedAddress() { return }
         if model?.settings.autoReconnect == true, retries < 3 {
             retries += 1
@@ -136,6 +202,28 @@ final class PlayerController {
         }
         return true
     }
+
+    #if DEBUG
+    @ObservationIgnored private var debugTokens: [NSObjectProtocol] = []
+
+    private func debugProbe(_ url: URL, item: AVPlayerItem) {
+        let parts = url.pathComponents
+        print("player_url host=\(url.host() ?? "-") tail=\(parts.suffix(1).joined()) ext=\(url.pathExtension)")
+        debugTokens.forEach(NotificationCenter.default.removeObserver)
+        debugTokens = [
+            NotificationCenter.default.addObserver(forName: AVPlayerItem.newErrorLogEntryNotification, object: item, queue: .main) { _ in
+                if let e = item.errorLog()?.events.last {
+                    print("player_errlog status=\(e.errorStatusCode) domain=\(e.errorDomain) comment=\(e.errorComment ?? "-") uri=\(URL(string: e.uri ?? "")?.host() ?? "-")")
+                }
+            },
+            NotificationCenter.default.addObserver(forName: AVPlayerItem.newAccessLogEntryNotification, object: item, queue: .main) { _ in
+                if let e = item.accessLog()?.events.last {
+                    print("player_access server=\(e.serverAddress ?? "-") bitrate=\(Int(e.indicatedBitrate)) stalls=\(e.numberOfStalls)")
+                }
+            },
+        ]
+    }
+    #endif
 
     func retry() {
         retries = 0
@@ -215,11 +303,17 @@ final class PlayerController {
 
     func close() {
         saveProgress()
-        statusTask?.cancel()
-        endTask?.cancel()
+        statusObservation?.invalidate()
+        statusObservation = nil
+        rateObservation?.invalidate()
+        rateObservation = nil
+        if let endObserver { NotificationCenter.default.removeObserver(endObserver) }
+        endObserver = nil
         countdownTask?.cancel()
         if let timeObserver { player.removeTimeObserver(timeObserver) }
         timeObserver = nil
+        if let tickObserver { player.removeTimeObserver(tickObserver) }
+        tickObserver = nil
         player.pause()
         player.replaceCurrentItem(with: nil)
     }
@@ -230,6 +324,7 @@ struct PlayerView: View {
     @Environment(\.dismiss) private var dismiss
     let request: PlaybackRequest
     @State private var controller: PlayerController?
+    @State private var showChannels = false
 
     var body: some View {
         ZStack {
@@ -248,7 +343,6 @@ struct PlayerView: View {
 
     @ViewBuilder
     private func content(_ c: PlayerController) -> some View {
-        @Bindable var c = c
         VStack(spacing: 0) {
             topBar(c)
             if let countdown = c.countdown, let next = c.nextEpisode {
@@ -287,12 +381,12 @@ struct PlayerView: View {
             }
         }
         .animation(.spring(duration: 0.35), value: c.countdown)
-        .sheet(isPresented: $c.showChannels) {
+        .sheet(isPresented: $showChannels) {
             NavigationStack {
                 List(c.request.channels) { channel in
                     Button {
                         c.switchTo(channel)
-                        c.showChannels = false
+                        showChannels = false
                     } label: {
                         ChannelRow(entry: channel, now: Date())
                     }
@@ -339,7 +433,7 @@ struct PlayerView: View {
                     .accessibilityLabel(t("Previous channel"))
                 Button { c.zap(1) } label: { Image(systemName: "chevron.down.circle") }
                     .accessibilityLabel(t("Next channel"))
-                Button { c.showChannels = true } label: { Image(systemName: "list.bullet") }
+                Button { showChannels = true } label: { Image(systemName: "list.bullet") }
                     .accessibilityLabel(t("Channels"))
             }
             if c.request.kind == .series, c.nextEpisode != nil {

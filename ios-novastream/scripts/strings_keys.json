@@ -273,5 +273,6 @@
   "Your network's DNS does not find this server, but %@ does: the network may be blocking it.",
   "Your own resolver",
   "Your playlists",
-  "iOS plays video with the iPhone's own DNS. Use this check to see whether your network hides the playlist server; to change the DNS of the whole iPhone, open Settings > Wi-Fi > (i) > Configure DNS."
+  "iOS plays video with the iPhone's own DNS. Use this check to see whether your network hides the playlist server; to change the DNS of the whole iPhone, open Settings > Wi-Fi > (i) > Configure DNS.",
+  "This channel uses an audio or video format the iPhone player does not support. Try another version of the channel, such as SD or HD."
 ]

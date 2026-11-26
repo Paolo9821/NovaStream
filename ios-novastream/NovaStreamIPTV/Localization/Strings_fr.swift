@@ -218,6 +218,7 @@ nonisolated extension Strings {
         "This address is not valid.": "Cette adresse n'est pas valide.",
         "This category is protected by parental control.": "Cette catégorie est protégée par le contrôle parental.",
         "This video format (%@) is not supported by the iPhone player.": "Ce format vidéo (%@) n'est pas pris en charge par le lecteur de l'iPhone.",
+        "This channel uses an audio or video format the iPhone player does not support. Try another version of the channel, such as SD or HD.": "Cette chaîne utilise un format audio ou vidéo que le lecteur de l'iPhone ne prend pas en charge. Essayez une autre version de la chaîne, par exemple SD ou HD.",
         "Trial ended": "Essai terminé",
         "Try again": "Réessayer",
         "Type": "Type",
