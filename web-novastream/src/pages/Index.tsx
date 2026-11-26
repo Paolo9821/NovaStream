@@ -239,6 +239,8 @@ export default function Index() {
 
   const normalized = normalizeDeviceId(deviceId);
   const deviceValid = isValidDeviceId(deviceId);
+  // Required: it is the receipt address and the only proof for a licence transfer.
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim());
 
   const plans: PlanInfo[] = useMemo(() => config.data?.plans ?? [], [config.data]);
   const selectedPlan = plans.find((p) => p.id === plan);
@@ -434,8 +436,19 @@ export default function Index() {
               value={email}
               onChange={(event) => setEmail(event.target.value)}
               placeholder={t("email.placeholder")}
-              className="mt-2 h-12 border-border/80 bg-secondary/60"
+              required
+              autoComplete="email"
+              className={cn(
+                "mt-2 h-12 border-border/80 bg-secondary/60",
+                email.trim().length > 0 && !emailValid && "border-destructive/70",
+              )}
             />
+            {email.trim().length > 0 && !emailValid && (
+              <p className="mt-2 flex items-center gap-1.5 text-xs text-destructive">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                {t("email.invalid")}
+              </p>
+            )}
 
             <div className="mt-8 space-y-3">
               <StepBadge index={3} label={t("step.payment")} />
@@ -457,14 +470,14 @@ export default function Index() {
                 <>
                   <Button
                     onClick={() => void handleRedeem()}
-                    disabled={!deviceValid || redeeming}
+                    disabled={!deviceValid || !emailValid || redeeming}
                     className="h-13 w-full gap-2.5 bg-accent text-base font-semibold text-accent-foreground hover:bg-accent/90"
                   >
                     {redeeming ? <Loader2 className="h-4.5 w-4.5 animate-spin" /> : <Gift className="h-4.5 w-4.5" />}
                     {redeeming ? t("promo.redeeming") : t("promo.redeem")}
                   </Button>
                   <p className="text-center text-xs text-muted-foreground">
-                    {deviceValid ? t("promo.redeemHint") : t("promo.err.device")}
+                    {!deviceValid ? t("promo.err.device") : !emailValid ? t("email.invalid") : t("promo.redeemHint")}
                   </p>
                 </>
               )}
@@ -514,7 +527,7 @@ export default function Index() {
                   </label>
                   <Button
                     onClick={() => void handleCheckout()}
-                    disabled={!deviceValid || !consented || redirecting}
+                    disabled={!deviceValid || !emailValid || !consented || redirecting}
                     className="h-13 w-full gap-2.5 text-base font-semibold"
                   >
                     {redirecting ? (

@@ -20,7 +20,10 @@ import {
   PlayCircle,
   RefreshCw,
   RotateCcw,
+  ScrollText,
   Settings,
+  ShieldCheck,
+  Store,
   TicketPercent,
   Users,
   type LucideIcon,
@@ -33,13 +36,15 @@ import { Label } from "@/components/ui/label";
 import { CodesView, type CodeFolder } from "@/components/dashboard/CodesView";
 import { CustomersView, useCustomerFolders, type CustomerFolder } from "@/components/dashboard/CustomersView";
 import { GrantDialog } from "@/components/dashboard/LicenseDialogs";
+import { LogsView, type LogFolder } from "@/components/dashboard/LogsView";
+import { ResellersView } from "@/components/dashboard/ResellersView";
 import { Overview, type OverviewTarget } from "@/components/dashboard/Overview";
 import { RevenuePanel } from "@/components/dashboard/RevenuePanel";
 import { SecurityPanel } from "@/components/dashboard/SecurityPanel";
 import { SupportInbox, type TicketFolder } from "@/components/dashboard/SupportInbox";
 import { TransfersList } from "@/components/dashboard/TransfersList";
 import { SectionHeader, SubTabs } from "@/components/dashboard/ui";
-import { useLicenses, usePromos, useTickets, useTransfers } from "@/hooks/useAdminData";
+import { useLicenses, usePromos, useResellers, useTickets, useTransfers } from "@/hooks/useAdminData";
 import { ApiError, post } from "@/lib/api";
 import { codeState } from "@/lib/dashboard";
 import { cn } from "@/lib/utils";
@@ -71,13 +76,16 @@ export default function Dashboard() {
 
 type SupportFolder = TicketFolder | "transfers";
 
-type SectionId = "overview" | "customers" | "sales" | "codes" | "support" | "settings";
+type SectionId = "overview" | "customers" | "sales" | "codes" | "resellers" | "support" | "logs" | "settings";
+
+const SECTION_IDS: SectionId[] = ["overview", "customers", "sales", "codes", "resellers", "support", "logs", "settings"];
 
 type Location = {
   section: SectionId;
   customers: CustomerFolder;
   codes: CodeFolder;
   support: SupportFolder;
+  logs: LogFolder;
 };
 
 const DEFAULT_LOCATION: Location = {
@@ -85,6 +93,7 @@ const DEFAULT_LOCATION: Location = {
   customers: "subscription",
   codes: "discount",
   support: "new",
+  logs: "admin",
 };
 
 type SubItem = { id: string; label: string; icon: LucideIcon; count?: number };
@@ -93,7 +102,7 @@ type SubItem = { id: string; label: string; icon: LucideIcon; count?: number };
 function readHash(): Location {
   const [section, folder] = window.location.hash.replace(/^#/, "").split("/");
   const location = { ...DEFAULT_LOCATION };
-  if (["overview", "customers", "sales", "codes", "support", "settings"].includes(section)) {
+  if ((SECTION_IDS as string[]).includes(section)) {
     location.section = section as SectionId;
   }
   if (location.section === "customers" && ["trial", "subscription", "lifetime", "expired", "blocked"].includes(folder)) {
@@ -104,6 +113,9 @@ function readHash(): Location {
   }
   if (location.section === "support" && ["new", "open", "closed", "transfers"].includes(folder)) {
     location.support = folder as SupportFolder;
+  }
+  if (location.section === "logs" && ["admin", "reseller"].includes(folder)) {
+    location.logs = folder as LogFolder;
   }
   return location;
 }
@@ -116,6 +128,8 @@ function hashOf(location: Location): string {
       return `#codes/${location.codes}`;
     case "support":
       return `#support/${location.support}`;
+    case "logs":
+      return `#logs/${location.logs}`;
     default:
       return `#${location.section}`;
   }
@@ -130,6 +144,8 @@ function Console({ token, onSignOut }: { token: string; onSignOut: () => void })
   const tickets = useTickets(token);
   const promos = usePromos(token);
   const transfers = useTransfers(token);
+  const resellers = useResellers(token);
+  const resellerList = resellers.data?.resellers ?? [];
   const folders = useCustomerFolders(licenses.data, "");
 
   useEffect(() => {
@@ -155,13 +171,14 @@ function Console({ token, onSignOut }: { token: string; onSignOut: () => void })
       if (section === "customers") go({ section: "customers", customers: folder as CustomerFolder });
       else if (section === "codes") go({ section: "codes", codes: folder as CodeFolder });
       else if (section === "support") go({ section: "support", support: folder as SupportFolder });
+      else if (section === "logs") go({ section: "logs", logs: folder as LogFolder });
       else go({ section: section as SectionId });
     },
     [go],
   );
 
   const refreshAll = useCallback((): void => {
-    for (const key of ["licenses", "tickets", "promos", "transfers", "security"]) {
+    for (const key of ["licenses", "tickets", "promos", "transfers", "security", "resellers", "logs"]) {
       void queryClient.invalidateQueries({ queryKey: [key] });
     }
   }, [queryClient]);
@@ -206,6 +223,7 @@ function Console({ token, onSignOut }: { token: string; onSignOut: () => void })
         { id: "history", label: "Utilizzi", icon: History, count: promos.data?.redemptions.length ?? 0 },
       ],
     },
+    { id: "resellers", label: "Rivenditori", icon: Store, badge: undefined },
     {
       id: "support",
       label: "Assistenza",
@@ -223,16 +241,34 @@ function Console({ token, onSignOut }: { token: string; onSignOut: () => void })
         },
       ],
     },
+    {
+      id: "logs",
+      label: "Log",
+      icon: ScrollText,
+      children: [
+        { id: "admin", label: "Admin", icon: ShieldCheck },
+        { id: "reseller", label: "Rivenditori", icon: Store },
+      ],
+    },
     { id: "settings", label: "Sicurezza", icon: Settings },
   ];
 
   const activeFolder = (id: SectionId): string =>
-    id === "customers" ? location.customers : id === "codes" ? location.codes : id === "support" ? location.support : "";
+    id === "customers"
+      ? location.customers
+      : id === "codes"
+        ? location.codes
+        : id === "support"
+          ? location.support
+          : id === "logs"
+            ? location.logs
+            : "";
 
   const openFolder = (id: SectionId, folder: string): void => {
     if (id === "customers") go({ section: id, customers: folder as CustomerFolder });
     else if (id === "codes") go({ section: id, codes: folder as CodeFolder });
     else if (id === "support") go({ section: id, support: folder as SupportFolder });
+    else if (id === "logs") go({ section: id, logs: folder as LogFolder });
   };
 
   const current = sections.find((section) => section.id === location.section) ?? sections[0];
@@ -371,6 +407,7 @@ function Console({ token, onSignOut }: { token: string; onSignOut: () => void })
               loading={licenses.isLoading}
               folder={location.customers}
               onFolder={(folder) => go({ customers: folder })}
+              resellers={resellerList}
             />
           )}
 
@@ -390,6 +427,26 @@ function Console({ token, onSignOut }: { token: string; onSignOut: () => void })
               loading={promos.isLoading}
               folder={location.codes}
               onFolder={(folder) => go({ codes: folder })}
+              resellers={resellerList}
+            />
+          )}
+
+          {location.section === "resellers" && (
+            <ResellersView
+              token={token}
+              resellers={resellerList}
+              loading={resellers.isLoading}
+              licenses={licenses.data}
+              promos={promos.data}
+            />
+          )}
+
+          {location.section === "logs" && (
+            <LogsView
+              token={token}
+              folder={location.logs}
+              onFolder={(folder) => go({ logs: folder })}
+              resellers={resellerList}
             />
           )}
 
@@ -422,7 +479,9 @@ const SUBTITLES: Record<SectionId, string> = {
   customers: "Ogni dispositivo diviso per cartella. Cerca, attiva, cambia la scadenza.",
   sales: "Incassi per mese e anno, con ogni acquisto e la prova di conferma.",
   codes: "Codici sconto per il pagamento e codici regalo che attivano una licenza gratis.",
+  resellers: "Account dei rivenditori: crediti, licenze vendute, codici e accessi.",
   support: "Le richieste inviate dal modulo del sito.",
+  logs: "Ogni azione fatta nel pannello, da te e dai rivenditori.",
   settings: "Accesso all'area gestione e verifica in due passaggi.",
 };
 

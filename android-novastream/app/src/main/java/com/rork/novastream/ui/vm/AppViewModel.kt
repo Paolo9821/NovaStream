@@ -86,7 +86,7 @@ class AppViewModel(application: Application) : AndroidViewModel(application) {
     val encryptionLabel: String get() = repository.secureStore.algorithmLabel
 
     private val licenseStore = LicenseStore(application, repository.secureStore)
-    private val licenseApi = LicenseApi()
+    private val licenseApi = LicenseApi(application)
 
     /** Terms acceptance plus the trial/license state bound to this device. */
     val license: StateFlow<LicenseState> = licenseStore.state

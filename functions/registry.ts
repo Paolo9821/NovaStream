@@ -21,6 +21,10 @@ type LicenseRow = {
   source: string;
   /** How the current period was granted: "12m", "3m", "30d", "lifetime", "date" ('' on older rows). */
   term: string;
+  /** Reseller whose panel shows this customer ('' = sold directly). */
+  reseller_id: string;
+  /** Private note written by that reseller. */
+  reseller_note: string;
 };
 
 /** Discount or gift code created in the dashboard and typed by a buyer on the store. */
@@ -37,6 +41,7 @@ type PromoRow = {
   note: string;
   batch: string;
   created_at: number;
+  reseller_id: string;
 };
 
 export type PromoKind = "percent" | "amount" | "gift";
@@ -57,6 +62,8 @@ export type PromoView = {
   note: string;
   batch: string;
   createdAt: number;
+  /** Reseller the code belongs to ('' = the owner's). */
+  resellerId: string;
 };
 
 export type RedemptionView = {
@@ -69,7 +76,127 @@ export type RedemptionView = {
   paidCents: number;
   email: string;
   createdAt: number;
+  /** A revoked use switched its licence off and gave the use back to the code. */
+  status: "active" | "revoked";
+  revokedAt: number | null;
+  resellerId: string;
 };
+
+type RedemptionRow = {
+  id: string;
+  code: string;
+  device_id: string;
+  order_id: string;
+  plan: string;
+  discount_cents: number;
+  paid_cents: number;
+  email: string;
+  created_at: number;
+  status: string;
+  revoked_at: number | null;
+  reseller_id: string;
+};
+
+function redemptionView(row: RedemptionRow): RedemptionView {
+  return {
+    id: row.id,
+    code: row.code,
+    deviceId: row.device_id,
+    orderId: row.order_id,
+    plan: row.plan,
+    discountCents: row.discount_cents,
+    paidCents: row.paid_cents,
+    email: row.email,
+    createdAt: row.created_at,
+    status: row.status === "revoked" ? "revoked" : "active",
+    revokedAt: row.revoked_at ?? null,
+    resellerId: row.reseller_id ?? "",
+  };
+}
+
+// ---- Resellers, audit log, device details -----------------------------------
+
+type ResellerRow = {
+  id: string;
+  username: string;
+  pass_hash: string;
+  pass_salt: string;
+  pass_version: number;
+  twofa_secret: string;
+  twofa_pending: string;
+  twofa_last_step: number;
+  credits: number;
+  credits_added: number;
+  credits_spent: number;
+  disabled: number;
+  created_at: number;
+  updated_at: number;
+  last_login_at: number | null;
+};
+
+export type ResellerView = {
+  id: string;
+  username: string;
+  credits: number;
+  creditsAdded: number;
+  creditsSpent: number;
+  twofaEnabled: boolean;
+  disabled: boolean;
+  createdAt: number;
+  lastLoginAt: number | null;
+  stats: {
+    licenses: number;
+    liveLicenses: number;
+    codes: number;
+    codesUsed: number;
+    redemptions: number;
+    revokedRedemptions: number;
+    revokes: number;
+    restores: number;
+  };
+};
+
+export type AuditEntry = {
+  id: number;
+  createdAt: number;
+  actorType: "admin" | "reseller" | "system";
+  actorId: string;
+  actorName: string;
+  action: string;
+  target: string;
+  details: Record<string, unknown>;
+  ip: string;
+};
+
+export type DeviceInfoView = {
+  /** tv · phone · tablet · '' when the app did not say. */
+  kind: string;
+  manufacturer: string;
+  model: string;
+  os: string;
+  appVersion: string;
+  userAgent: string;
+  updatedAt: number;
+};
+
+type DeviceInfoRow = {
+  device_id: string;
+  mac: string;
+  kind: string;
+  manufacturer: string;
+  model: string;
+  os: string;
+  app_version: string;
+  user_agent: string;
+  updated_at: number;
+};
+
+const MAX_AUDIT_KEPT = 50_000;
+
+/** Note written on a licence a reseller switched off, so only such a one can be switched back by them. */
+const RESELLER_REVOKE_NOTE = "Revocata dal rivenditore";
+
+const USERNAME_RE = /^[a-z0-9._-]{3,32}$/;
 
 /** What a code is worth on a given plan, as shown on the store before paying. */
 export type PromoQuote =
@@ -124,6 +251,7 @@ function promoView(row: PromoRow): PromoView {
     note: row.note,
     batch: row.batch,
     createdAt: row.created_at,
+    resellerId: row.reseller_id ?? "",
   };
 }
 
@@ -251,6 +379,10 @@ export type LicenseView = {
   source: string;
   term: string;
   expired: boolean;
+  resellerId: string;
+  resellerNote: string;
+  /** What the app last said about the hardware, admin only. */
+  device: DeviceInfoView | null;
 };
 
 /** Wrong logins tolerated before the dashboard locks itself for a while. */
@@ -426,6 +558,9 @@ function toView(row: LicenseRow, aliases: string[] = []): LicenseView {
     source: row.source,
     term: row.term || (row.plan === "lifetime" ? "lifetime" : "12m"),
     expired,
+    resellerId: row.reseller_id ?? "",
+    resellerNote: row.reseller_note ?? "",
+    device: null,
   };
 }
 
@@ -652,6 +787,66 @@ export class Registry extends DurableObject {
     this.ctx.storage.sql.exec(
       "CREATE INDEX IF NOT EXISTS idx_license_transfers_to ON license_transfers (to_id)",
     );
+    // Resellers: each one sees only the customers tied to their id.
+    const addColumn = (sql: string) => {
+      try {
+        this.ctx.storage.sql.exec(sql);
+      } catch {
+        /* column already there */
+      }
+    };
+    addColumn("ALTER TABLE licenses ADD COLUMN reseller_id TEXT NOT NULL DEFAULT ''");
+    addColumn("ALTER TABLE licenses ADD COLUMN reseller_note TEXT NOT NULL DEFAULT ''");
+    addColumn("ALTER TABLE promo_codes ADD COLUMN reseller_id TEXT NOT NULL DEFAULT ''");
+    addColumn("ALTER TABLE promo_redemptions ADD COLUMN status TEXT NOT NULL DEFAULT 'active'");
+    addColumn("ALTER TABLE promo_redemptions ADD COLUMN revoked_at INTEGER");
+    addColumn("ALTER TABLE promo_redemptions ADD COLUMN reseller_id TEXT NOT NULL DEFAULT ''");
+    this.ctx.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS resellers (
+        id TEXT PRIMARY KEY,
+        username TEXT NOT NULL UNIQUE,
+        pass_hash TEXT NOT NULL,
+        pass_salt TEXT NOT NULL,
+        pass_version INTEGER NOT NULL DEFAULT 1,
+        twofa_secret TEXT NOT NULL DEFAULT '',
+        twofa_pending TEXT NOT NULL DEFAULT '',
+        twofa_last_step INTEGER NOT NULL DEFAULT 0,
+        credits INTEGER NOT NULL DEFAULT 0,
+        credits_added INTEGER NOT NULL DEFAULT 0,
+        credits_spent INTEGER NOT NULL DEFAULT 0,
+        disabled INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        last_login_at INTEGER
+      )
+    `);
+    this.ctx.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS audit_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        created_at INTEGER NOT NULL,
+        actor_type TEXT NOT NULL,
+        actor_id TEXT NOT NULL DEFAULT '',
+        actor_name TEXT NOT NULL DEFAULT '',
+        action TEXT NOT NULL,
+        target TEXT NOT NULL DEFAULT '',
+        details TEXT NOT NULL DEFAULT '{}',
+        ip TEXT NOT NULL DEFAULT ''
+      )
+    `);
+    this.ctx.storage.sql.exec("CREATE INDEX IF NOT EXISTS idx_audit_actor ON audit_log (actor_type, actor_id)");
+    this.ctx.storage.sql.exec(`
+      CREATE TABLE IF NOT EXISTS device_info (
+        device_id TEXT PRIMARY KEY,
+        mac TEXT NOT NULL DEFAULT '',
+        kind TEXT NOT NULL DEFAULT '',
+        manufacturer TEXT NOT NULL DEFAULT '',
+        model TEXT NOT NULL DEFAULT '',
+        os TEXT NOT NULL DEFAULT '',
+        app_version TEXT NOT NULL DEFAULT '',
+        user_agent TEXT NOT NULL DEFAULT '',
+        updated_at INTEGER NOT NULL
+      )
+    `);
   }
 
   /** Stores a checkout confirmation and forgets the ones whose checkout was never paid. */
@@ -697,7 +892,7 @@ export class Registry extends DurableObject {
         return Response.json({ known: this.orderKnown(String(body.orderId ?? "")) });
       case "/list":
         return Response.json({
-          licenses: this.list(),
+          licenses: this.list(true),
           stats: this.stats(),
           trials: this.trialList(),
           orders: this.orderHistory(),
@@ -732,6 +927,52 @@ export class Registry extends DurableObject {
       case "/promo-remove":
         this.ctx.storage.sql.exec("DELETE FROM promo_codes WHERE code = ?", normalizeCode(String(body.code ?? "")));
         return Response.json({ ok: true });
+      case "/promo-update":
+        return Response.json(this.promoUpdate(body));
+      case "/redemption-revoke":
+        return Response.json(this.redemptionRevoke(String(body.id ?? ""), String(body.resellerId ?? "")));
+      case "/redemption-restore":
+        return Response.json(this.redemptionRestore(String(body.id ?? ""), String(body.resellerId ?? "")));
+      case "/redemption-email":
+        return Response.json(this.redemptionEmail(String(body.id ?? ""), String(body.email ?? "")));
+      case "/audit":
+        this.audit(body);
+        return Response.json({ ok: true });
+      case "/logs":
+        return Response.json({ entries: this.logs(body) });
+      case "/device-info":
+        this.saveDeviceInfo(body);
+        return Response.json({ ok: true });
+      case "/reseller-auth":
+        return Response.json({ reseller: this.resellerAuth(body) });
+      case "/reseller-twofa":
+        return Response.json(this.resellerTwofa(body));
+      case "/reseller-list":
+        return Response.json({ resellers: this.resellerList() });
+      case "/reseller-create":
+        return Response.json(this.resellerCreate(body));
+      case "/reseller-update":
+        return Response.json(this.resellerUpdate(body));
+      case "/reseller-reset-2fa":
+        return Response.json(this.resellerResetTwofa(String(body.id ?? "")));
+      case "/reseller-delete":
+        return Response.json(this.resellerDelete(String(body.id ?? "")));
+      case "/reseller-credits":
+        return Response.json(this.resellerCredits(String(body.id ?? ""), Number(body.delta ?? 0)));
+      case "/reseller-disable":
+        return Response.json(this.resellerDisable(String(body.id ?? ""), body.disabled === true));
+      case "/assign-reseller":
+        return Response.json(this.assignReseller(body));
+      case "/reseller-data":
+        return Response.json(this.resellerData(String(body.resellerId ?? "")));
+      case "/reseller-activate":
+        return Response.json(this.resellerActivate(body));
+      case "/reseller-code-create":
+        return Response.json(this.resellerCodeCreate(body));
+      case "/reseller-note":
+        return Response.json(this.resellerNote(body));
+      case "/reseller-license-status":
+        return Response.json(this.resellerLicenseStatus(body));
       case "/update":
         return Response.json(
           this.updateDetails(String(body.deviceId ?? ""), String(body.label ?? ""), String(body.email ?? "")),
@@ -753,7 +994,7 @@ export class Registry extends DurableObject {
         this.putSetting(String(body.key ?? ""), String(body.value ?? ""));
         return Response.json({ ok: true });
       case "/login-guard":
-        return Response.json(this.loginGuard(String(body.action ?? "check")));
+        return Response.json(this.loginGuard(String(body.action ?? "check"), String(body.key ?? "login")));
       case "/ticket-create":
         return Response.json(this.createTicket(body));
       case "/ticket-list":
@@ -820,26 +1061,28 @@ export class Registry extends DurableObject {
    * attempts the door stays shut for a few minutes, counted server-side so it
    * cannot be bypassed by clearing the browser.
    */
-  private loginGuard(action: string): { blocked: boolean; retryInSeconds: number; failures: number } {
+  private loginGuard(action: string, rawKey = "login"): { blocked: boolean; retryInSeconds: number; failures: number } {
+    // "login" is the owner's door; each reseller name has its own.
+    const key = rawKey.replace(/[^a-z0-9._-]/gi, "").slice(0, 48) || "login";
     const now = Date.now();
-    const lockedUntil = Number(this.setting("login_locked_until")) || 0;
-    const lastFailure = Number(this.setting("login_last_failure")) || 0;
+    const lockedUntil = Number(this.setting(`${key}_locked_until`)) || 0;
+    const lastFailure = Number(this.setting(`${key}_last_failure`)) || 0;
     const stale = now - lastFailure > FAILURE_WINDOW_MS;
-    const failures = stale ? 0 : Number(this.setting("login_failures")) || 0;
+    const failures = stale ? 0 : Number(this.setting(`${key}_failures`)) || 0;
 
     if (action === "reset") {
-      this.putSetting("login_failures", "0");
-      this.putSetting("login_locked_until", "0");
+      this.putSetting(`${key}_failures`, "0");
+      this.putSetting(`${key}_locked_until`, "0");
       return { blocked: false, retryInSeconds: 0, failures: 0 };
     }
 
     if (action === "fail") {
       const next = failures + 1;
-      this.putSetting("login_last_failure", String(now));
-      this.putSetting("login_failures", String(next));
+      this.putSetting(`${key}_last_failure`, String(now));
+      this.putSetting(`${key}_failures`, String(next));
       if (next >= MAX_LOGIN_FAILURES) {
-        this.putSetting("login_locked_until", String(now + LOCKOUT_MS));
-        this.putSetting("login_failures", "0");
+        this.putSetting(`${key}_locked_until`, String(now + LOCKOUT_MS));
+        this.putSetting(`${key}_failures`, "0");
         return { blocked: true, retryInSeconds: Math.ceil(LOCKOUT_MS / 1000), failures: next };
       }
       return { blocked: false, retryInSeconds: 0, failures: next };
@@ -1608,6 +1851,8 @@ export class Registry extends DurableObject {
     const email = String(body.email ?? "");
     const label = String(body.label ?? "");
     const source = String(body.source ?? "stripe");
+    // Only set when a reseller sells it; otherwise the licence keeps its seller.
+    const resellerId = String(body.resellerId ?? "");
     const amountCents = Number(body.amountCents ?? plan.priceCents);
     // Manual grants and gift codes carry their own duration; store purchases use the plan's.
     const custom = body.term === undefined ? null : readTermLoose(JSON.stringify(body.term));
@@ -1622,9 +1867,10 @@ export class Registry extends DurableObject {
 
     this.ctx.storage.sql.exec(
       `INSERT INTO licenses
-         (device_id, status, plan, email, label, note, created_at, updated_at, expires_at, last_seen_at, order_id, amount_cents, source, term)
-       VALUES (?, 'active', ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?)
+         (device_id, status, plan, email, label, note, created_at, updated_at, expires_at, last_seen_at, order_id, amount_cents, source, term, reseller_id)
+       VALUES (?, 'active', ?, ?, ?, '', ?, ?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(device_id) DO UPDATE SET
+         reseller_id = CASE WHEN excluded.reseller_id <> '' THEN excluded.reseller_id ELSE licenses.reseller_id END,
          status = 'active',
          plan = excluded.plan,
          email = CASE WHEN excluded.email <> '' THEN excluded.email ELSE licenses.email END,
@@ -1648,6 +1894,7 @@ export class Registry extends DurableObject {
       amountCents,
       source,
       termCode(term),
+      resellerId,
     );
 
     if (orderId) {
@@ -1817,8 +2064,9 @@ export class Registry extends DurableObject {
     this.ctx.storage.sql.exec(
       `INSERT INTO licenses
          (device_id, status, plan, email, label, note, created_at, updated_at, expires_at, last_seen_at,
-          order_id, amount_cents, source, term)
-       SELECT ?, status, plan, email, label, ?, created_at, ?, expires_at, NULL, order_id, amount_cents, source, term
+          order_id, amount_cents, source, term, reseller_id, reseller_note)
+       SELECT ?, status, plan, email, label, ?, created_at, ?, expires_at, NULL, order_id, amount_cents, source, term,
+              reseller_id, reseller_note
        FROM licenses WHERE device_id = ?`,
       toPrimary,
       note,
@@ -1834,6 +2082,12 @@ export class Registry extends DurableObject {
     // Orders follow the licence, so the revenue view and the email proof keep working.
     this.ctx.storage.sql.exec(
       "UPDATE orders SET device_id = ? WHERE device_id = ?",
+      toPrimary,
+      license.device_id,
+    );
+    // Code uses follow it too, so revoking or restoring them still reaches the licence.
+    this.ctx.storage.sql.exec(
+      "UPDATE promo_redemptions SET device_id = ? WHERE device_id = ?",
       toPrimary,
       license.device_id,
     );
@@ -2031,11 +2285,17 @@ export class Registry extends DurableObject {
       return { ok: false, error: "already lifetime" };
     }
     const reused = this.ctx.storage.sql
-      .exec("SELECT id FROM promo_redemptions WHERE code = ? AND device_id = ?", code, deviceId)
+      .exec(
+        "SELECT id FROM promo_redemptions WHERE code = ? AND device_id = ? AND status = 'active'",
+        code,
+        deviceId,
+      )
       .toArray();
     if (reused.length > 0) return { ok: false, error: "already redeemed" };
+    const owner = this.promoRow(code)?.reseller_id ?? "";
 
     const issued = this.issue({
+      resellerId: owner,
       deviceId,
       identifiers,
       plan: quote.plan,
@@ -2086,8 +2346,9 @@ export class Registry extends DurableObject {
     email: string,
   ): void {
     this.ctx.storage.sql.exec(
-      `INSERT INTO promo_redemptions (id, code, device_id, order_id, plan, discount_cents, paid_cents, email, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO promo_redemptions
+         (id, code, device_id, order_id, plan, discount_cents, paid_cents, email, created_at, status, reseller_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)`,
       crypto.randomUUID(),
       code,
       deviceId,
@@ -2097,6 +2358,7 @@ export class Registry extends DurableObject {
       Math.max(0, Math.round(paidCents)),
       email.slice(0, 160),
       Date.now(),
+      this.promoRow(code)?.reseller_id ?? "",
     );
     this.ctx.storage.sql.exec("UPDATE promo_codes SET used_count = used_count + 1 WHERE code = ?", code);
   }
@@ -2110,29 +2372,9 @@ export class Registry extends DurableObject {
 
   private redemptionList(): RedemptionView[] {
     return this.ctx.storage.sql
-      .exec<{
-        id: string;
-        code: string;
-        device_id: string;
-        order_id: string;
-        plan: string;
-        discount_cents: number;
-        paid_cents: number;
-        email: string;
-        created_at: number;
-      }>("SELECT * FROM promo_redemptions ORDER BY created_at DESC LIMIT 1000")
+      .exec<RedemptionRow>("SELECT * FROM promo_redemptions ORDER BY created_at DESC LIMIT 2000")
       .toArray()
-      .map((row) => ({
-        id: row.id,
-        code: row.code,
-        deviceId: row.device_id,
-        orderId: row.order_id,
-        plan: row.plan,
-        discountCents: row.discount_cents,
-        paidCents: row.paid_cents,
-        email: row.email,
-        createdAt: row.created_at,
-      }));
+      .map(redemptionView);
   }
 
   /**
@@ -2155,6 +2397,8 @@ export class Registry extends DurableObject {
     const note = String(body.note ?? "").trim().slice(0, 120);
     const count = Math.max(1, Math.min(200, Math.round(Number(body.count ?? 1)) || 1));
     const custom = normalizeCode(String(body.code ?? ""));
+    const resellerId = String(body.resellerId ?? "");
+    if (resellerId && !this.resellerRow(resellerId)) return { ok: false, error: "reseller not found" };
 
     if (custom) {
       if (!/^[A-Z0-9-]{3,32}$/.test(custom)) return { ok: false, error: "code must be 3-32 letters, digits or dashes" };
@@ -2170,8 +2414,8 @@ export class Registry extends DurableObject {
         while (this.promoRow(code));
       }
       this.ctx.storage.sql.exec(
-        `INSERT INTO promo_codes (code, kind, value, applies_to, term, max_uses, used_count, expires_at, active, note, batch, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, 0, ?, 1, ?, ?, ?)`,
+        `INSERT INTO promo_codes (code, kind, value, applies_to, term, max_uses, used_count, expires_at, active, note, batch, created_at, reseller_id)
+         VALUES (?, ?, ?, ?, ?, ?, 0, ?, 1, ?, ?, ?, ?)`,
         code,
         kind,
         kind === "gift" ? 0 : value,
@@ -2182,6 +2426,7 @@ export class Registry extends DurableObject {
         note,
         batch,
         now + i,
+        resellerId,
       );
       codes.push(code);
     }
@@ -2199,11 +2444,22 @@ export class Registry extends DurableObject {
     return { ok: true };
   }
 
-  private list(): LicenseView[] {
+  private list(withDevices = false): LicenseView[] {
+    const info = withDevices ? this.deviceInfoIndex() : null;
     return this.ctx.storage.sql
       .exec<LicenseRow>("SELECT * FROM licenses ORDER BY updated_at DESC LIMIT 2000")
       .toArray()
-      .map((row) => toView(row, this.aliasesOf(row.device_id)));
+      .map((row) => {
+        const aliases = this.aliasesOf(row.device_id);
+        const view = toView(row, aliases);
+        if (info) {
+          for (const name of [row.device_id, ...aliases]) {
+            const found = info.get(name);
+            if (found && (!view.device || found.updatedAt > view.device.updatedAt)) view.device = found;
+          }
+        }
+        return view;
+      });
   }
 
   private stats(): {
@@ -2245,5 +2501,645 @@ export class Registry extends DurableObject {
         .filter((o) => o.created_at >= monthAgo)
         .reduce((sum, o) => sum + o.amount_cents, 0),
     };
+  }
+
+  // ---- Code uses: revoke, restore, email -------------------------------------
+
+  private redemptionRow(id: string): RedemptionRow | null {
+    if (!id) return null;
+    return (
+      this.ctx.storage.sql.exec<RedemptionRow>("SELECT * FROM promo_redemptions WHERE id = ?", id).toArray()[0] ??
+      null
+    );
+  }
+
+  /**
+   * Switches off the licence one code use gave and hands the use back to the
+   * code. With a reseller id, only that reseller's uses can be touched.
+   */
+  private redemptionRevoke(id: string, resellerId: string): { ok: boolean; error?: string; deviceId?: string; code?: string } {
+    const row = this.redemptionRow(id);
+    if (!row) return { ok: false, error: "use not found" };
+    if (resellerId && row.reseller_id !== resellerId) return { ok: false, error: "use not found" };
+    if (row.status === "revoked") return { ok: true, deviceId: row.device_id, code: row.code };
+    const now = Date.now();
+    this.ctx.storage.sql.exec(
+      "UPDATE promo_redemptions SET status = 'revoked', revoked_at = ? WHERE id = ?",
+      now,
+      id,
+    );
+    this.ctx.storage.sql.exec(
+      "UPDATE promo_codes SET used_count = MAX(0, used_count - 1) WHERE code = ?",
+      row.code,
+    );
+    const license = this.resolve([row.device_id]);
+    if (license) this.setStatus(license.device_id, "revoked", `Codice ${row.code} annullato`);
+    return { ok: true, deviceId: license?.device_id ?? row.device_id, code: row.code };
+  }
+
+  /** Takes the use again and switches the licence back on, if the code still has a use left. */
+  private redemptionRestore(id: string, resellerId: string): { ok: boolean; error?: string; deviceId?: string; code?: string } {
+    const row = this.redemptionRow(id);
+    if (!row) return { ok: false, error: "use not found" };
+    if (resellerId && row.reseller_id !== resellerId) return { ok: false, error: "use not found" };
+    if (row.status !== "revoked") return { ok: true, deviceId: row.device_id, code: row.code };
+    const code = this.promoRow(row.code);
+    if (code && code.max_uses > 0 && code.used_count >= code.max_uses) return { ok: false, error: "code used up" };
+    this.ctx.storage.sql.exec("UPDATE promo_redemptions SET status = 'active', revoked_at = NULL WHERE id = ?", id);
+    this.ctx.storage.sql.exec("UPDATE promo_codes SET used_count = used_count + 1 WHERE code = ?", row.code);
+    const license = this.resolve([row.device_id]);
+    if (license) this.setStatus(license.device_id, "active", "");
+    return { ok: true, deviceId: license?.device_id ?? row.device_id, code: row.code };
+  }
+
+  /** Corrects the email of a code use and of the licence it opened. */
+  private redemptionEmail(id: string, email: string): { ok: boolean; error?: string; deviceId?: string; previous?: string } {
+    const row = this.redemptionRow(id);
+    if (!row) return { ok: false, error: "use not found" };
+    const clean = email.trim().slice(0, 160);
+    this.ctx.storage.sql.exec("UPDATE promo_redemptions SET email = ? WHERE id = ?", clean, id);
+    const license = this.resolve([row.device_id]);
+    if (license) {
+      this.ctx.storage.sql.exec(
+        "UPDATE licenses SET email = ?, updated_at = ? WHERE device_id = ?",
+        clean,
+        Date.now(),
+        license.device_id,
+      );
+    }
+    return { ok: true, deviceId: license?.device_id ?? row.device_id, previous: row.email };
+  }
+
+  /** Changes how many times a code can be used (never below what is already used) or its reseller. */
+  private promoUpdate(body: Record<string, unknown>): { ok: boolean; error?: string; before?: Record<string, unknown> } {
+    const code = normalizeCode(String(body.code ?? ""));
+    const row = this.promoRow(code);
+    if (!row) return { ok: false, error: "code not found" };
+    const before = { maxUses: row.max_uses, resellerId: row.reseller_id, note: row.note };
+    if (body.maxUses !== undefined) {
+      const maxUses = Math.round(Number(body.maxUses));
+      if (!Number.isFinite(maxUses) || maxUses < 0 || maxUses > 100_000) return { ok: false, error: "invalid uses" };
+      if (maxUses > 0 && maxUses < row.used_count) return { ok: false, error: "uses below used" };
+      this.ctx.storage.sql.exec("UPDATE promo_codes SET max_uses = ? WHERE code = ?", maxUses, code);
+    }
+    if (body.resellerId !== undefined) {
+      const resellerId = String(body.resellerId ?? "");
+      if (resellerId && !this.resellerRow(resellerId)) return { ok: false, error: "reseller not found" };
+      this.ctx.storage.sql.exec("UPDATE promo_codes SET reseller_id = ? WHERE code = ?", resellerId, code);
+    }
+    if (body.note !== undefined) {
+      this.ctx.storage.sql.exec(
+        "UPDATE promo_codes SET note = ? WHERE code = ?",
+        String(body.note ?? "").trim().slice(0, 120),
+        code,
+      );
+    }
+    return { ok: true, before };
+  }
+
+  // ---- Audit log -------------------------------------------------------------
+
+  private audit(body: Record<string, unknown>): void {
+    const actorType = String(body.actorType ?? "system");
+    let details = "{}";
+    try {
+      details = JSON.stringify(body.details ?? {}).slice(0, 4000);
+    } catch {
+      /* keep empty */
+    }
+    this.ctx.storage.sql.exec(
+      `INSERT INTO audit_log (created_at, actor_type, actor_id, actor_name, action, target, details, ip)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      Date.now(),
+      actorType === "admin" || actorType === "reseller" ? actorType : "system",
+      String(body.actorId ?? "").slice(0, 64),
+      String(body.actorName ?? "").slice(0, 64),
+      String(body.action ?? "").slice(0, 64),
+      String(body.target ?? "").slice(0, 200),
+      details,
+      String(body.ip ?? "").slice(0, 64),
+    );
+    // Trimmed now and then, so the log cannot grow without bound.
+    if (Math.random() < 0.01) {
+      this.ctx.storage.sql.exec(
+        "DELETE FROM audit_log WHERE id <= (SELECT MAX(id) FROM audit_log) - ?",
+        MAX_AUDIT_KEPT,
+      );
+    }
+  }
+
+  private logs(body: Record<string, unknown>): AuditEntry[] {
+    const actorType = String(body.actorType ?? "");
+    const actorId = String(body.actorId ?? "");
+    const limit = Math.max(1, Math.min(2000, Math.round(Number(body.limit ?? 500)) || 500));
+    const where: string[] = [];
+    const args: (string | number)[] = [];
+    if (actorType === "admin" || actorType === "reseller" || actorType === "system") {
+      where.push("actor_type = ?");
+      args.push(actorType);
+    }
+    if (actorId) {
+      where.push("actor_id = ?");
+      args.push(actorId);
+    }
+    const sql = `SELECT * FROM audit_log ${where.length ? `WHERE ${where.join(" AND ")}` : ""} ORDER BY id DESC LIMIT ?`;
+    return this.ctx.storage.sql
+      .exec<{
+        id: number;
+        created_at: number;
+        actor_type: string;
+        actor_id: string;
+        actor_name: string;
+        action: string;
+        target: string;
+        details: string;
+        ip: string;
+      }>(sql, ...args, limit)
+      .toArray()
+      .map((row) => {
+        let details: Record<string, unknown> = {};
+        try {
+          details = JSON.parse(row.details) as Record<string, unknown>;
+        } catch {
+          /* keep empty */
+        }
+        return {
+          id: row.id,
+          createdAt: row.created_at,
+          actorType: row.actor_type as AuditEntry["actorType"],
+          actorId: row.actor_id,
+          actorName: row.actor_name,
+          action: row.action,
+          target: row.target,
+          details,
+          ip: row.ip,
+        };
+      });
+  }
+
+  // ---- Device details ------------------------------------------------------
+
+  private saveDeviceInfo(body: Record<string, unknown>): void {
+    const deviceId = String(body.deviceId ?? "").slice(0, 64);
+    if (!deviceId) return;
+    const info = (body.info ?? {}) as Record<string, unknown>;
+    const text = (value: unknown, max: number) => String(value ?? "").trim().slice(0, max);
+    const rawKind = text(info.kind, 16).toLowerCase();
+    const kind = rawKind === "tv" || rawKind === "phone" || rawKind === "tablet" ? rawKind : "";
+    const userAgent = text(body.userAgent, 300);
+    const existing = this.ctx.storage.sql
+      .exec<DeviceInfoRow>("SELECT * FROM device_info WHERE device_id = ?", deviceId)
+      .toArray()[0];
+    const row = {
+      mac: text(body.mac, 64) || existing?.mac || "",
+      kind: kind || existing?.kind || "",
+      manufacturer: text(info.manufacturer, 60) || existing?.manufacturer || "",
+      model: text(info.model, 80) || existing?.model || "",
+      os: text(info.os, 60) || existing?.os || "",
+      appVersion: text(info.appVersion, 30) || existing?.app_version || "",
+      userAgent: userAgent || existing?.user_agent || "",
+    };
+    // Nothing new: skip the write, the app checks in often.
+    if (
+      existing &&
+      existing.mac === row.mac &&
+      existing.kind === row.kind &&
+      existing.manufacturer === row.manufacturer &&
+      existing.model === row.model &&
+      existing.os === row.os &&
+      existing.app_version === row.appVersion &&
+      existing.user_agent === row.userAgent &&
+      Date.now() - existing.updated_at < DAY_MS
+    ) {
+      return;
+    }
+    this.ctx.storage.sql.exec(
+      `INSERT INTO device_info (device_id, mac, kind, manufacturer, model, os, app_version, user_agent, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(device_id) DO UPDATE SET
+         mac = excluded.mac, kind = excluded.kind, manufacturer = excluded.manufacturer, model = excluded.model,
+         os = excluded.os, app_version = excluded.app_version, user_agent = excluded.user_agent,
+         updated_at = excluded.updated_at`,
+      deviceId,
+      row.mac,
+      row.kind,
+      row.manufacturer,
+      row.model,
+      row.os,
+      row.appVersion,
+      row.userAgent,
+      Date.now(),
+    );
+  }
+
+  /** Every known device by each of its names (id and MAC). */
+  private deviceInfoIndex(): Map<string, DeviceInfoView> {
+    const index = new Map<string, DeviceInfoView>();
+    for (const row of this.ctx.storage.sql.exec<DeviceInfoRow>("SELECT * FROM device_info").toArray()) {
+      const view: DeviceInfoView = {
+        kind: row.kind,
+        manufacturer: row.manufacturer,
+        model: row.model,
+        os: row.os,
+        appVersion: row.app_version,
+        userAgent: row.user_agent,
+        updatedAt: row.updated_at,
+      };
+      for (const name of [row.device_id, row.mac]) {
+        if (!name) continue;
+        const current = index.get(name);
+        if (!current || current.updatedAt < view.updatedAt) index.set(name, view);
+      }
+    }
+    return index;
+  }
+
+  // ---- Resellers -----------------------------------------------------------
+
+  private resellerRow(id: string): ResellerRow | null {
+    if (!id) return null;
+    return this.ctx.storage.sql.exec<ResellerRow>("SELECT * FROM resellers WHERE id = ?", id).toArray()[0] ?? null;
+  }
+
+  /** Everything the Worker needs to check a login or a session; never sent to a browser. */
+  private resellerAuth(body: Record<string, unknown>): ResellerRow | null {
+    if (body.id) return this.resellerRow(String(body.id));
+    const username = String(body.username ?? "").trim().toLowerCase();
+    if (!username) return null;
+    return (
+      this.ctx.storage.sql.exec<ResellerRow>("SELECT * FROM resellers WHERE username = ?", username).toArray()[0] ??
+      null
+    );
+  }
+
+  /** Second-factor bookkeeping: a pending secret while setting up, the last step used, the login time. */
+  private resellerTwofa(body: Record<string, unknown>): { ok: boolean } {
+    const id = String(body.id ?? "");
+    const op = String(body.op ?? "");
+    const now = Date.now();
+    if (op === "pending") {
+      this.ctx.storage.sql.exec(
+        "UPDATE resellers SET twofa_pending = ?, updated_at = ? WHERE id = ?",
+        String(body.secret ?? ""),
+        now,
+        id,
+      );
+    } else if (op === "activate") {
+      this.ctx.storage.sql.exec(
+        `UPDATE resellers SET twofa_secret = twofa_pending, twofa_pending = '', twofa_last_step = ?,
+           last_login_at = ?, updated_at = ? WHERE id = ? AND twofa_pending <> ''`,
+        Number(body.step ?? 0),
+        now,
+        now,
+        id,
+      );
+    } else if (op === "login") {
+      this.ctx.storage.sql.exec(
+        "UPDATE resellers SET twofa_last_step = ?, last_login_at = ? WHERE id = ?",
+        Number(body.step ?? 0),
+        now,
+        id,
+      );
+    } else {
+      return { ok: false };
+    }
+    return { ok: true };
+  }
+
+  private resellerView(row: ResellerRow): ResellerView {
+    const count = (sql: string, ...args: (string | number)[]) =>
+      Number(this.ctx.storage.sql.exec<{ n: number }>(sql, ...args).toArray()[0]?.n ?? 0);
+    const now = Date.now();
+    return {
+      id: row.id,
+      username: row.username,
+      credits: row.credits,
+      creditsAdded: row.credits_added,
+      creditsSpent: row.credits_spent,
+      twofaEnabled: Boolean(row.twofa_secret),
+      disabled: row.disabled === 1,
+      createdAt: row.created_at,
+      lastLoginAt: row.last_login_at,
+      stats: {
+        licenses: count("SELECT COUNT(*) AS n FROM licenses WHERE reseller_id = ?", row.id),
+        liveLicenses: count(
+          "SELECT COUNT(*) AS n FROM licenses WHERE reseller_id = ? AND status = 'active' AND (expires_at IS NULL OR expires_at >= ?)",
+          row.id,
+          now,
+        ),
+        codes: count("SELECT COUNT(*) AS n FROM promo_codes WHERE reseller_id = ?", row.id),
+        codesUsed: count("SELECT COALESCE(SUM(used_count), 0) AS n FROM promo_codes WHERE reseller_id = ?", row.id),
+        redemptions: count("SELECT COUNT(*) AS n FROM promo_redemptions WHERE reseller_id = ?", row.id),
+        revokedRedemptions: count(
+          "SELECT COUNT(*) AS n FROM promo_redemptions WHERE reseller_id = ? AND status = 'revoked'",
+          row.id,
+        ),
+        revokes: count(
+          "SELECT COUNT(*) AS n FROM audit_log WHERE actor_type = 'reseller' AND actor_id = ? AND action LIKE '%revoke%' AND action NOT LIKE '%refused'",
+          row.id,
+        ),
+        restores: count(
+          "SELECT COUNT(*) AS n FROM audit_log WHERE actor_type = 'reseller' AND actor_id = ? AND action LIKE '%restore%' AND action NOT LIKE '%refused'",
+          row.id,
+        ),
+      },
+    };
+  }
+
+  private resellerList(): ResellerView[] {
+    return this.ctx.storage.sql
+      .exec<ResellerRow>("SELECT * FROM resellers ORDER BY created_at DESC")
+      .toArray()
+      .map((row) => this.resellerView(row));
+  }
+
+  private resellerCreate(body: Record<string, unknown>): { ok: boolean; error?: string; id?: string } {
+    const username = String(body.username ?? "").trim().toLowerCase();
+    if (!USERNAME_RE.test(username)) return { ok: false, error: "invalid username" };
+    if (this.resellerAuth({ username })) return { ok: false, error: "username taken" };
+    const hash = String(body.hash ?? "");
+    const salt = String(body.salt ?? "");
+    if (!hash || !salt) return { ok: false, error: "invalid password" };
+    const credits = Math.max(0, Math.min(100_000, Math.round(Number(body.credits ?? 0)) || 0));
+    const id = `rs_${crypto.randomUUID().replace(/-/g, "").slice(0, 16)}`;
+    const now = Date.now();
+    this.ctx.storage.sql.exec(
+      `INSERT INTO resellers (id, username, pass_hash, pass_salt, pass_version, credits, credits_added, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?)`,
+      id,
+      username,
+      hash,
+      salt,
+      credits,
+      credits,
+      now,
+      now,
+    );
+    return { ok: true, id };
+  }
+
+  /** New name and/or password; either one ends every open session of that reseller. */
+  private resellerUpdate(body: Record<string, unknown>): { ok: boolean; error?: string; before?: string } {
+    const row = this.resellerRow(String(body.id ?? ""));
+    if (!row) return { ok: false, error: "reseller not found" };
+    const now = Date.now();
+    if (body.username !== undefined && String(body.username).trim()) {
+      const username = String(body.username).trim().toLowerCase();
+      if (!USERNAME_RE.test(username)) return { ok: false, error: "invalid username" };
+      const taken = this.resellerAuth({ username });
+      if (taken && taken.id !== row.id) return { ok: false, error: "username taken" };
+      this.ctx.storage.sql.exec(
+        "UPDATE resellers SET username = ?, pass_version = pass_version + 1, updated_at = ? WHERE id = ?",
+        username,
+        now,
+        row.id,
+      );
+    }
+    if (body.hash && body.salt) {
+      this.ctx.storage.sql.exec(
+        "UPDATE resellers SET pass_hash = ?, pass_salt = ?, pass_version = pass_version + 1, updated_at = ? WHERE id = ?",
+        String(body.hash),
+        String(body.salt),
+        now,
+        row.id,
+      );
+    }
+    return { ok: true, before: row.username };
+  }
+
+  private resellerResetTwofa(id: string): { ok: boolean; error?: string; username?: string } {
+    const row = this.resellerRow(id);
+    if (!row) return { ok: false, error: "reseller not found" };
+    this.ctx.storage.sql.exec(
+      `UPDATE resellers SET twofa_secret = '', twofa_pending = '', twofa_last_step = 0,
+         pass_version = pass_version + 1, updated_at = ? WHERE id = ?`,
+      Date.now(),
+      id,
+    );
+    return { ok: true, username: row.username };
+  }
+
+  private resellerDisable(id: string, disabled: boolean): { ok: boolean; error?: string; username?: string } {
+    const row = this.resellerRow(id);
+    if (!row) return { ok: false, error: "reseller not found" };
+    this.ctx.storage.sql.exec(
+      "UPDATE resellers SET disabled = ?, updated_at = ? WHERE id = ?",
+      disabled ? 1 : 0,
+      Date.now(),
+      id,
+    );
+    return { ok: true, username: row.username };
+  }
+
+  /** Deletes the account; its customers and codes stay, back under the owner. */
+  private resellerDelete(id: string): { ok: boolean; error?: string; username?: string; licenses?: number } {
+    const row = this.resellerRow(id);
+    if (!row) return { ok: false, error: "reseller not found" };
+    const licenses = this.ctx.storage.sql
+      .exec<{ n: number }>("SELECT COUNT(*) AS n FROM licenses WHERE reseller_id = ?", id)
+      .toArray()[0]?.n ?? 0;
+    this.ctx.storage.sql.exec("DELETE FROM resellers WHERE id = ?", id);
+    this.ctx.storage.sql.exec("UPDATE licenses SET reseller_id = '' WHERE reseller_id = ?", id);
+    this.ctx.storage.sql.exec("UPDATE promo_codes SET reseller_id = '' WHERE reseller_id = ?", id);
+    return { ok: true, username: row.username, licenses: Number(licenses) };
+  }
+
+  /** Adds (or with a negative delta removes) credits; the balance never goes below zero. */
+  private resellerCredits(id: string, delta: number): { ok: boolean; error?: string; credits?: number; username?: string } {
+    const row = this.resellerRow(id);
+    if (!row) return { ok: false, error: "reseller not found" };
+    const step = Math.round(delta);
+    if (!Number.isFinite(step) || step === 0 || Math.abs(step) > 100_000) return { ok: false, error: "invalid credits" };
+    const credits = Math.max(0, row.credits + step);
+    const applied = credits - row.credits;
+    this.ctx.storage.sql.exec(
+      "UPDATE resellers SET credits = ?, credits_added = credits_added + ?, updated_at = ? WHERE id = ?",
+      credits,
+      applied,
+      Date.now(),
+      id,
+    );
+    return { ok: true, credits, username: row.username };
+  }
+
+  /** Ties licences, found by MAC or id, to a reseller ('' gives them back to the owner). */
+  private assignReseller(body: Record<string, unknown>): {
+    ok: boolean;
+    error?: string;
+    assigned?: string[];
+    notFound?: string[];
+  } {
+    const resellerId = String(body.resellerId ?? "");
+    if (resellerId && !this.resellerRow(resellerId)) return { ok: false, error: "reseller not found" };
+    const identifiers = Array.isArray(body.identifiers) ? unique(body.identifiers.map(String)).slice(0, 500) : [];
+    const assigned: string[] = [];
+    const notFound: string[] = [];
+    for (const id of identifiers) {
+      const license = this.resolve([id]);
+      if (!license) {
+        notFound.push(id);
+        continue;
+      }
+      this.ctx.storage.sql.exec(
+        "UPDATE licenses SET reseller_id = ?, updated_at = ? WHERE device_id = ?",
+        resellerId,
+        Date.now(),
+        license.device_id,
+      );
+      if (!assigned.includes(license.device_id)) assigned.push(license.device_id);
+    }
+    return { ok: true, assigned, notFound };
+  }
+
+  /** What one reseller sees in their panel: only their own customers, codes and uses. */
+  private resellerData(resellerId: string) {
+    const row = this.resellerRow(resellerId);
+    if (!row) return { ok: false, error: "reseller not found" };
+    const licenses = this.ctx.storage.sql
+      .exec<LicenseRow>("SELECT * FROM licenses WHERE reseller_id = ? ORDER BY updated_at DESC LIMIT 2000", resellerId)
+      .toArray()
+      .map((license) => toView(license, this.aliasesOf(license.device_id)));
+    const codes = this.ctx.storage.sql
+      .exec<PromoRow>("SELECT * FROM promo_codes WHERE reseller_id = ? ORDER BY created_at DESC LIMIT 2000", resellerId)
+      .toArray()
+      .map(promoView);
+    const redemptions = this.ctx.storage.sql
+      .exec<RedemptionRow>(
+        "SELECT * FROM promo_redemptions WHERE reseller_id = ? ORDER BY created_at DESC LIMIT 2000",
+        resellerId,
+      )
+      .toArray()
+      .map(redemptionView);
+    return {
+      ok: true,
+      me: { id: row.id, username: row.username, credits: row.credits, creditsSpent: row.credits_spent },
+      licenses,
+      codes,
+      redemptions,
+    };
+  }
+
+  private spendCredits(resellerId: string, amount: number): void {
+    this.ctx.storage.sql.exec(
+      "UPDATE resellers SET credits = credits - ?, credits_spent = credits_spent + ?, updated_at = ? WHERE id = ?",
+      amount,
+      amount,
+      Date.now(),
+      resellerId,
+    );
+  }
+
+  /** A reseller activates a device directly: one credit per year. */
+  private resellerActivate(body: Record<string, unknown>): {
+    ok: boolean;
+    error?: string;
+    license?: LicenseView;
+    credits?: number;
+    cost?: number;
+  } {
+    const resellerId = String(body.resellerId ?? "");
+    const row = this.resellerRow(resellerId);
+    if (!row || row.disabled === 1) return { ok: false, error: "reseller not found" };
+    const years = Math.round(Number(body.years ?? 1));
+    if (!(years >= 1 && years <= 5)) return { ok: false, error: "invalid years" };
+    const cost = years;
+    if (row.credits < cost) return { ok: false, error: "not enough credits" };
+    const identifiers = identifiersOf(body);
+    if (identifiers.length === 0) return { ok: false, error: "invalid device id" };
+    const existing = this.resolve(identifiers);
+    const now = Date.now();
+    if (existing) {
+      const mine = existing.reseller_id === resellerId;
+      const live = existing.status === "active" && (existing.expires_at === null || existing.expires_at >= now);
+      if (existing.status === "active" && existing.expires_at === null) return { ok: false, error: "already lifetime" };
+      if (!mine && live) return { ok: false, error: "device has licence" };
+      if (!mine && existing.status !== "active") return { ok: false, error: "device blocked" };
+    }
+    const deviceId = existing?.device_id ?? identifiers[0];
+    const issued = this.issue({
+      deviceId,
+      identifiers,
+      plan: "annual",
+      term: { kind: "months", months: 12 * years },
+      email: String(body.email ?? "").trim().slice(0, 160),
+      orderId: "",
+      amountCents: 0,
+      source: "reseller",
+      resellerId,
+    });
+    const note = String(body.note ?? "").trim().slice(0, 500);
+    if (note) {
+      this.ctx.storage.sql.exec("UPDATE licenses SET reseller_note = ? WHERE device_id = ?", note, deviceId);
+    }
+    this.spendCredits(resellerId, cost);
+    return { ok: true, license: issued.license, credits: row.credits - cost, cost };
+  }
+
+  /** Single-use gift codes worth N years, paid with credits up front. */
+  private resellerCodeCreate(body: Record<string, unknown>): {
+    ok: boolean;
+    error?: string;
+    codes?: string[];
+    credits?: number;
+    cost?: number;
+  } {
+    const resellerId = String(body.resellerId ?? "");
+    const row = this.resellerRow(resellerId);
+    if (!row || row.disabled === 1) return { ok: false, error: "reseller not found" };
+    const years = Math.round(Number(body.years ?? 1));
+    const count = Math.round(Number(body.count ?? 1));
+    if (!(years >= 1 && years <= 5)) return { ok: false, error: "invalid years" };
+    if (!(count >= 1 && count <= 50)) return { ok: false, error: "invalid count" };
+    const cost = years * count;
+    if (row.credits < cost) return { ok: false, error: "not enough credits" };
+    const created = this.promoCreate({
+      kind: "gift",
+      term: { kind: "months", months: 12 * years },
+      maxUses: 1,
+      count,
+      note: String(body.note ?? ""),
+      resellerId,
+    });
+    if (!created.ok) return { ok: false, error: created.error };
+    this.spendCredits(resellerId, cost);
+    return { ok: true, codes: created.codes, credits: row.credits - cost, cost };
+  }
+
+  private resellerNote(body: Record<string, unknown>): { ok: boolean; error?: string } {
+    const resellerId = String(body.resellerId ?? "");
+    const license = this.find(String(body.deviceId ?? ""));
+    if (!license || license.reseller_id !== resellerId || !resellerId) return { ok: false, error: "licence not found" };
+    this.ctx.storage.sql.exec(
+      "UPDATE licenses SET reseller_note = ? WHERE device_id = ?",
+      String(body.note ?? "").trim().slice(0, 500),
+      license.device_id,
+    );
+    return { ok: true };
+  }
+
+  /**
+   * A reseller switches one of their licences off, or back on. They can only
+   * switch back on what they (or a code use they revoked) switched off: a
+   * block set by the owner stays.
+   */
+  private resellerLicenseStatus(body: Record<string, unknown>): { ok: boolean; error?: string } {
+    const resellerId = String(body.resellerId ?? "");
+    const license = this.find(String(body.deviceId ?? ""));
+    if (!license || license.reseller_id !== resellerId || !resellerId) return { ok: false, error: "licence not found" };
+    const status = String(body.status ?? "");
+    if (status === "revoked") {
+      if (license.status === "suspended") return { ok: false, error: "blocked by owner" };
+      this.setStatus(license.device_id, "revoked", RESELLER_REVOKE_NOTE);
+      return { ok: true };
+    }
+    if (status === "active") {
+      if (license.status === "active") return { ok: true };
+      // A licence switched off through a code use comes back through that use.
+      const theirs = license.status === "revoked" && license.note === RESELLER_REVOKE_NOTE;
+      if (!theirs) return { ok: false, error: "blocked by owner" };
+      this.setStatus(license.device_id, "active", "");
+      return { ok: true };
+    }
+    return { ok: false, error: "invalid status" };
   }
 }

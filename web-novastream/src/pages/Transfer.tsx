@@ -8,10 +8,8 @@ import {
   ArrowLeft,
   ArrowRightLeft,
   CheckCircle2,
-  KeyRound,
   LifeBuoy,
   Loader2,
-  Mail,
   RefreshCw,
   ShieldCheck,
   Smartphone,
@@ -34,8 +32,6 @@ import {
 } from "@/lib/api";
 import { useI18n, type TranslationKey } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
-
-type Method = "key" | "email";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -77,8 +73,6 @@ export default function Transfer() {
 
   const [fromId, setFromId] = useState<string>(params.get("from") ?? "");
   const [toId, setToId] = useState<string>(params.get("device") ?? params.get("to") ?? "");
-  const [method, setMethod] = useState<Method>("key");
-  const [fromKey, setFromKey] = useState<string>("");
   const [email, setEmail] = useState<string>("");
   const [toKey, setToKey] = useState<string>("");
   const [answer, setAnswer] = useState<string>("");
@@ -102,9 +96,7 @@ export default function Transfer() {
       transferLicense({
         fromId,
         toId,
-        method,
-        fromKey: method === "key" ? fromKey.replace(/\s/g, "") : "",
-        email: method === "email" ? email.trim() : "",
+        email: email.trim(),
         toKey: toKey.replace(/\s/g, ""),
         captchaToken: captcha.data?.token ?? "",
         captchaAnswer: answer,
@@ -116,7 +108,6 @@ export default function Transfer() {
     onError: (err: unknown) => {
       // Every challenge is good for one try, and the device keys are spent too.
       newCaptcha();
-      setFromKey("");
       setToKey("");
       const message = err instanceof Error ? err.message : "";
       if (message === "transfer too soon" && err instanceof ApiError) {
@@ -139,7 +130,7 @@ export default function Transfer() {
       setError(t("tr.errSame"));
       return;
     }
-    if (method === "email" && !EMAIL_RE.test(email.trim())) {
+    if (!EMAIL_RE.test(email.trim())) {
       setError(t("tr.errEmail"));
       return;
     }
@@ -154,7 +145,7 @@ export default function Transfer() {
     fromId.trim().length > 0 &&
     toId.trim().length > 0 &&
     toKey.replace(/\s/g, "").length >= 4 &&
-    (method === "key" ? fromKey.replace(/\s/g, "").length >= 4 : email.trim().length > 3) &&
+    email.trim().length > 3 &&
     Boolean(captcha.data);
 
   return (
@@ -244,70 +235,23 @@ export default function Transfer() {
                 className="mono mt-2 h-12 border-border/80 bg-secondary/60 uppercase tracking-wider"
               />
 
-              <div className="mt-5 grid grid-cols-2 gap-2 rounded-xl bg-secondary/50 p-1" role="radiogroup">
-                {(["key", "email"] as const).map((option) => (
-                  <button
-                    key={option}
-                    type="button"
-                    role="radio"
-                    aria-checked={method === option}
-                    onClick={() => {
-                      setMethod(option);
-                      setError("");
-                    }}
-                    className={cn(
-                      "flex items-center justify-center gap-2 rounded-lg px-3 py-2.5 text-xs font-semibold transition sm:text-sm",
-                      method === option
-                        ? "bg-background text-foreground shadow-sm ring-1 ring-primary/40"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    {option === "key" ? <KeyRound className="h-4 w-4" /> : <Mail className="h-4 w-4" />}
-                    {option === "key" ? t("tr.methodKey") : t("tr.methodEmail")}
-                  </button>
-                ))}
-              </div>
-
-              {method === "key" ? (
-                <>
-                  <Label htmlFor="tr-from-key" className="mt-5 block text-sm font-medium">
-                    {t("tr.oldKey")}
-                  </Label>
-                  <Input
-                    id="tr-from-key"
-                    value={fromKey}
-                    onChange={(event) => {
-                      setFromKey(event.target.value.toUpperCase());
-                      setError("");
-                    }}
-                    placeholder="ABC 123"
-                    maxLength={8}
-                    autoComplete="off"
-                    spellCheck={false}
-                    className="mono mt-2 h-12 max-w-[220px] border-border/80 bg-secondary/60 text-lg uppercase tracking-[0.3em]"
-                  />
-                  <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{t("tr.keyHelp")}</p>
-                </>
-              ) : (
-                <>
-                  <Label htmlFor="tr-email" className="mt-5 block text-sm font-medium">
-                    {t("tr.email")}
-                  </Label>
-                  <Input
-                    id="tr-email"
-                    type="email"
-                    value={email}
-                    onChange={(event) => {
-                      setEmail(event.target.value);
-                      setError("");
-                    }}
-                    placeholder={t("email.placeholder")}
-                    autoComplete="email"
-                    className="mt-2 h-12 border-border/80 bg-secondary/60"
-                  />
-                  <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{t("tr.emailHelp")}</p>
-                </>
-              )}
+              <Label htmlFor="tr-email" className="mt-5 block text-sm font-medium">
+                {t("tr.email")}
+              </Label>
+              <Input
+                id="tr-email"
+                type="email"
+                value={email}
+                onChange={(event) => {
+                  setEmail(event.target.value);
+                  setError("");
+                }}
+                placeholder={t("email.placeholder")}
+                autoComplete="email"
+                required
+                className="mt-2 h-12 border-border/80 bg-secondary/60"
+              />
+              <p className="mt-2 text-xs leading-relaxed text-muted-foreground">{t("tr.emailHelp")}</p>
             </section>
 
             <div className="flex justify-center py-2.5" aria-hidden>

@@ -5,7 +5,11 @@ import {
   Crown,
   Hourglass,
   Loader2,
+  Mail,
+  MonitorSmartphone,
   MoreHorizontal,
+  StickyNote,
+  Store,
   PauseCircle,
   PlayCircle,
   Plus,
@@ -22,6 +26,9 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -35,9 +42,10 @@ import {
   formatMac,
   normalizeDeviceId,
   type LicenseRecord,
+  type ResellerInfo,
   type TrialRecord,
 } from "@/lib/api";
-import { licenseState, sourceLabel, termCodeLabel, type LicenseState } from "@/lib/dashboard";
+import { deviceLabel, licenseState, sourceLabel, termCodeLabel, type LicenseState } from "@/lib/dashboard";
 import { cn } from "@/lib/utils";
 
 export type CustomerFolder = "trial" | "subscription" | "lifetime" | "expired" | "blocked";
@@ -60,7 +68,9 @@ export function useCustomerFolders(data: LicensesPayload | undefined, search: st
         row.deviceId.includes(needle) ||
         (row.aliases ?? []).some((alias) => alias.includes(needle)) ||
         row.email.toLowerCase().includes(plain) ||
-        row.label.toLowerCase().includes(plain),
+        row.label.toLowerCase().includes(plain) ||
+        (row.resellerNote ?? "").toLowerCase().includes(plain) ||
+        deviceLabel(row.device).toLowerCase().includes(plain),
     );
     const trials = (data?.trials ?? []).filter(
       (trial) =>
@@ -92,18 +102,20 @@ export function CustomersView({
   loading,
   folder,
   onFolder,
+  resellers = [],
 }: {
   token: string;
   data: LicensesPayload | undefined;
   loading: boolean;
   folder: CustomerFolder;
   onFolder: (folder: CustomerFolder) => void;
+  resellers?: ResellerInfo[];
 }) {
   const [search, setSearch] = useState<string>("");
   const [grantFor, setGrantFor] = useState<string | null>(null);
   const [editing, setEditing] = useState<LicenseRecord | null>(null);
   const folders = useCustomerFolders(data, search);
-  const action = useAdminAction(token, ["licenses"]);
+  const action = useAdminAction(token, ["licenses", "resellers"]);
 
   const tabs = [
     { id: "trial" as const, label: "In prova", count: folders.trial.filter((t) => !t.expired).length, icon: Hourglass },
@@ -145,6 +157,7 @@ export function CustomersView({
         <LicenseTable
           rows={folders[folder]}
           busy={action.isPending}
+          resellers={resellers}
           onEditTerm={setEditing}
           onAction={run}
           empty={search ? "Nessun risultato in questa cartella." : "Nessun cliente in questa cartella."}
@@ -168,12 +181,14 @@ const LICENSE_GRID =
 function LicenseTable({
   rows,
   busy,
+  resellers,
   onEditTerm,
   onAction,
   empty,
 }: {
   rows: LicenseRecord[];
   busy: boolean;
+  resellers: ResellerInfo[];
   onEditTerm: (row: LicenseRecord) => void;
   onAction: (path: string, body: Record<string, unknown>) => void;
   empty: string;
@@ -196,7 +211,14 @@ function LicenseTable({
       </div>
       <div className="divide-y divide-border/50">
         {rows.map((row) => (
-          <LicenseRow key={row.deviceId} row={row} busy={busy} onEditTerm={onEditTerm} onAction={onAction} />
+          <LicenseRow
+            key={row.deviceId}
+            row={row}
+            busy={busy}
+            resellers={resellers}
+            onEditTerm={onEditTerm}
+            onAction={onAction}
+          />
         ))}
       </div>
     </div>
@@ -206,17 +228,21 @@ function LicenseTable({
 function LicenseRow({
   row,
   busy,
+  resellers,
   onEditTerm,
   onAction,
 }: {
   row: LicenseRecord;
   busy: boolean;
+  resellers: ResellerInfo[];
   onEditTerm: (row: LicenseRecord) => void;
   onAction: (path: string, body: Record<string, unknown>) => void;
 }) {
   const state = licenseState(row);
   const pill = STATE_PILL[state];
   const left = row.expiresAt ? daysUntil(row.expiresAt) : null;
+  const device = deviceLabel(row.device);
+  const reseller = row.resellerId ? resellers.find((item) => item.id === row.resellerId) : undefined;
 
   return (
     <div className={cn(LICENSE_GRID, "px-4 py-3.5 transition hover:bg-secondary/25")}>
@@ -235,6 +261,28 @@ function LicenseRow({
             <span className="mono">anche {(row.aliases ?? []).map(formatMac).join(" · ")}</span>
           )}
         </div>
+        {(device || row.resellerId || row.resellerNote) && (
+          <div className="mt-1 flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs">
+            {device && (
+              <span className="inline-flex items-center gap-1 text-foreground/80" title={row.device?.os ?? ""}>
+                <MonitorSmartphone className="h-3 w-3 text-muted-foreground" />
+                {device}
+              </span>
+            )}
+            {row.resellerId && (
+              <span className="inline-flex items-center gap-1 text-primary">
+                <Store className="h-3 w-3" />
+                {reseller?.username ?? "rivenditore"}
+              </span>
+            )}
+            {row.resellerNote && (
+              <span className="inline-flex items-center gap-1 text-muted-foreground">
+                <StickyNote className="h-3 w-3" />
+                {row.resellerNote}
+              </span>
+            )}
+          </div>
+        )}
         {/* Compact facts for small screens; the wide layout uses columns instead. */}
         <div className="mt-2 flex flex-wrap items-center gap-1.5 lg:hidden">
           <Pill tone={pill.tone} strong>
@@ -304,6 +352,45 @@ function LicenseRow({
               >
                 <Ban className="mr-2 h-4 w-4" /> Revoca
               </DropdownMenuItem>
+            )}
+            <DropdownMenuItem
+              onClick={() => {
+                const email = window.prompt("Nuova email per questo dispositivo", row.email)?.trim();
+                if (email === undefined || email === row.email) return;
+                if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                  window.alert("Email non valida.");
+                  return;
+                }
+                onAction("/api/admin/update", { deviceId: row.deviceId, label: row.label, email });
+              }}
+            >
+              <Mail className="mr-2 h-4 w-4" /> Cambia email
+            </DropdownMenuItem>
+            {resellers.length > 0 && (
+              <DropdownMenuSub>
+                <DropdownMenuSubTrigger>
+                  <Store className="mr-2 h-4 w-4" /> Rivenditore
+                </DropdownMenuSubTrigger>
+                <DropdownMenuSubContent className="max-h-72 overflow-y-auto">
+                  <DropdownMenuItem
+                    disabled={!row.resellerId}
+                    onClick={() => onAction("/api/admin/assign-reseller", { identifiers: [row.deviceId], resellerId: "" })}
+                  >
+                    Nessuno (tuo)
+                  </DropdownMenuItem>
+                  {resellers.map((item) => (
+                    <DropdownMenuItem
+                      key={item.id}
+                      disabled={item.id === row.resellerId}
+                      onClick={() =>
+                        onAction("/api/admin/assign-reseller", { identifiers: [row.deviceId], resellerId: item.id })
+                      }
+                    >
+                      {item.username}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuSubContent>
+              </DropdownMenuSub>
             )}
             <DropdownMenuSeparator />
             <DropdownMenuItem

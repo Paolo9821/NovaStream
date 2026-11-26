@@ -11,6 +11,7 @@ import Index from "./pages/Index";
 import { PrivacyPage, TermsPage } from "./pages/Legal";
 import NotFound from "./pages/NotFound";
 import Playlists from "./pages/Playlists";
+import Reseller from "./pages/Reseller";
 import Support from "./pages/Support";
 import Transfer from "./pages/Transfer";
 
@@ -38,6 +39,8 @@ const App = () => (
             <Route path="/device" element={<Device />} />
             <Route path="/trasferimento" element={<Transfer />} />
             <Route path="/transfer" element={<Transfer />} />
+            <Route path="/reseller" element={<Reseller />} />
+            <Route path="/rivenditore" element={<Reseller />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>

@@ -1,5 +1,10 @@
 package com.rork.novastream.data.remote
 
+import android.app.UiModeManager
+import android.content.Context
+import android.content.res.Configuration
+import android.content.pm.PackageManager
+import android.os.Build
 import android.util.Log
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.android.Android
@@ -95,7 +100,13 @@ sealed interface LicenseCheck {
  * one question — "am I allowed?" — so there is nothing here a customer could
  * tamper with to grant themselves access.
  */
-class LicenseApi(private val baseUrl: String = LICENSE_BACKEND_URL) {
+class LicenseApi(
+    context: Context? = null,
+    private val baseUrl: String = LICENSE_BACKEND_URL,
+) {
+
+    /** Kind, brand and model of this hardware, shown to the owner next to the licence. */
+    private val device: JsonObject = describeDevice(context?.applicationContext)
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
@@ -132,6 +143,7 @@ class LicenseApi(private val baseUrl: String = LICENSE_BACKEND_URL) {
                         put("deviceId", deviceId)
                         if (mac.isNotBlank()) put("mac", mac)
                         if (freshInstall) put("fresh", true)
+                        put("device", device)
                     }.toString(),
                 )
             }
@@ -185,6 +197,7 @@ class LicenseApi(private val baseUrl: String = LICENSE_BACKEND_URL) {
                     buildJsonObject {
                         put("deviceId", deviceId)
                         put("mac", mac)
+                        put("device", device)
                         putJsonArray("playlists") {
                             accounts.forEach { account ->
                                 val xtream = account.type == AccountType.XTREAM
@@ -248,6 +261,29 @@ class LicenseApi(private val baseUrl: String = LICENSE_BACKEND_URL) {
         }.getOrElse { error ->
             Log.d(TAG, "device sync unavailable: ${error.message}")
             null
+        }
+    }
+
+    private fun describeDevice(context: Context?): JsonObject {
+        val kind = runCatching {
+            when {
+                context == null -> ""
+                (context.getSystemService(Context.UI_MODE_SERVICE) as? UiModeManager)?.currentModeType ==
+                    Configuration.UI_MODE_TYPE_TELEVISION ||
+                    context.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK) -> "tv"
+                context.resources.configuration.smallestScreenWidthDp >= 600 -> "tablet"
+                else -> "phone"
+            }
+        }.getOrDefault("")
+        val version = runCatching {
+            context?.packageManager?.getPackageInfo(context.packageName, 0)?.versionName
+        }.getOrNull().orEmpty()
+        return buildJsonObject {
+            if (kind.isNotEmpty()) put("kind", kind)
+            put("manufacturer", Build.MANUFACTURER.orEmpty().replaceFirstChar { it.uppercase() })
+            put("model", Build.MODEL.orEmpty())
+            put("os", "Android ${Build.VERSION.RELEASE}")
+            if (version.isNotEmpty()) put("appVersion", version)
         }
     }
 

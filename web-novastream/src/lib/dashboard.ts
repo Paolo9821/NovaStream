@@ -1,4 +1,4 @@
-import type { LicenseRecord, PromoCode, Term } from "@/lib/api";
+import type { DeviceInfo, LicenseRecord, PromoCode, Term } from "@/lib/api";
 
 /** Owner-facing (Italian) label for a licence duration code kept by the server. */
 export function termCodeLabel(code: string): string {
@@ -35,9 +35,66 @@ export function sourceLabel(source: string): string {
       return "Manuale";
     case "gift":
       return "Codice regalo";
+    case "reseller":
+      return "Rivenditore";
     default:
       return source;
   }
+}
+
+const DEVICE_KIND: Record<string, string> = { tv: "TV", phone: "Telefono", tablet: "Tablet" };
+
+/** "TV · Samsung QE55" style label; '' when the app has not reported anything yet. */
+export function deviceLabel(device: DeviceInfo | null | undefined): string {
+  if (!device) return "";
+  const kind = DEVICE_KIND[device.kind] ?? "";
+  const maker = device.manufacturer.trim();
+  const model = device.model.trim();
+  const name = model.toLowerCase().startsWith(maker.toLowerCase()) ? model : [maker, model].filter(Boolean).join(" ");
+  return [kind, name].filter(Boolean).join(" · ");
+}
+
+const ACTION_LABELS: Record<string, string> = {
+  login: "Accesso",
+  login_failed: "Accesso fallito",
+  "2fa_enabled": "2FA attivata",
+  "2fa/enable": "2FA attivata",
+  "2fa/disable": "2FA disattivata",
+  "set-status": "Stato licenza",
+  "set-term": "Durata cambiata",
+  extend: "Licenza estesa",
+  update: "Dati licenza modificati",
+  transfer: "Trasferimento",
+  remove: "Licenza eliminata",
+  grant: "Licenza attivata",
+  activate: "Licenza attivata",
+  "promo-create": "Codici creati",
+  "code-create": "Codici creati",
+  "promo-toggle": "Codice attivato/disattivato",
+  "promo-remove": "Codice eliminato",
+  "promo-update": "Codice modificato",
+  "redemption-revoke": "Utilizzo annullato",
+  "redemption-restore": "Utilizzo ripristinato",
+  "redemption-email": "Email cambiata",
+  "reseller-create": "Rivenditore creato",
+  "reseller-update": "Rivenditore modificato",
+  "reseller-reset-2fa": "2FA rivenditore azzerata",
+  "reseller-delete": "Rivenditore eliminato",
+  "reseller-credits": "Crediti",
+  "reseller-disable": "Rivenditore sospeso/riattivato",
+  "assign-reseller": "Licenze assegnate",
+  note: "Nota cliente",
+  "license-revoke": "Licenza revocata",
+  "license-restore": "Licenza ripristinata",
+  "ticket-status": "Richiesta aggiornata",
+  "ticket-remove": "Richiesta eliminata",
+};
+
+/** Readable name of a log action; refused attempts get a "rifiutato" suffix. */
+export function actionLabel(action: string): { label: string; refused: boolean } {
+  const refused = action.endsWith("_refused");
+  const base = refused ? action.slice(0, -"_refused".length) : action;
+  return { label: ACTION_LABELS[base] ?? base, refused };
 }
 
 export type LicenseState = "active" | "expired" | "suspended" | "revoked";

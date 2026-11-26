@@ -1,9 +1,14 @@
 import {
   generateTotpSecret,
+  hashPassword,
+  issueResellerToken,
   issueToken,
   otpauthUri,
   passwordMatches,
+  readResellerToken,
+  resellerTokenValid,
   usernameMatches,
+  verifyPassword,
   verifyToken,
   verifyTotp,
 } from "./_lib/auth";
@@ -105,8 +110,108 @@ const putSetting = (env: Env, key: string, value: string): Promise<{ ok: boolean
 
 type LoginGuard = { blocked: boolean; retryInSeconds: number; failures: number };
 
-const loginGuard = (env: Env, action: "check" | "fail" | "reset"): Promise<LoginGuard> =>
-  registryJson<LoginGuard>(env, "/login-guard", { action });
+const loginGuard = (env: Env, action: "check" | "fail" | "reset", key = "login"): Promise<LoginGuard> =>
+  registryJson<LoginGuard>(env, "/login-guard", { action, key });
+
+// ---- Audit log ----------------------------------------------------------------
+
+type Actor = { type: "admin" | "reseller"; id: string; name: string };
+
+const adminActor = (env: Env): Actor => ({ type: "admin", id: "admin", name: adminUsername(env) });
+
+const ipOf = (request: Request): string => request.headers.get("CF-Connecting-IP") ?? "";
+
+/** Never written to the log, even when they travel in a request body. */
+const SECRET_FIELDS = new Set(["password", "hash", "salt", "code2fa", "token", "captchaToken", "captchaAnswer", "fromKey", "toKey"]);
+
+function cleanDetails(value: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (SECRET_FIELDS.has(key)) continue;
+    if (key === "license" || key === "licenses" || key === "resellers" || key === "ok") continue;
+    out[key] = item;
+  }
+  return out;
+}
+
+async function audit(
+  env: Env,
+  request: Request,
+  actor: Actor,
+  action: string,
+  target: string,
+  details: Record<string, unknown> = {},
+): Promise<void> {
+  try {
+    await registry(env, "/audit", {
+      actorType: actor.type,
+      actorId: actor.id,
+      actorName: actor.name,
+      action,
+      target,
+      details: cleanDetails(details),
+      ip: ipOf(request),
+    });
+  } catch (error) {
+    console.warn("audit write failed", action, error instanceof Error ? error.message : error);
+  }
+}
+
+/** Reads a JSON answer without consuming it, to tell a success from a refusal. */
+async function outcomeOf(response: Response): Promise<{ ok: boolean; data: Record<string, unknown> }> {
+  let data: Record<string, unknown> = {};
+  try {
+    data = (await response.clone().json()) as Record<string, unknown>;
+  } catch {
+    /* not JSON */
+  }
+  return { ok: response.ok && data.ok !== false && !data.error, data };
+}
+
+// ---- Resellers --------------------------------------------------------------
+
+const RESELLER_TOKEN_SECRET = "reseller_token_secret";
+
+type ResellerAccount = {
+  id: string;
+  username: string;
+  pass_hash: string;
+  pass_salt: string;
+  pass_version: number;
+  twofa_secret: string;
+  twofa_pending: string;
+  twofa_last_step: number;
+  credits: number;
+  disabled: number;
+};
+
+const resellerAccount = async (env: Env, query: { id?: string; username?: string }): Promise<ResellerAccount | null> =>
+  (await registryJson<{ reseller: ResellerAccount | null }>(env, "/reseller-auth", query)).reseller;
+
+async function requireReseller(request: Request, env: Env): Promise<ResellerAccount | null> {
+  const header = request.headers.get("Authorization") ?? "";
+  const token = header.toLowerCase().startsWith("bearer ") ? header.slice(7).trim() : null;
+  const parsed = readResellerToken(token);
+  if (!parsed) return null;
+  const account = await resellerAccount(env, { id: parsed.id });
+  if (!account || account.disabled === 1) return null;
+  const secret = await generatedSecret(env, RESELLER_TOKEN_SECRET);
+  return (await resellerTokenValid(secret, parsed, account.pass_version)) ? account : null;
+}
+
+/** What the app says about the hardware it runs on; shown to the owner next to each licence. */
+function saveDeviceInfo(env: Env, ctx: ExecutionContext, request: Request, deviceId: string, mac: string, raw: unknown): void {
+  if (!deviceId) return;
+  const info = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  ctx.waitUntil(
+    registry(env, "/device-info", {
+      deviceId,
+      mac,
+      info,
+      userAgent: request.headers.get("User-Agent") ?? "",
+    }).catch(() => undefined),
+  );
+}
 
 /** Random token handed to one browser after it used a device key. */
 function newSessionToken(): string {
@@ -262,6 +367,7 @@ export default {
           identifiers: [deviceId, mac],
           fresh,
         });
+        saveDeviceInfo(env, ctx, request, deviceId || mac, mac, body.device);
         return json(result);
       }
 
@@ -283,6 +389,7 @@ export default {
           remove: string[];
         }>(env, "/device-sync", { deviceId, mac, playlists: body.playlists });
         if (!result.ok) return fail("sync failed", 500);
+        saveDeviceInfo(env, ctx, request, deviceId, mac, body.device);
         const key = await importSealKey(await generatedSecret(env, PLAYLIST_SEAL_KEY));
         const install: (PlaylistPayload & { id: string })[] = [];
         for (const item of result.install) {
@@ -411,16 +518,16 @@ export default {
 
       // ---- Licence transfer ------------------------------------------------
       // Moves a licence to a new device. The new device proves itself with the
-      // key its app shows; the old one with its own key, or, when it is lost or
-      // broken, with the email used for the purchase.
+      // key its app shows; the licence with the email used for the purchase.
       if (path === "/api/license/transfer" && request.method === "POST") {
         const body = await readBody(request);
         const fromId = normalizeDeviceId(String(body.fromId ?? ""));
         const toId = normalizeDeviceId(String(body.toId ?? ""));
         if (!isValidDeviceId(fromId) || !isValidDeviceId(toId)) return fail("invalid device id");
-        const method = body.method === "email" ? "email" : "key";
+        // The purchase email is the only way left to prove the licence is yours.
+        const method = "email";
         const fromEmail = String(body.email ?? "").trim().toLowerCase().slice(0, 160);
-        if (method === "email" && !EMAIL_RE.test(fromEmail)) return fail("invalid email");
+        if (!EMAIL_RE.test(fromEmail)) return fail("invalid email");
 
         const check = await checkChallenge(
           await generatedSecret(env, CAPTCHA_SECRET),
@@ -442,7 +549,6 @@ export default {
           fromId,
           toId,
           method,
-          fromKey: String(body.fromKey ?? ""),
           toKey: String(body.toKey ?? ""),
           email: fromEmail,
           ip: request.headers.get("CF-Connecting-IP") ?? "",
@@ -476,12 +582,14 @@ export default {
         const body = await readBody(request);
         const deviceId = normalizeDeviceId(String(body.deviceId ?? ""));
         if (!isValidDeviceId(deviceId)) return fail("invalid device id");
+        const redeemEmail = String(body.email ?? "").trim().slice(0, 160);
+        if (!EMAIL_RE.test(redeemEmail)) return fail("invalid email");
         const result = await registryJson<{ ok: boolean; error?: string }>(env, "/promo-redeem", {
           code: normalizeCode(String(body.code ?? "")),
           plan: String(body.plan ?? ""),
           deviceId,
           identifiers: [deviceId],
-          email: String(body.email ?? "").trim(),
+          email: redeemEmail,
           ip: request.headers.get("CF-Connecting-IP") ?? "",
         });
         if (!result.ok) return json(result, result.error === "too many attempts" ? 429 : 400);
@@ -494,9 +602,10 @@ export default {
         const body = await readBody(request);
         const planId = String(body.plan ?? "");
         const deviceId = normalizeDeviceId(String(body.deviceId ?? ""));
-        const email = String(body.email ?? "").trim();
+        const email = String(body.email ?? "").trim().slice(0, 160);
         if (!isPlanId(planId)) return fail("unknown plan");
         if (!isValidDeviceId(deviceId)) return fail("invalid device id");
+        if (!EMAIL_RE.test(email)) return fail("invalid email");
         const consent = readConsent(request, body.consent);
         if (!consent) return fail("consent required");
         // The discount is worked out again here: the browser only names the code.
@@ -575,6 +684,14 @@ export default {
           usernameMatches(username, String(body.username ?? "")) &&
           passwordMatches(password, String(body.password ?? ""));
         if (!credentialsOk) {
+          await audit(
+            env,
+            request,
+            { type: "admin", id: "admin", name: String(body.username ?? "").slice(0, 64) },
+            "login_failed",
+            "pannello",
+            { reason: "credentials" },
+          );
           const after = await loginGuard(env, "fail");
           // Say so straight away when that attempt used up the last try,
           // instead of letting the next one look like a plain wrong password.
@@ -593,6 +710,7 @@ export default {
           const lastStep = Number(await setting(env, TWOFA_LAST_STEP)) || 0;
           // A code is single-use: replaying one seen on a shoulder gets nowhere.
           if (!result.valid || result.step <= lastStep) {
+            await audit(env, request, adminActor(env), "login_failed", "pannello", { reason: "2fa" });
             const after = await loginGuard(env, "fail");
             if (after.blocked) {
               return json({ error: "too many attempts", retryInSeconds: after.retryInSeconds }, 429);
@@ -603,182 +721,118 @@ export default {
         }
 
         await loginGuard(env, "reset");
+        await audit(env, request, adminActor(env), "login", "pannello");
         return json({ token: await issueToken(password, username) });
+      }
+
+      // ---- Reseller panel ----------------------------------------------------
+      if (path === "/api/reseller/login" && request.method === "POST") {
+        const body = await readBody(request);
+        const typed = String(body.username ?? "").trim().toLowerCase().slice(0, 64);
+        const guardKey = `rlogin_${typed.replace(/[^a-z0-9._-]/g, "") || "_"}`;
+        const guard = await loginGuard(env, "check", guardKey);
+        if (guard.blocked) return json({ error: "too many attempts", retryInSeconds: guard.retryInSeconds }, 429);
+
+        const refuse = async (reason: string, account: ResellerAccount | null, twofa = false): Promise<Response> => {
+          await audit(
+            env,
+            request,
+            { type: "reseller", id: account?.id ?? "", name: account?.username ?? typed },
+            "login_failed",
+            "pannello rivenditore",
+            { reason },
+          );
+          const after = await loginGuard(env, "fail", guardKey);
+          if (after.blocked) return json({ error: "too many attempts", retryInSeconds: after.retryInSeconds }, 429);
+          return twofa
+            ? json({ error: "invalid two-factor code", twofaRequired: true }, 401)
+            : fail("wrong username or password", 401);
+        };
+
+        const account = typed ? await resellerAccount(env, { username: typed }) : null;
+        const passwordOk = account
+          ? await verifyPassword(String(body.password ?? ""), account.pass_hash, account.pass_salt)
+          : false;
+        // A disabled account gets the same answer as a wrong password: no hints.
+        if (!account || !passwordOk) return refuse("credentials", account);
+        if (account.disabled === 1) return refuse("disabled", account);
+
+        const code = String(body.code ?? "").trim();
+        const actor: Actor = { type: "reseller", id: account.id, name: account.username };
+        const tokenSecret = await generatedSecret(env, RESELLER_TOKEN_SECRET);
+
+        // First login (or after a reset): two-factor is set up before anything else.
+        if (!account.twofa_secret) {
+          if (code && account.twofa_pending) {
+            const result = await verifyTotp(account.twofa_pending, code);
+            if (!result.valid) return refuse("2fa setup", account, true);
+            await registry(env, "/reseller-twofa", { id: account.id, op: "activate", step: result.step });
+            await loginGuard(env, "reset", guardKey);
+            await audit(env, request, actor, "2fa_enabled", account.username);
+            await audit(env, request, actor, "login", "pannello rivenditore");
+            return json({
+              token: await issueResellerToken(tokenSecret, account.id, account.pass_version),
+              username: account.username,
+            });
+          }
+          const secret = account.twofa_pending || generateTotpSecret();
+          if (!account.twofa_pending) {
+            await registry(env, "/reseller-twofa", { id: account.id, op: "pending", secret });
+          }
+          return json({
+            setup: { secret, otpauth: otpauthUri(secret, account.username, "NovaStream Reseller") },
+          });
+        }
+
+        if (!code) return json({ error: "two-factor code required", twofaRequired: true }, 401);
+        const result = await verifyTotp(account.twofa_secret, code);
+        if (!result.valid || result.step <= account.twofa_last_step) return refuse("2fa", account, true);
+        await registry(env, "/reseller-twofa", { id: account.id, op: "login", step: result.step });
+        await loginGuard(env, "reset", guardKey);
+        await audit(env, request, actor, "login", "pannello rivenditore");
+        return json({
+          token: await issueResellerToken(tokenSecret, account.id, account.pass_version),
+          username: account.username,
+        });
+      }
+
+      if (path.startsWith("/api/reseller/")) {
+        const account = await requireReseller(request, env);
+        if (!account) return fail("unauthorized", 401);
+        const body = await readBody(request);
+        const actor: Actor = { type: "reseller", id: account.id, name: account.username };
+        const name = path.slice("/api/reseller/".length);
+        const response = await resellerRoute(env, account, name, body);
+        if (name !== "me") {
+          const outcome = await outcomeOf(response);
+          const action =
+            name === "license-status" ? (body.status === "revoked" ? "license-revoke" : "license-restore") : name;
+          await audit(
+            env,
+            request,
+            actor,
+            outcome.ok ? action : `${action}_refused`,
+            targetOf(body, outcome.data),
+            { ...body, ...outcome.data },
+          );
+        }
+        return response;
       }
 
       if (path.startsWith("/api/admin/")) {
         if (!(await requireAdmin(request, env))) return fail("unauthorized", 401);
         const body = await readBody(request);
-
-        if (path === "/api/admin/session") return json({ ok: true });
-
-        // ---- Dashboard security -----------------------------------------
-        if (path === "/api/admin/security") {
-          return json({
-            username: adminUsername(env),
-            usernameConfigured: Boolean(env.ADMIN_USERNAME?.trim()),
-            twofaEnabled: Boolean(await setting(env, TWOFA_SECRET)),
-          });
-        }
-
-        // Hands out a fresh secret and its QR payload; nothing is enforced
-        // until the owner proves they can generate a code from it.
-        if (path === "/api/admin/2fa/setup") {
-          const secret = generateTotpSecret();
-          await putSetting(env, TWOFA_PENDING, secret);
-          return json({
-            secret,
-            otpauth: otpauthUri(secret, adminUsername(env)),
-          });
-        }
-
-        if (path === "/api/admin/2fa/enable") {
-          const pending = await setting(env, TWOFA_PENDING);
-          if (!pending) return fail("start the setup first", 400);
-          const result = await verifyTotp(pending, String(body.code ?? ""));
-          if (!result.valid) return fail("invalid two-factor code", 400);
-          await putSetting(env, TWOFA_SECRET, pending);
-          await putSetting(env, TWOFA_PENDING, "");
-          await putSetting(env, TWOFA_LAST_STEP, String(result.step));
-          return json({ ok: true, twofaEnabled: true });
-        }
-
-        // Turning it off asks for both factors, so a stolen session cannot.
-        if (path === "/api/admin/2fa/disable") {
-          const secret = await setting(env, TWOFA_SECRET);
-          if (!secret) return json({ ok: true, twofaEnabled: false });
-          if (!passwordMatches(env.ADMIN_PASSWORD?.trim() ?? "", String(body.password ?? ""))) {
-            return fail("wrong password", 401);
+        const response = await adminRoute(env, request, path, body);
+        const name = path.slice("/api/admin/".length);
+        if (!ADMIN_READS.has(name)) {
+          const outcome = await outcomeOf(response);
+          if (outcome.ok) {
+            // Two-factor requests carry one-time codes: only the fact is kept.
+            const details = name.startsWith("2fa") ? {} : { ...body, ...outcome.data };
+            await audit(env, request, adminActor(env), name, targetOf(body, outcome.data), details);
           }
-          const result = await verifyTotp(secret, String(body.code ?? ""));
-          if (!result.valid) return fail("invalid two-factor code", 400);
-          await putSetting(env, TWOFA_SECRET, "");
-          await putSetting(env, TWOFA_PENDING, "");
-          return json({ ok: true, twofaEnabled: false });
         }
-
-        // ---- Support inbox ------------------------------------------------
-        if (path === "/api/admin/tickets") {
-          return json(await registryJson(env, "/ticket-list", {}));
-        }
-
-        if (path === "/api/admin/ticket-status") {
-          return json(
-            await registryJson(env, "/ticket-status", {
-              id: String(body.id ?? ""),
-              status: String(body.status ?? ""),
-              note: String(body.note ?? ""),
-            }),
-          );
-        }
-
-        if (path === "/api/admin/ticket-remove") {
-          return json(await registryJson(env, "/ticket-remove", { id: String(body.id ?? "") }));
-        }
-
-        if (path === "/api/admin/licenses") {
-          return json(await registryJson(env, "/list", {}));
-        }
-
-        if (path === "/api/admin/set-status") {
-          const deviceId = normalizeDeviceId(String(body.deviceId ?? ""));
-          const status = String(body.status ?? "");
-          return json(
-            await registryJson(env, "/set-status", { deviceId, status, note: String(body.note ?? "") }),
-          );
-        }
-
-        if (path === "/api/admin/set-term") {
-          const deviceId = normalizeDeviceId(String(body.deviceId ?? ""));
-          const term = readTerm(body.term);
-          if (!term) return fail("invalid duration");
-          return json(await registryJson(env, "/set-term", { deviceId, term }));
-        }
-
-        // ---- Promo codes ------------------------------------------------
-        if (path === "/api/admin/promo-list") {
-          return json(await registryJson(env, "/promo-list", {}));
-        }
-
-        if (path === "/api/admin/promo-create") {
-          const result = await registryJson<{ ok: boolean; error?: string }>(env, "/promo-create", body);
-          return result.ok ? json(result) : fail(result.error ?? "could not create code");
-        }
-
-        if (path === "/api/admin/promo-toggle") {
-          return json(
-            await registryJson(env, "/promo-toggle", { code: String(body.code ?? ""), active: body.active === true }),
-          );
-        }
-
-        if (path === "/api/admin/promo-remove") {
-          return json(await registryJson(env, "/promo-remove", { code: String(body.code ?? "") }));
-        }
-
-        if (path === "/api/admin/extend") {
-          const deviceId = normalizeDeviceId(String(body.deviceId ?? ""));
-          return json(await registryJson(env, "/extend", { deviceId, days: Number(body.days ?? 0) }));
-        }
-
-        if (path === "/api/admin/update") {
-          const deviceId = normalizeDeviceId(String(body.deviceId ?? ""));
-          return json(
-            await registryJson(env, "/update", {
-              deviceId,
-              label: String(body.label ?? ""),
-              email: String(body.email ?? ""),
-            }),
-          );
-        }
-
-        // The owner can move a licence without any key, and without the waiting period.
-        if (path === "/api/admin/transfer") {
-          const fromId = normalizeDeviceId(String(body.fromId ?? ""));
-          const toId = normalizeDeviceId(String(body.toId ?? ""));
-          if (!isValidDeviceId(fromId) || !isValidDeviceId(toId)) return fail("invalid device id");
-          const result = await registryJson<TransferResult>(env, "/license-transfer", {
-            fromId,
-            toId,
-            method: "admin",
-            toMac: normalizeDeviceId(String(body.toMac ?? "")),
-          });
-          return result.ok ? json(result) : json(result, 400);
-        }
-
-        if (path === "/api/admin/transfers") {
-          return json(await registryJson(env, "/transfer-list", {}));
-        }
-
-        if (path === "/api/admin/remove") {
-          const deviceId = normalizeDeviceId(String(body.deviceId ?? ""));
-          return json(await registryJson(env, "/remove", { deviceId }));
-        }
-
-        if (path === "/api/admin/grant") {
-          const deviceId = normalizeDeviceId(String(body.deviceId ?? ""));
-          const mac = normalizeDeviceId(String(body.mac ?? ""));
-          const planId = String(body.plan ?? "");
-          if (!isValidDeviceId(deviceId)) return fail("invalid device id");
-          // A duration (1/3/6/12 months, lifetime, a date) wins over the plan's default.
-          const term = body.term === undefined ? null : readTerm(body.term);
-          if (body.term !== undefined && !term) return fail("invalid duration");
-          if (!term && !isPlanId(planId)) return fail("unknown plan");
-          return json(
-            await registryJson(env, "/issue", {
-              deviceId,
-              identifiers: [deviceId, mac],
-              plan: term ? (term.kind === "lifetime" ? "lifetime" : "annual") : planId,
-              ...(term ? { term } : {}),
-              label: String(body.label ?? ""),
-              email: String(body.email ?? ""),
-              orderId: "",
-              amountCents: 0,
-              source: "manual",
-            }),
-          );
-        }
-
-        return fail("not found", 404);
+        return response;
       }
 
       return fail("not found", 404);
@@ -789,6 +843,388 @@ export default {
     }
   },
 } satisfies ExportedHandler<Env>;
+
+/** Everything a reseller can do from their own panel, always limited to their own customers. */
+async function resellerRoute(
+  env: Env,
+  account: ResellerAccount,
+  name: string,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  const answer = (result: { ok: boolean; error?: string }) => (result.ok ? json(result) : json(result, 400));
+  const resellerId = account.id;
+
+  if (name === "me") return json(await registryJson(env, "/reseller-data", { resellerId }));
+
+  if (name === "activate") {
+    const deviceId = normalizeDeviceId(String(body.deviceId ?? ""));
+    const mac = normalizeDeviceId(String(body.mac ?? ""));
+    if (!isValidDeviceId(deviceId)) return fail("invalid device id");
+    const email = String(body.email ?? "").trim().slice(0, 160);
+    if (!EMAIL_RE.test(email)) return fail("invalid email");
+    return answer(
+      await registryJson(env, "/reseller-activate", {
+        resellerId,
+        deviceId,
+        mac,
+        years: Number(body.years ?? 1),
+        email,
+        note: String(body.note ?? ""),
+      }),
+    );
+  }
+
+  if (name === "code-create") {
+    return answer(
+      await registryJson(env, "/reseller-code-create", {
+        resellerId,
+        count: Number(body.count ?? 1),
+        years: Number(body.years ?? 1),
+        note: String(body.note ?? ""),
+      }),
+    );
+  }
+
+  if (name === "note") {
+    return answer(
+      await registryJson(env, "/reseller-note", {
+        resellerId,
+        deviceId: normalizeDeviceId(String(body.deviceId ?? "")),
+        note: String(body.note ?? ""),
+      }),
+    );
+  }
+
+  if (name === "license-status") {
+    return answer(
+      await registryJson(env, "/reseller-license-status", {
+        resellerId,
+        deviceId: normalizeDeviceId(String(body.deviceId ?? "")),
+        status: String(body.status ?? ""),
+      }),
+    );
+  }
+
+  if (name === "redemption-revoke" || name === "redemption-restore") {
+    return answer(await registryJson(env, `/${name}`, { id: String(body.id ?? ""), resellerId }));
+  }
+
+  return fail("not found", 404);
+}
+
+/** Dashboard reads: not written to the log, which keeps only what changed something. */
+const ADMIN_READS = new Set([
+  "session",
+  "security",
+  "tickets",
+  "licenses",
+  "promo-list",
+  "transfers",
+  "resellers",
+  "logs",
+  "2fa/setup",
+]);
+
+/** The licence, code, account or use an action was about, for the log. */
+function targetOf(body: Record<string, unknown>, data: Record<string, unknown>): string {
+  if (body.fromId && body.toId) return `${String(body.fromId)} → ${String(body.toId)}`;
+  const pick = (value: unknown) => (typeof value === "string" && value ? value : "");
+  return (
+    pick(data.username) ||
+    pick(body.username) ||
+    pick(body.deviceId) ||
+    pick(data.deviceId) ||
+    pick(body.code) ||
+    pick(data.code) ||
+    pick(body.id) ||
+    pick(data.id) ||
+    ""
+  ).slice(0, 200);
+}
+
+async function adminRoute(env: Env, request: Request, path: string, body: Record<string, unknown>): Promise<Response> {
+  if (path === "/api/admin/session") return json({ ok: true });
+
+  // ---- Dashboard security -----------------------------------------
+  if (path === "/api/admin/security") {
+    return json({
+      username: adminUsername(env),
+      usernameConfigured: Boolean(env.ADMIN_USERNAME?.trim()),
+      twofaEnabled: Boolean(await setting(env, TWOFA_SECRET)),
+    });
+  }
+
+  // Hands out a fresh secret and its QR payload; nothing is enforced
+  // until the owner proves they can generate a code from it.
+  if (path === "/api/admin/2fa/setup") {
+    const secret = generateTotpSecret();
+    await putSetting(env, TWOFA_PENDING, secret);
+    return json({
+      secret,
+      otpauth: otpauthUri(secret, adminUsername(env)),
+    });
+  }
+
+  if (path === "/api/admin/2fa/enable") {
+    const pending = await setting(env, TWOFA_PENDING);
+    if (!pending) return fail("start the setup first", 400);
+    const result = await verifyTotp(pending, String(body.code ?? ""));
+    if (!result.valid) return fail("invalid two-factor code", 400);
+    await putSetting(env, TWOFA_SECRET, pending);
+    await putSetting(env, TWOFA_PENDING, "");
+    await putSetting(env, TWOFA_LAST_STEP, String(result.step));
+    return json({ ok: true, twofaEnabled: true });
+  }
+
+  // Turning it off asks for both factors, so a stolen session cannot.
+  if (path === "/api/admin/2fa/disable") {
+    const secret = await setting(env, TWOFA_SECRET);
+    if (!secret) return json({ ok: true, twofaEnabled: false });
+    if (!passwordMatches(env.ADMIN_PASSWORD?.trim() ?? "", String(body.password ?? ""))) {
+      return fail("wrong password", 401);
+    }
+    const result = await verifyTotp(secret, String(body.code ?? ""));
+    if (!result.valid) return fail("invalid two-factor code", 400);
+    await putSetting(env, TWOFA_SECRET, "");
+    await putSetting(env, TWOFA_PENDING, "");
+    return json({ ok: true, twofaEnabled: false });
+  }
+
+  // ---- Support inbox ------------------------------------------------
+  if (path === "/api/admin/tickets") {
+    return json(await registryJson(env, "/ticket-list", {}));
+  }
+
+  if (path === "/api/admin/ticket-status") {
+    return json(
+      await registryJson(env, "/ticket-status", {
+        id: String(body.id ?? ""),
+        status: String(body.status ?? ""),
+        note: String(body.note ?? ""),
+      }),
+    );
+  }
+
+  if (path === "/api/admin/ticket-remove") {
+    return json(await registryJson(env, "/ticket-remove", { id: String(body.id ?? "") }));
+  }
+
+  if (path === "/api/admin/licenses") {
+    return json(await registryJson(env, "/list", {}));
+  }
+
+  if (path === "/api/admin/set-status") {
+    const deviceId = normalizeDeviceId(String(body.deviceId ?? ""));
+    const status = String(body.status ?? "");
+    return json(
+      await registryJson(env, "/set-status", { deviceId, status, note: String(body.note ?? "") }),
+    );
+  }
+
+  if (path === "/api/admin/set-term") {
+    const deviceId = normalizeDeviceId(String(body.deviceId ?? ""));
+    const term = readTerm(body.term);
+    if (!term) return fail("invalid duration");
+    return json(await registryJson(env, "/set-term", { deviceId, term }));
+  }
+
+  // ---- Promo codes ------------------------------------------------
+  if (path === "/api/admin/promo-list") {
+    return json(await registryJson(env, "/promo-list", {}));
+  }
+
+  if (path === "/api/admin/promo-create") {
+    const result = await registryJson<{ ok: boolean; error?: string }>(env, "/promo-create", body);
+    return result.ok ? json(result) : fail(result.error ?? "could not create code");
+  }
+
+  if (path === "/api/admin/promo-toggle") {
+    return json(
+      await registryJson(env, "/promo-toggle", { code: String(body.code ?? ""), active: body.active === true }),
+    );
+  }
+
+  if (path === "/api/admin/promo-remove") {
+    return json(await registryJson(env, "/promo-remove", { code: String(body.code ?? "") }));
+  }
+
+  if (path === "/api/admin/extend") {
+    const deviceId = normalizeDeviceId(String(body.deviceId ?? ""));
+    return json(await registryJson(env, "/extend", { deviceId, days: Number(body.days ?? 0) }));
+  }
+
+  if (path === "/api/admin/update") {
+    const deviceId = normalizeDeviceId(String(body.deviceId ?? ""));
+    return json(
+      await registryJson(env, "/update", {
+        deviceId,
+        label: String(body.label ?? ""),
+        email: String(body.email ?? ""),
+      }),
+    );
+  }
+
+  // The owner can move a licence without any key, and without the waiting period.
+  if (path === "/api/admin/transfer") {
+    const fromId = normalizeDeviceId(String(body.fromId ?? ""));
+    const toId = normalizeDeviceId(String(body.toId ?? ""));
+    if (!isValidDeviceId(fromId) || !isValidDeviceId(toId)) return fail("invalid device id");
+    const result = await registryJson<TransferResult>(env, "/license-transfer", {
+      fromId,
+      toId,
+      method: "admin",
+      toMac: normalizeDeviceId(String(body.toMac ?? "")),
+    });
+    return result.ok ? json(result) : json(result, 400);
+  }
+
+  if (path === "/api/admin/transfers") {
+    return json(await registryJson(env, "/transfer-list", {}));
+  }
+
+  if (path === "/api/admin/remove") {
+    const deviceId = normalizeDeviceId(String(body.deviceId ?? ""));
+    return json(await registryJson(env, "/remove", { deviceId }));
+  }
+
+  if (path === "/api/admin/grant") {
+    const deviceId = normalizeDeviceId(String(body.deviceId ?? ""));
+    const mac = normalizeDeviceId(String(body.mac ?? ""));
+    const planId = String(body.plan ?? "");
+    if (!isValidDeviceId(deviceId)) return fail("invalid device id");
+    // A duration (1/3/6/12 months, lifetime, a date) wins over the plan's default.
+    const term = body.term === undefined ? null : readTerm(body.term);
+    if (body.term !== undefined && !term) return fail("invalid duration");
+    if (!term && !isPlanId(planId)) return fail("unknown plan");
+    return json(
+      await registryJson(env, "/issue", {
+        deviceId,
+        identifiers: [deviceId, mac],
+        plan: term ? (term.kind === "lifetime" ? "lifetime" : "annual") : planId,
+        ...(term ? { term } : {}),
+        label: String(body.label ?? ""),
+        email: String(body.email ?? ""),
+        orderId: "",
+        amountCents: 0,
+        source: "manual",
+        resellerId: String(body.resellerId ?? ""),
+      }),
+    );
+  }
+
+  // ---- Code uses ------------------------------------------------------------
+  if (path === "/api/admin/redemption-revoke" || path === "/api/admin/redemption-restore") {
+    const route = path.endsWith("revoke") ? "/redemption-revoke" : "/redemption-restore";
+    const result = await registryJson<{ ok: boolean; error?: string }>(env, route, { id: String(body.id ?? "") });
+    return result.ok ? json(result) : json(result, 400);
+  }
+
+  if (path === "/api/admin/redemption-email") {
+    const email = String(body.email ?? "").trim().slice(0, 160);
+    if (!EMAIL_RE.test(email)) return fail("invalid email");
+    const result = await registryJson<{ ok: boolean; error?: string }>(env, "/redemption-email", {
+      id: String(body.id ?? ""),
+      email,
+    });
+    return result.ok ? json(result) : json(result, 400);
+  }
+
+  if (path === "/api/admin/promo-update") {
+    const update: Record<string, unknown> = { code: String(body.code ?? "") };
+    if (body.maxUses !== undefined) update.maxUses = Number(body.maxUses);
+    if (body.resellerId !== undefined) update.resellerId = String(body.resellerId ?? "");
+    if (body.note !== undefined) update.note = String(body.note ?? "");
+    const result = await registryJson<{ ok: boolean; error?: string }>(env, "/promo-update", update);
+    return result.ok ? json(result) : json(result, 400);
+  }
+
+  // ---- Resellers -------------------------------------------------------------
+  if (path === "/api/admin/resellers") {
+    return json(await registryJson(env, "/reseller-list", {}));
+  }
+
+  if (path === "/api/admin/reseller-create") {
+    const password = String(body.password ?? "");
+    if (password.length < 8 || password.length > 200) return fail("password too short");
+    const { hash, salt } = await hashPassword(password);
+    const result = await registryJson<{ ok: boolean; error?: string }>(env, "/reseller-create", {
+      username: String(body.username ?? ""),
+      hash,
+      salt,
+      credits: Number(body.credits ?? 0),
+    });
+    return result.ok ? json(result) : json(result, 400);
+  }
+
+  if (path === "/api/admin/reseller-update") {
+    const update: Record<string, unknown> = { id: String(body.id ?? "") };
+    const username = String(body.username ?? "").trim();
+    if (username) update.username = username;
+    const password = String(body.password ?? "");
+    if (password) {
+      if (password.length < 8 || password.length > 200) return fail("password too short");
+      Object.assign(update, await hashPassword(password));
+    }
+    if (!update.username && !update.hash) return fail("nothing to change");
+    const result = await registryJson<{ ok: boolean; error?: string }>(env, "/reseller-update", update);
+    return result.ok
+      ? json({ ...result, passwordChanged: Boolean(password) })
+      : json(result, 400);
+  }
+
+  if (path === "/api/admin/reseller-reset-2fa") {
+    const result = await registryJson<{ ok: boolean }>(env, "/reseller-reset-2fa", { id: String(body.id ?? "") });
+    return result.ok ? json(result) : json(result, 400);
+  }
+
+  if (path === "/api/admin/reseller-delete") {
+    const result = await registryJson<{ ok: boolean }>(env, "/reseller-delete", { id: String(body.id ?? "") });
+    return result.ok ? json(result) : json(result, 400);
+  }
+
+  if (path === "/api/admin/reseller-credits") {
+    const result = await registryJson<{ ok: boolean }>(env, "/reseller-credits", {
+      id: String(body.id ?? ""),
+      delta: Number(body.delta ?? 0),
+    });
+    return result.ok ? json(result) : json(result, 400);
+  }
+
+  if (path === "/api/admin/reseller-disable") {
+    const result = await registryJson<{ ok: boolean }>(env, "/reseller-disable", {
+      id: String(body.id ?? ""),
+      disabled: body.disabled === true,
+    });
+    return result.ok ? json(result) : json(result, 400);
+  }
+
+  // Licences found by MAC or device id, one per line, go to a reseller's panel.
+  if (path === "/api/admin/assign-reseller") {
+    const raw = Array.isArray(body.identifiers)
+      ? body.identifiers.map(String)
+      : String(body.identifiers ?? "").split(/[\s,;]+/);
+    const identifiers = [...new Set(raw.map((value) => normalizeDeviceId(value)).filter(Boolean))].slice(0, 500);
+    if (identifiers.length === 0) return fail("invalid device id");
+    const result = await registryJson<{ ok: boolean }>(env, "/assign-reseller", {
+      identifiers,
+      resellerId: String(body.resellerId ?? ""),
+    });
+    return result.ok ? json(result) : json(result, 400);
+  }
+
+  // ---- Activity log ----------------------------------------------------------
+  if (path === "/api/admin/logs") {
+    return json(
+      await registryJson(env, "/logs", {
+        actorType: String(body.actorType ?? ""),
+        actorId: String(body.actorId ?? ""),
+        limit: Number(body.limit ?? 500),
+      }),
+    );
+  }
+
+  return fail("not found", 404);
+}
 
 type TransferResult = {
   ok: boolean;

@@ -61,6 +61,70 @@ export function usernameMatches(expected: string, provided: string): boolean {
   return expected.trim().toLowerCase() === provided.trim().toLowerCase();
 }
 
+// ---- Reseller accounts -----------------------------------------------------
+
+/** Workers cap PBKDF2 at 100k iterations. */
+const PBKDF2_ITERATIONS = 100_000;
+
+const toHex = (bytes: Uint8Array): string => [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+
+function fromHex(hex: string): Uint8Array {
+  const out = new Uint8Array(Math.floor(hex.length / 2));
+  for (let i = 0; i < out.length; i += 1) out[i] = parseInt(hex.slice(i * 2, i * 2 + 2), 16);
+  return out;
+}
+
+async function pbkdf2(password: string, salt: Uint8Array): Promise<string> {
+  const key = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
+  const bits = await crypto.subtle.deriveBits(
+    { name: "PBKDF2", hash: "SHA-256", salt: salt as BufferSource, iterations: PBKDF2_ITERATIONS },
+    key,
+    256,
+  );
+  return toHex(new Uint8Array(bits));
+}
+
+/** Salted, slow hash: a copy of the registry does not reveal reseller passwords. */
+export async function hashPassword(password: string): Promise<{ hash: string; salt: string }> {
+  const salt = new Uint8Array(16);
+  crypto.getRandomValues(salt);
+  return { hash: await pbkdf2(password, salt), salt: toHex(salt) };
+}
+
+export async function verifyPassword(password: string, hash: string, salt: string): Promise<boolean> {
+  if (!hash || !salt) return false;
+  return timingSafeEqual(hash, await pbkdf2(password, fromHex(salt)));
+}
+
+/**
+ * `r.<id>.<expiry>.<hmac>` session of a reseller. The signature covers the
+ * account's version, which moves on every password, name or 2FA change, so
+ * old sessions die at once.
+ */
+export async function issueResellerToken(secret: string, id: string, version: number): Promise<string> {
+  const expiry = String(Date.now() + SESSION_MS);
+  return `r.${id}.${expiry}.${await hmacSha256(secret, `reseller|${id}|${version}|${expiry}`)}`;
+}
+
+/** Reads the id out of a reseller token; the caller then checks it with the stored version. */
+export function readResellerToken(token: string | null): { id: string; expiry: string; signature: string } | null {
+  if (!token) return null;
+  const parts = token.split(".");
+  if (parts.length !== 4 || parts[0] !== "r") return null;
+  const [, id, expiry, signature] = parts;
+  const expiresAt = Number(expiry);
+  if (!id || !Number.isFinite(expiresAt) || expiresAt < Date.now()) return null;
+  return { id, expiry, signature };
+}
+
+export async function resellerTokenValid(
+  secret: string,
+  parsed: { id: string; expiry: string; signature: string },
+  version: number,
+): Promise<boolean> {
+  return timingSafeEqual(await hmacSha256(secret, `reseller|${parsed.id}|${version}|${parsed.expiry}`), parsed.signature);
+}
+
 // ---- TOTP (RFC 6238) -------------------------------------------------------
 // Standard 30-second SHA-1 codes: works with Authy, Google Authenticator,
 // 1Password, Microsoft Authenticator and every other authenticator app.

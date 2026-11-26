@@ -5,10 +5,15 @@ import {
   History,
   Link2,
   Loader2,
+  Mail,
+  Pencil,
   Plus,
+  RotateCcw,
   Search,
+  Store,
   TicketPercent,
   Trash2,
+  XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -25,9 +30,18 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { choiceToTerm, defaultTermChoice, TermPicker, type TermChoice } from "@/components/dashboard/TermPicker";
-import { CopyChip, EmptyState, Pill, SubTabs, type PillTone } from "@/components/dashboard/ui";
+import { CopyChip, EmptyState, Pill, RowButton, SubTabs, type PillTone } from "@/components/dashboard/ui";
 import { useAdminAction, type PromoPayload } from "@/hooks/useAdminData";
-import { formatDate, formatDateTime, formatMac, formatMoney, type PlanId, type PromoCode } from "@/lib/api";
+import {
+  formatDate,
+  formatDateTime,
+  formatMac,
+  formatMoney,
+  type PlanId,
+  type PromoCode,
+  type PromoRedemption,
+  type ResellerInfo,
+} from "@/lib/api";
 import { codeState, codeValueLabel, copyText, endOfDay, giftLink, isoDay, type CodeState } from "@/lib/dashboard";
 import { cn } from "@/lib/utils";
 
@@ -52,16 +66,21 @@ export function CodesView({
   loading,
   folder,
   onFolder,
+  resellers = [],
 }: {
   token: string;
   data: PromoPayload | undefined;
   loading: boolean;
   folder: CodeFolder;
   onFolder: (folder: CodeFolder) => void;
+  resellers?: ResellerInfo[];
 }) {
   const [creating, setCreating] = useState<"discount" | "gift" | null>(null);
+  const [editing, setEditing] = useState<PromoCode | null>(null);
   const [search, setSearch] = useState<string>("");
   const action = useAdminAction(token, ["promos"], "");
+  const useAction = useAdminAction(token, ["promos", "licenses", "resellers"], "");
+  const resellerNames = useMemo(() => new Map(resellers.map((r) => [r.id, r.username])), [resellers]);
 
   const codes = useMemo(() => {
     const needle = search.trim().toUpperCase();
@@ -108,12 +127,47 @@ export function CodesView({
           <Loader2 className="h-4 w-4 animate-spin" /> Carico i codici…
         </div>
       ) : folder === "history" ? (
-        <RedemptionList data={data} />
+        <RedemptionList
+          data={data}
+          resellerNames={resellerNames}
+          busy={useAction.isPending}
+          onRevoke={(row) => {
+            if (
+              window.confirm(
+                `Cancellare la licenza attivata con ${row.code} su ${formatMac(row.deviceId)}? Il dispositivo smette di funzionare e il codice torna utilizzabile.`,
+              )
+            ) {
+              useAction.mutate(
+                { path: "/api/admin/redemption-revoke", body: { id: row.id } },
+                { onSuccess: () => toast.success("Licenza cancellata") },
+              );
+            }
+          }}
+          onRestore={(row) =>
+            useAction.mutate(
+              { path: "/api/admin/redemption-restore", body: { id: row.id } },
+              {
+                onSuccess: () => toast.success("Licenza ripristinata"),
+                onError: () => undefined,
+              },
+            )
+          }
+          onEmail={(row) => {
+            const email = window.prompt("Nuova email per questo utilizzo e la sua licenza", row.email)?.trim();
+            if (!email || email === row.email) return;
+            useAction.mutate(
+              { path: "/api/admin/redemption-email", body: { id: row.id, email } },
+              { onSuccess: () => toast.success("Email aggiornata") },
+            );
+          }}
+        />
       ) : (
         <CodeTable
           codes={folder === "gift" ? gifts : discounts}
           gift={folder === "gift"}
           busy={action.isPending}
+          resellerNames={resellerNames}
+          onEdit={setEditing}
           onToggle={(code, active) => action.mutate({ path: "/api/admin/promo-toggle", body: { code, active } })}
           onRemove={(code) => {
             if (window.confirm(`Eliminare il codice ${code}? Gli utilizzi già fatti restano nello storico.`)) {
@@ -129,6 +183,8 @@ export function CodesView({
         onClose={() => setCreating(null)}
         onCreated={(kind) => onFolder(kind === "gift" ? "gift" : "discount")}
       />
+
+      <EditCodeDialog token={token} code={editing} resellers={resellers} onClose={() => setEditing(null)} />
     </div>
   );
 }
@@ -140,12 +196,16 @@ function CodeTable({
   codes,
   gift,
   busy,
+  resellerNames,
+  onEdit,
   onToggle,
   onRemove,
 }: {
   codes: PromoCode[];
   gift: boolean;
   busy: boolean;
+  resellerNames: Map<string, string>;
+  onEdit: (code: PromoCode) => void;
   onToggle: (code: string, active: boolean) => void;
   onRemove: (code: string) => void;
 }) {
@@ -186,6 +246,12 @@ function CodeTable({
                   {code.note && <span className="text-foreground/80">{code.note}</span>}
                   {code.batch && <span className="mono">lotto {code.batch}</span>}
                   {code.expiresAt && <span>valido fino al {formatDate(code.expiresAt)}</span>}
+                  {code.resellerId && (
+                    <span className="inline-flex items-center gap-1 text-primary">
+                      <Store className="h-3 w-3" />
+                      {resellerNames.get(code.resellerId) ?? "rivenditore"}
+                    </span>
+                  )}
                 </div>
                 <div className="mt-2 flex flex-wrap items-center gap-1.5 lg:hidden">
                   <Pill tone={gift ? "primary" : "accent"}>{codeValueLabel(code)}</Pill>
@@ -222,6 +288,17 @@ function CodeTable({
                     <Link2 className="h-4 w-4" />
                   </Button>
                 )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={busy}
+                  className="h-8 w-8 p-0"
+                  aria-label="Modifica codice"
+                  title="Modifica utilizzi e rivenditore"
+                  onClick={() => onEdit(code)}
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
                 <Switch
                   checked={code.active}
                   disabled={busy}
@@ -247,7 +324,21 @@ function CodeTable({
   );
 }
 
-function RedemptionList({ data }: { data: PromoPayload | undefined }) {
+function RedemptionList({
+  data,
+  resellerNames,
+  busy,
+  onRevoke,
+  onRestore,
+  onEmail,
+}: {
+  data: PromoPayload | undefined;
+  resellerNames: Map<string, string>;
+  busy: boolean;
+  onRevoke: (row: PromoRedemption) => void;
+  onRestore: (row: PromoRedemption) => void;
+  onEmail: (row: PromoRedemption) => void;
+}) {
   const rows = data?.redemptions ?? [];
   const kinds = useMemo(() => new Map((data?.codes ?? []).map((code) => [code.code, code.kind])), [data]);
   if (rows.length === 0) {
@@ -267,13 +358,41 @@ function RedemptionList({ data }: { data: PromoPayload | undefined }) {
       <div className="divide-y divide-border/50">
         {rows.map((row) => {
           const gift = (kinds.get(row.code) ?? (row.orderId ? "percent" : "gift")) === "gift";
+          const revoked = row.status === "revoked";
           return (
-            <div key={row.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-3 text-sm">
+            <div
+              key={row.id}
+              className={cn(
+                "flex flex-wrap items-center gap-x-4 gap-y-1.5 px-4 py-3 text-sm",
+                revoked && "bg-destructive/5",
+              )}
+            >
               <span className="w-36 shrink-0 text-xs text-muted-foreground">{formatDateTime(row.createdAt)}</span>
-              <span className="mono font-semibold">{row.code}</span>
+              <span className={cn("mono font-semibold", revoked && "line-through opacity-60")}>{row.code}</span>
               <Pill tone={gift ? "primary" : "accent"}>{gift ? "Regalo" : "Sconto"}</Pill>
+              {revoked && (
+                <Pill tone="destructive" strong>
+                  Cancellata
+                </Pill>
+              )}
+              {row.resellerId && (
+                <span className="inline-flex items-center gap-1 text-xs text-primary">
+                  <Store className="h-3 w-3" />
+                  {resellerNames.get(row.resellerId) ?? "rivenditore"}
+                </span>
+              )}
               <span className="mono text-xs text-muted-foreground">{formatMac(row.deviceId)}</span>
               {row.email && <span className="text-xs text-muted-foreground">{row.email}</span>}
+              {gift && (
+                <span className="flex flex-wrap gap-1.5">
+                  {revoked ? (
+                    <RowButton icon={RotateCcw} label="Ripristina" disabled={busy} onClick={() => onRestore(row)} />
+                  ) : (
+                    <RowButton icon={XCircle} label="Cancella licenza" danger disabled={busy} onClick={() => onRevoke(row)} />
+                  )}
+                  <RowButton icon={Mail} label="Email" disabled={busy} onClick={() => onEmail(row)} />
+                </span>
+              )}
               <span className="ml-auto text-right text-xs">
                 {row.orderId ? (
                   <>
@@ -288,6 +407,111 @@ function RedemptionList({ data }: { data: PromoPayload | undefined }) {
         })}
       </div>
     </div>
+  );
+}
+
+/** Owner-only: how many times a code can still be used, and which reseller owns it. */
+function EditCodeDialog({
+  token,
+  code,
+  resellers,
+  onClose,
+}: {
+  token: string;
+  code: PromoCode | null;
+  resellers: ResellerInfo[];
+  onClose: () => void;
+}) {
+  const [unlimited, setUnlimited] = useState<boolean>(false);
+  const [maxUses, setMaxUses] = useState<string>("1");
+  const [resellerId, setResellerId] = useState<string>("");
+  const save = useAdminAction(token, ["promos", "resellers"], "Codice aggiornato");
+
+  useEffect(() => {
+    if (!code) return;
+    setUnlimited(code.maxUses === 0);
+    setMaxUses(String(Math.max(1, code.maxUses)));
+    setResellerId(code.resellerId ?? "");
+  }, [code]);
+
+  const value = Math.round(Number(maxUses));
+  const problem = !code
+    ? ""
+    : !unlimited && !(value >= 1)
+      ? "Indica quante volte si può usare."
+      : !unlimited && value < code.usedCount
+        ? `È già stato usato ${code.usedCount} volte: non puoi scendere sotto.`
+        : "";
+
+  return (
+    <Dialog open={code !== null} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Pencil className="h-4.5 w-4.5 text-primary" /> Modifica {code?.code}
+          </DialogTitle>
+          <DialogDescription>
+            Usato {code?.usedCount ?? 0} volte finora. Cambia il limite di utilizzi o il rivenditore che lo vede.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-5">
+          <Field label="Utilizzi massimi (max_uses)">
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="flex items-center gap-2 text-sm">
+                <Switch checked={unlimited} onCheckedChange={setUnlimited} />
+                Illimitati
+              </label>
+              {!unlimited && (
+                <Input
+                  type="number"
+                  min={Math.max(1, code?.usedCount ?? 1)}
+                  value={maxUses}
+                  onChange={(event) => setMaxUses(event.target.value)}
+                  className="h-10 w-28 border-border/80 bg-secondary/60"
+                />
+              )}
+            </div>
+          </Field>
+          <Field label="Rivenditore">
+            <select
+              value={resellerId}
+              onChange={(event) => setResellerId(event.target.value)}
+              className="h-11 w-full rounded-md border border-border/80 bg-secondary/60 px-3 text-sm"
+            >
+              <option value="">Nessuno (tuo)</option>
+              {resellers.map((reseller) => (
+                <option key={reseller.id} value={reseller.id}>
+                  {reseller.username}
+                </option>
+              ))}
+            </select>
+          </Field>
+          {problem && <p className="text-xs text-warning">{problem}</p>}
+          <DialogFooter>
+            <Button variant="ghost" onClick={onClose}>
+              Annulla
+            </Button>
+            <Button
+              disabled={Boolean(problem) || save.isPending || !code}
+              className="gap-2"
+              onClick={() =>
+                code &&
+                save.mutate(
+                  {
+                    path: "/api/admin/promo-update",
+                    body: { code: code.code, maxUses: unlimited ? 0 : value, resellerId },
+                  },
+                  { onSuccess: onClose },
+                )
+              }
+            >
+              {save.isPending && <Loader2 className="h-4 w-4 animate-spin" />}
+              Salva
+            </Button>
+          </DialogFooter>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

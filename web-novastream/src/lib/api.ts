@@ -54,6 +54,57 @@ export type LicenseRecord = {
   /** How the current period was granted: "12m", "3m", "30d", "lifetime", "date". */
   term: string;
   expired: boolean;
+  /** Reseller whose panel shows this licence; '' when it is the owner's own. */
+  resellerId?: string;
+  /** The reseller's own note on this customer. */
+  resellerNote?: string;
+  /** What the app reported about the hardware; null until the app has sent it. */
+  device?: DeviceInfo | null;
+};
+
+export type DeviceInfo = {
+  /** tv · phone · tablet · '' when unknown. */
+  kind: string;
+  manufacturer: string;
+  model: string;
+  os: string;
+  appVersion: string;
+  userAgent: string;
+  updatedAt: number;
+};
+
+export type ResellerInfo = {
+  id: string;
+  username: string;
+  credits: number;
+  creditsAdded: number;
+  creditsSpent: number;
+  twofaEnabled: boolean;
+  disabled: boolean;
+  createdAt: number;
+  lastLoginAt: number | null;
+  stats: {
+    licenses: number;
+    liveLicenses: number;
+    codes: number;
+    codesUsed: number;
+    redemptions: number;
+    revokedRedemptions: number;
+    revokes: number;
+    restores: number;
+  };
+};
+
+export type AuditEntry = {
+  id: number;
+  createdAt: number;
+  actorType: "admin" | "reseller" | "system";
+  actorId: string;
+  actorName: string;
+  action: string;
+  target: string;
+  details: Record<string, unknown>;
+  ip: string;
 };
 
 /** Licence duration chosen in the dashboard or carried by a gift code. */
@@ -78,6 +129,7 @@ export type PromoCode = {
   note: string;
   batch: string;
   createdAt: number;
+  resellerId?: string;
 };
 
 export type PromoRedemption = {
@@ -90,6 +142,9 @@ export type PromoRedemption = {
   paidCents: number;
   email: string;
   createdAt: number;
+  status?: "active" | "revoked";
+  revokedAt?: number | null;
+  resellerId?: string;
 };
 
 /** What a code is worth on the chosen plan, worked out by the server. */
@@ -294,9 +349,7 @@ export const submitTicket = (input: {
 export type TransferInput = {
   fromId: string;
   toId: string;
-  /** key: the old device is at hand · email: it is lost, proven by the purchase email. */
-  method: "key" | "email";
-  fromKey: string;
+  /** The licence is proven by the email used for the purchase. */
   email: string;
   toKey: string;
   captchaToken: string;
@@ -315,6 +368,7 @@ export type TransferDone = {
 export const transferLicense = (input: TransferInput): Promise<TransferDone> =>
   post<TransferDone>("/api/license/transfer", {
     ...input,
+    method: "email",
     fromId: normalizeDeviceId(input.fromId),
     toId: normalizeDeviceId(input.toId),
   });
