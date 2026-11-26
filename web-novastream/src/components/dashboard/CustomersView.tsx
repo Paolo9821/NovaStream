@@ -45,7 +45,14 @@ import {
   type ResellerInfo,
   type TrialRecord,
 } from "@/lib/api";
-import { deviceLabel, licenseState, sourceLabel, termCodeLabel, type LicenseState } from "@/lib/dashboard";
+import {
+  deviceLabel,
+  licenseState,
+  sortByExpiry,
+  sourceLabel,
+  termCodeLabel,
+  type LicenseState,
+} from "@/lib/dashboard";
 import { cn } from "@/lib/utils";
 
 export type CustomerFolder = "trial" | "subscription" | "lifetime" | "expired" | "blocked";
@@ -79,11 +86,14 @@ export function useCustomerFolders(data: LicensesPayload | undefined, search: st
     );
     const live = licenses.filter((row) => row.status === "active" && !row.expired);
     return {
-      trial: trials,
-      subscription: live.filter((row) => row.expiresAt !== null).sort((a, b) => (a.expiresAt ?? 0) - (b.expiresAt ?? 0)),
-      lifetime: live.filter((row) => row.expiresAt === null),
-      expired: licenses.filter((row) => row.status === "active" && row.expired),
-      blocked: licenses.filter((row) => row.status === "suspended" || row.status === "revoked"),
+      // Trials still running, ending soonest first; finished ones after.
+      trial: [...trials].sort((a, b) =>
+        a.expired !== b.expired ? (a.expired ? 1 : -1) : a.expired ? b.expiresAt - a.expiresAt : a.expiresAt - b.expiresAt,
+      ),
+      subscription: sortByExpiry(live.filter((row) => row.expiresAt !== null)),
+      lifetime: sortByExpiry(live.filter((row) => row.expiresAt === null)),
+      expired: sortByExpiry(licenses.filter((row) => row.status === "active" && row.expired)),
+      blocked: sortByExpiry(licenses.filter((row) => row.status === "suspended" || row.status === "revoked")),
     };
   }, [data, search]);
 }
@@ -92,7 +102,7 @@ const FOLDER_HINT: Record<CustomerFolder, string> = {
   trial: "Dispositivi nella settimana gratuita. Chi compra una licenza esce da qui.",
   subscription: "Licenze a tempo in corso, dalla più vicina alla scadenza.",
   lifetime: "Licenze senza scadenza.",
-  expired: "Hanno avuto una licenza: sono i rinnovi da recuperare.",
+  expired: "Hanno avuto una licenza: sono i rinnovi da recuperare. Le scadute da poco sono in cima.",
   blocked: "Sospesi o revocati a mano da qui.",
 };
 

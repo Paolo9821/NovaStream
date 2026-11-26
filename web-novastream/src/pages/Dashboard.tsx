@@ -29,6 +29,9 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
+import { QRCodeSVG } from "qrcode.react";
+
+import { RESELLER_TOKEN_KEY, ResellerPanel } from "./Reseller";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -43,8 +46,8 @@ import { RevenuePanel } from "@/components/dashboard/RevenuePanel";
 import { SecurityPanel } from "@/components/dashboard/SecurityPanel";
 import { SupportInbox, type TicketFolder } from "@/components/dashboard/SupportInbox";
 import { TransfersList } from "@/components/dashboard/TransfersList";
-import { SectionHeader, SubTabs } from "@/components/dashboard/ui";
-import { useLicenses, usePromos, useResellers, useTickets, useTransfers } from "@/hooks/useAdminData";
+import { CopyChip, SectionHeader, SubTabs } from "@/components/dashboard/ui";
+import { errorText, useLicenses, usePromos, useResellers, useTickets, useTransfers } from "@/hooks/useAdminData";
 import { ApiError, post } from "@/lib/api";
 import { codeState } from "@/lib/dashboard";
 import { cn } from "@/lib/utils";
@@ -57,10 +60,16 @@ const cleanCode = (raw: string): string => raw.replace(/\D/g, "").slice(0, 6);
 
 export default function Dashboard() {
   const [token, setToken] = useState<string>(() => localStorage.getItem(TOKEN_KEY) ?? "");
+  const [resellerToken, setResellerToken] = useState<string>(() => localStorage.getItem(RESELLER_TOKEN_KEY) ?? "");
 
   const signOut = useCallback((): void => {
     localStorage.removeItem(TOKEN_KEY);
     setToken("");
+  }, []);
+
+  const resellerSignOut = useCallback((): void => {
+    localStorage.removeItem(RESELLER_TOKEN_KEY);
+    setResellerToken("");
   }, []);
 
   const saveToken = useCallback((value: string): void => {
@@ -68,8 +77,14 @@ export default function Dashboard() {
     setToken(value);
   }, []);
 
-  if (!token) return <LoginScreen onAuthenticated={saveToken} />;
-  return <Console token={token} onSignOut={signOut} />;
+  const saveResellerToken = useCallback((value: string): void => {
+    localStorage.setItem(RESELLER_TOKEN_KEY, value);
+    setResellerToken(value);
+  }, []);
+
+  if (token) return <Console token={token} onSignOut={signOut} />;
+  if (resellerToken) return <ResellerPanel token={resellerToken} onSignOut={resellerSignOut} />;
+  return <LoginScreen onAuthenticated={saveToken} onReseller={saveResellerToken} />;
 }
 
 // ---- Navigation ----------------------------------------------------------
@@ -485,23 +500,72 @@ const SUBTITLES: Record<SectionId, string> = {
   settings: "Accesso all'area gestione e verifica in due passaggi.",
 };
 
-function LoginScreen({ onAuthenticated }: { onAuthenticated: (token: string) => void }) {
+type LoginAnswer = {
+  token?: string;
+  reseller?: boolean;
+  setup?: { secret: string; otpauth: string };
+};
+
+/**
+ * One sign-in for the owner and for resellers. The owner's account is tried
+ * first; when the name and password belong to a reseller, the same form carries
+ * on with the reseller's own two-factor step and opens their panel.
+ */
+function LoginScreen({
+  onAuthenticated,
+  onReseller,
+}: {
+  onAuthenticated: (token: string) => void;
+  onReseller: (token: string) => void;
+}) {
   const [username, setUsername] = useState<string>(() => localStorage.getItem(USER_KEY) ?? "");
   const [password, setPassword] = useState<string>("");
   const [code, setCode] = useState<string>("");
   const [needsCode, setNeedsCode] = useState<boolean>(false);
   const [error, setError] = useState<string>("");
+  const [mode, setMode] = useState<"admin" | "reseller">("admin");
+  const [setup, setSetup] = useState<{ secret: string; otpauth: string } | null>(null);
+
+  const resellerLogin = (): Promise<LoginAnswer> =>
+    post<LoginAnswer>("/api/reseller/login", {
+      username: username.trim().toLowerCase(),
+      password,
+      code: code.trim(),
+    });
 
   const login = useMutation({
-    mutationFn: () =>
-      post<{ token: string }>("/api/admin/login", {
+    mutationFn: async (): Promise<LoginAnswer & { as: "admin" | "reseller" }> => {
+      if (mode === "reseller") return { ...(await resellerLogin()), as: "reseller" };
+      const answer = await post<LoginAnswer>("/api/admin/login", {
         username,
         password,
         code: code.trim(),
-      }),
+      });
+      if (answer.reseller) {
+        setMode("reseller");
+        // The code typed so far (if any) was meant for the owner: start clean.
+        return {
+          ...(await post<LoginAnswer>("/api/reseller/login", {
+            username: username.trim().toLowerCase(),
+            password,
+            code: "",
+          })),
+          as: "reseller",
+        };
+      }
+      return { ...answer, as: "admin" };
+    },
     onSuccess: (data) => {
+      if (data.setup) {
+        setSetup(data.setup);
+        setNeedsCode(true);
+        setCode("");
+        return;
+      }
+      if (!data.token) return;
       localStorage.setItem(USER_KEY, username.trim());
-      onAuthenticated(data.token);
+      if (data.as === "reseller") onReseller(data.token);
+      else onAuthenticated(data.token);
     },
     onError: (err: unknown) => {
       if (err instanceof ApiError && err.twofaRequired) {
@@ -524,7 +588,7 @@ function LoginScreen({ onAuthenticated }: { onAuthenticated: (token: string) => 
         err instanceof Error && err.message === "wrong username or password"
           ? "Nome utente o password non corretti."
           : err instanceof Error
-            ? err.message
+            ? errorText(err.message)
             : "Accesso non riuscito",
       );
     },
@@ -542,12 +606,28 @@ function LoginScreen({ onAuthenticated }: { onAuthenticated: (token: string) => 
         className="panel animate-rise relative w-full max-w-sm p-8"
       >
         <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/15 text-primary glow-ring">
-          <LockKeyhole className="h-5 w-5" />
+          {setup ? <ShieldCheck className="h-5 w-5" /> : <LockKeyhole className="h-5 w-5" />}
         </div>
-        <h1 className="mt-5 text-2xl font-bold">Area gestione</h1>
+        <h1 className="mt-5 text-2xl font-bold">{setup ? "Attiva la verifica" : "Area gestione"}</h1>
         <p className="mt-1.5 text-sm text-muted-foreground">
-          Riservata al titolare di NovaStream.
+          {setup
+            ? "Primo accesso: inquadra il QR con Google Authenticator, Authy o un'app simile, poi scrivi il codice."
+            : "Riservata al titolare e ai rivenditori di NovaStream."}
         </p>
+        {setup && (
+          <div className="mt-6 space-y-3">
+            <div className="mx-auto w-fit rounded-2xl bg-white p-3">
+              <QRCodeSVG value={setup.otpauth} size={168} level="M" />
+            </div>
+            <div className="text-center text-xs text-muted-foreground">Oppure inserisci a mano la chiave:</div>
+            <CopyChip
+              value={setup.secret}
+              toastLabel="Chiave copiata"
+              className="mx-auto block w-fit rounded-lg bg-secondary/60 px-3 py-1.5 text-xs tracking-wider"
+            />
+          </div>
+        )}
+        <div className={cn(setup && "hidden")}>
         <Label htmlFor="username" className="mt-7 block text-sm">
           Nome utente
         </Label>
@@ -556,7 +636,13 @@ function LoginScreen({ onAuthenticated }: { onAuthenticated: (token: string) => 
           autoFocus
           autoComplete="username"
           value={username}
-          onChange={(event) => setUsername(event.target.value)}
+          onChange={(event) => {
+            setUsername(event.target.value);
+            // A different name may be the owner's: ask the server again from the start.
+            setMode("admin");
+            setNeedsCode(false);
+            setSetup(null);
+          }}
           className="mt-2 h-12 border-border/80 bg-secondary/60"
         />
         <Label htmlFor="password" className="mt-4 block text-sm">
@@ -570,6 +656,7 @@ function LoginScreen({ onAuthenticated }: { onAuthenticated: (token: string) => 
           onChange={(event) => setPassword(event.target.value)}
           className="mt-2 h-12 border-border/80 bg-secondary/60"
         />
+        </div>
         {needsCode && (
           <div className="animate-rise">
             <Label htmlFor="code" className="mt-4 block text-sm">
@@ -585,14 +672,14 @@ function LoginScreen({ onAuthenticated }: { onAuthenticated: (token: string) => 
               className="mono mt-2 h-12 border-border/80 bg-secondary/60 text-center text-lg tracking-[0.4em]"
             />
             <p className="mt-2 text-xs text-muted-foreground">
-              Aprí Authy sul telefono e copia il codice a 6 cifre di NovaStream.
+              Apri l'app di autenticazione sul telefono e copia il codice a 6 cifre di NovaStream.
             </p>
           </div>
         )}
         {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
         <Button
           type="submit"
-          disabled={login.isPending || !username.trim() || !password}
+          disabled={login.isPending || !username.trim() || !password || (setup !== null && code.length !== 6)}
           className="mt-6 h-12 w-full gap-2"
         >
           {login.isPending && <Loader2 className="h-4 w-4 animate-spin" />}

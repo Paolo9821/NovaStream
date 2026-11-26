@@ -103,6 +103,29 @@ export function licenseState(row: LicenseRecord): LicenseState {
   return row.status === "active" && row.expired ? "expired" : row.status;
 }
 
+const STATE_ORDER: Record<LicenseState, number> = { active: 0, expired: 1, suspended: 2, revoked: 3 };
+
+/**
+ * Order for every list of licences: the active ones that end soonest come first,
+ * then the lifetime ones, then the expired (most recent first), then the blocked.
+ */
+export function compareByExpiry(a: LicenseRecord, b: LicenseRecord): number {
+  const stateA = licenseState(a);
+  const stateB = licenseState(b);
+  if (stateA !== stateB) return STATE_ORDER[stateA] - STATE_ORDER[stateB];
+  const endA = a.expiresAt ?? Number.POSITIVE_INFINITY;
+  const endB = b.expiresAt ?? Number.POSITIVE_INFINITY;
+  if (endA !== endB) {
+    if (stateA === "expired") return endB - endA;
+    return endA < endB ? -1 : 1;
+  }
+  return b.createdAt - a.createdAt;
+}
+
+export function sortByExpiry<T extends LicenseRecord>(rows: T[]): T[] {
+  return [...rows].sort(compareByExpiry);
+}
+
 export type CodeState = "active" | "disabled" | "expired" | "usedUp";
 
 export function codeState(code: PromoCode): CodeState {

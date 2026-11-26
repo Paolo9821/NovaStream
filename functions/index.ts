@@ -684,6 +684,18 @@ export default {
           usernameMatches(username, String(body.username ?? "")) &&
           passwordMatches(password, String(body.password ?? ""));
         if (!credentialsOk) {
+          // Resellers sign in from the same "Gestione" page: once their own password
+          // checks out, the site carries on with the reseller login (2FA included).
+          const typed = String(body.username ?? "").trim().toLowerCase().slice(0, 64);
+          if (typed && !usernameMatches(username, typed)) {
+            const account = await resellerAccount(env, { username: typed });
+            if (
+              account &&
+              (await verifyPassword(String(body.password ?? ""), account.pass_hash, account.pass_salt))
+            ) {
+              return json({ reseller: true });
+            }
+          }
           await audit(
             env,
             request,

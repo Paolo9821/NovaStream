@@ -42,10 +42,11 @@ import {
   type PromoCode,
   type PromoRedemption,
 } from "@/lib/api";
-import { codeValueLabel, copyText, giftLink, licenseState } from "@/lib/dashboard";
+import { codeValueLabel, copyText, giftLink, licenseState, sortByExpiry } from "@/lib/dashboard";
 import { cn } from "@/lib/utils";
 
-const TOKEN_KEY = "novastream_reseller_token";
+export const RESELLER_TOKEN_KEY = "novastream_reseller_token";
+const TOKEN_KEY = RESELLER_TOKEN_KEY;
 const USER_KEY = "novastream_reseller_user";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -81,7 +82,7 @@ export default function Reseller() {
       />
     );
   }
-  return <Panel token={token} onSignOut={signOut} />;
+  return <ResellerPanel token={token} onSignOut={signOut} />;
 }
 
 // ---- Login with mandatory two-factor ---------------------------------------
@@ -250,7 +251,7 @@ function LoginScreen({ onAuthenticated }: { onAuthenticated: (token: string) => 
 
 type Tab = "customers" | "codes" | "uses";
 
-function Panel({ token, onSignOut }: { token: string; onSignOut: () => void }) {
+export function ResellerPanel({ token, onSignOut }: { token: string; onSignOut: () => void }) {
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<Tab>("customers");
   const data = useQuery({
@@ -574,7 +575,8 @@ function CustomerList({ token, rows }: { token: string; rows: LicenseRecord[] })
   const filtered = useMemo(() => {
     const plain = search.trim().toLowerCase();
     const needle = normalizeDeviceId(search);
-    return rows.filter(
+    // Ending soonest first, so renewals are never missed.
+    return sortByExpiry(rows).filter(
       (row) =>
         !plain ||
         (needle && row.deviceId.includes(needle)) ||

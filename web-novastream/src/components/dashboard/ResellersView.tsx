@@ -33,7 +33,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { CopyChip, EmptyState, Pill, RowButton } from "@/components/dashboard/ui";
 import { useAdminAction, type LicensesPayload, type PromoPayload } from "@/hooks/useAdminData";
 import { formatDate, formatDateTime, formatMac, type ResellerInfo } from "@/lib/api";
-import { codeValueLabel, deviceLabel, licenseState } from "@/lib/dashboard";
+import { codeValueLabel, deviceLabel, licenseState, sortByExpiry } from "@/lib/dashboard";
 import { cn } from "@/lib/utils";
 
 const RESELLER_PANEL = "https://novastreamapp.com/reseller";
@@ -246,7 +246,7 @@ function ResellerDetail({
   licenses: LicensesPayload | undefined;
   promos: PromoPayload | undefined;
 }) {
-  const rows = (licenses?.licenses ?? []).filter((row) => row.resellerId === reseller.id);
+  const rows = sortByExpiry((licenses?.licenses ?? []).filter((row) => row.resellerId === reseller.id));
   const codes = (promos?.codes ?? []).filter((code) => code.resellerId === reseller.id);
   const uses = (promos?.redemptions ?? []).filter((use) => use.resellerId === reseller.id);
 
