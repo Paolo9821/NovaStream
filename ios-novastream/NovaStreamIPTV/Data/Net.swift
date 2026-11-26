@@ -6,7 +6,9 @@ nonisolated enum SyncError: LocalizedError, Sendable, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .unreachable: t("The server cannot be reached. Check the address and your connection.")
+        case .unreachable:
+            t("The server cannot be reached. Check the address and your connection.")
+                + (Net.lastErrorCode.map { " (\($0))" } ?? "")
         case .timeout: t("The server took too long to answer.")
         case .secure: t("Secure connection failed. Try the address with http:// instead of https://.")
         case .notFound: t("Address not found (404). Check the link from your provider.")
@@ -23,6 +25,11 @@ nonisolated enum Net {
     private static let current = OSAllocatedUnfairLock(initialState: makeSession())
 
     static var session: URLSession { current.withLock { $0 } }
+
+    private static let lastCode = OSAllocatedUnfairLock<Int?>(initialState: nil)
+
+    /// Code of the last connection error, shown with the message so support can tell causes apart.
+    static var lastErrorCode: Int? { lastCode.withLock { $0 } }
 
     private static func makeSession() -> URLSession {
         let config = URLSessionConfiguration.default
@@ -103,6 +110,10 @@ nonisolated enum Net {
             }
             return data
         } catch let error as URLError {
+            lastCode.withLock { $0 = error.code.rawValue }
+            #if DEBUG
+            print("net_error code=\(error.code.rawValue) host=\(url.host ?? "-") \(error.localizedDescription)")
+            #endif
             switch error.code {
             case .timedOut: throw SyncError.timeout
             case .secureConnectionFailed, .serverCertificateUntrusted, .serverCertificateHasBadDate, .serverCertificateNotYetValid, .serverCertificateHasUnknownRoot:
