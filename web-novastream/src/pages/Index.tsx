@@ -310,6 +310,13 @@ export default function Index() {
 
   const finalCents = promo && !isGift ? promo.finalCents : (selectedPlan?.priceCents ?? 0);
 
+  const navLinks = [
+    { to: "/playlist", label: t("nav.playlists"), icon: ListVideo },
+    { to: "/trasferimento", label: t("nav.transfer"), icon: ArrowRightLeft },
+    { to: "/assistenza", label: t("nav.support"), icon: LifeBuoy },
+    { to: "/dashboard", label: t("nav.manage"), icon: LockKeyhole },
+  ];
+
   if (returning) {
     return <ConfirmingScreen />;
   }
@@ -332,43 +339,42 @@ export default function Index() {
     <div className="relative min-h-screen">
       <div className="pointer-events-none absolute inset-0 grid-veil" aria-hidden />
 
-      <header className="relative mx-auto flex max-w-5xl items-center justify-between gap-3 px-5 py-6">
-        <div className="flex items-center gap-2.5">
-          <BrandMark />
-          <span className="text-lg font-bold tracking-tight">NovaStream</span>
+      <header className="relative mx-auto max-w-5xl px-5 py-6">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <BrandMark />
+            <span className="text-lg font-bold tracking-tight">NovaStream</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <LanguagePicker />
+            {/* Wide screens: every link in one row, always with its name. */}
+            <nav className="hidden items-center gap-2 xl:flex">
+              {navLinks.map((item) => (
+                <Link
+                  key={item.to}
+                  to={item.to}
+                  className="flex items-center gap-1.5 whitespace-nowrap rounded-full border border-border/70 px-3.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-primary/50 hover:text-foreground"
+                >
+                  <item.icon className="h-3.5 w-3.5" />
+                  {item.label}
+                </Link>
+              ))}
+            </nav>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <LanguagePicker />
-          <Link
-            to="/playlist"
-            className="flex items-center gap-1.5 rounded-full border border-border/70 px-3.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-primary/50 hover:text-foreground"
-          >
-            <ListVideo className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">{t("nav.playlists")}</span>
-          </Link>
-          <Link
-            to="/trasferimento"
-            title={t("nav.transfer")}
-            className="flex items-center gap-1.5 rounded-full border border-border/70 px-3.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-primary/50 hover:text-foreground"
-          >
-            <ArrowRightLeft className="h-3.5 w-3.5" />
-            <span className="hidden lg:inline">{t("nav.transfer")}</span>
-          </Link>
-          <Link
-            to="/assistenza"
-            className="flex items-center gap-1.5 rounded-full border border-border/70 px-3.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-primary/50 hover:text-foreground"
-          >
-            <LifeBuoy className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">{t("nav.support")}</span>
-          </Link>
-          <Link
-            to="/dashboard"
-            className="flex items-center gap-1.5 rounded-full border border-border/70 px-3.5 py-1.5 text-xs font-medium text-muted-foreground transition hover:border-primary/50 hover:text-foreground"
-          >
-            <LockKeyhole className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">{t("nav.manage")}</span>
-          </Link>
-        </div>
+        {/* Phones and smaller windows: a row of its own, icon and name together. */}
+        <nav className="mt-4 grid grid-cols-4 gap-2 sm:flex sm:flex-wrap sm:justify-end xl:hidden">
+          {navLinks.map((item) => (
+            <Link
+              key={item.to}
+              to={item.to}
+              className="flex min-w-0 flex-col items-center justify-center gap-1 rounded-2xl border border-border/70 bg-secondary/30 px-1 py-2.5 text-center text-[11px] font-medium leading-tight text-muted-foreground transition hover:border-primary/50 hover:text-foreground active:scale-[0.97] sm:flex-row sm:gap-1.5 sm:rounded-full sm:bg-transparent sm:px-3.5 sm:py-1.5 sm:text-xs"
+            >
+              <item.icon className="h-4 w-4 shrink-0 sm:h-3.5 sm:w-3.5" />
+              <span className="w-full break-words sm:w-auto sm:whitespace-nowrap">{item.label}</span>
+            </Link>
+          ))}
+        </nav>
       </header>
 
       <main className="relative mx-auto max-w-5xl px-5 pb-24">
