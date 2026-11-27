@@ -31,6 +31,10 @@ final class AppModel {
     var playback: PlaybackRequest?
 
     func play(_ entry: MediaEntry, channels: [MediaEntry] = []) {
+        // Parental control: a locked channel never plays, and zapping only
+        // reaches channels outside the locked categories.
+        guard !isLocked(entry.group) else { return }
+        let channels = channels.filter { !isLocked($0.group) }
         let saved = progress[entry.id]
         playback = PlaybackRequest(
             entryId: entry.id,
@@ -185,7 +189,19 @@ final class AppModel {
                     await MainActor.run { self.syncState = .running(message) }
                 }
                 guard !loaded.entries.isEmpty else { throw SyncError.empty }
-                result = Catalog(accountId: account.id, entries: loaded.entries, synced: Date(), groupOrder: loaded.groupOrder)
+                // A temporary provider error can leave movies or series empty:
+                // keep the ones already saved for this playlist instead of erasing them.
+                var entries = loaded.entries
+                var order = loaded.groupOrder
+                if catalog.accountId == account.id {
+                    for kind in [MediaKind.movie, .series] where !entries.contains(where: { $0.kind == kind }) {
+                        let previous = catalog.of(kind)
+                        guard !previous.isEmpty else { continue }
+                        entries += previous
+                        if let saved = catalog.groupOrder[kind.rawValue] { order[kind.rawValue] = saved }
+                    }
+                }
+                result = Catalog(accountId: account.id, entries: entries, synced: Date(), groupOrder: order)
             }
             guard account.id == activeAccountId else {
                 // The user switched playlist meanwhile: keep this result for

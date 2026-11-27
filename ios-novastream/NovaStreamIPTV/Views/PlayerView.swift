@@ -9,8 +9,16 @@ import Combine
 @Observable
 final class PlayerController {
     enum Phase: Equatable { case loading, playing, failed(String) }
+    /// The iPhone player first (AirPlay, Picture in Picture, HLS); VLC for the
+    /// containers and codecs it cannot read.
+    enum Engine { case native, vlc }
+
+    /// Containers the iPhone player cannot open: they go straight to VLC.
+    static let vlcExtensions: Set<String> = ["mkv", "avi", "wmv", "flv", "webm", "divx", "xvid", "mpg", "mpeg", "vob", "ogv", "rmvb", "rm", "3gp", "asf", "m2ts", "mts"]
 
     let player = AVPlayer()
+    let vlc = VLCPlayback()
+    private(set) var engine: Engine = .native
     private(set) var request: PlaybackRequest
     private(set) var phase: Phase = .loading
     private(set) var countdown: Int?
@@ -28,6 +36,8 @@ final class PlayerController {
     /// operator's DNS hides the server from the iPhone player.
     @ObservationIgnored private var resolved: (original: String, url: URL, host: String)?
     @ObservationIgnored private var resolvedTried: String?
+    /// Set when the iPhone player failed on this stream: it plays through VLC.
+    @ObservationIgnored private var forceVLC = false
 
     init(request: PlaybackRequest, model: AppModel) {
         self.request = request
@@ -50,6 +60,7 @@ final class PlayerController {
                 if status == .playing { self?.markPlaying() }
             }
         }
+        vlc.onEvent = { [weak self] event in self?.vlcEvent(event) }
         load(startAt: request.startAt)
     }
 
@@ -77,11 +88,23 @@ final class PlayerController {
         markPlaying()
     }
 
+    private var extensionOfRequest: String {
+        URL(string: request.url)?.pathExtension.lowercased() ?? ""
+    }
+
     func load(startAt: Double) {
         phase = .loading
         lastTick = -1
         countdown = nil
         countdownTask?.cancel()
+        if forceVLC || Self.vlcExtensions.contains(extensionOfRequest) {
+            startVLC(startAt: startAt)
+            return
+        }
+        if engine == .vlc {
+            vlc.stop()
+            engine = .native
+        }
         let address = StreamURLs.forPlayback(request.url, kind: request.kind)
         guard let url = URL(string: address) else {
             phase = .failed(t("This address is not valid."))
@@ -148,15 +171,72 @@ final class PlayerController {
         return false
     }
 
-    private func handleFailure(_ error: Error?) {
-        if Self.isUnsupportedFormat(error) {
-            let ext = URL(string: request.url)?.pathExtension.uppercased() ?? ""
-            phase = .failed(request.kind == .live || ext.isEmpty
-                ? t("This channel uses an audio or video format the iPhone player does not support. Try another version of the channel, such as SD or HD.")
-                : t("This video format (%@) is not supported by the iPhone player.", ext))
-            Haptics.error()
+    // MARK: VLC engine
+
+    private func startVLC(startAt: Double) {
+        if engine == .native {
+            statusObservation?.invalidate()
+            statusObservation = nil
+            player.pause()
+            player.replaceCurrentItem(with: nil)
+        }
+        engine = .vlc
+        // VLC reads MPEG-TS itself, so live channels keep their original address.
+        guard let url = URL(string: request.url) else {
+            phase = .failed(t("This address is not valid."))
             return
         }
+        vlc.start(url: url, agent: Net.playerAgent, startAt: startAt, bufferSeconds: model?.settings.buffer.seconds ?? 0)
+        if request.kind == .live { recordLive() }
+    }
+
+    /// The iPhone player could not play this stream: hand it to VLC once.
+    private func fallbackToVLC() -> Bool {
+        guard !forceVLC else { return false }
+        forceVLC = true
+        retries = 0
+        #if DEBUG
+        print("player_fallback engine=vlc")
+        #endif
+        let resume = request.kind == .live ? 0 : player.currentTime().seconds
+        load(startAt: resume.isFinite ? max(resume, request.startAt) : request.startAt)
+        return true
+    }
+
+    private func vlcEvent(_ event: VLCPlayback.Event) {
+        guard engine == .vlc else { return }
+        switch event {
+        case .playing:
+            markPlaying()
+        case .progress:
+            saveProgress()
+        case .ended:
+            // A live channel never ends on purpose: treat it as a dropped stream.
+            if request.kind == .live { vlcFailed() } else { didFinish() }
+        case .error:
+            vlcFailed()
+        }
+    }
+
+    private func vlcFailed() {
+        if model?.settings.autoReconnect == true, retries < 3 {
+            retries += 1
+            phase = .loading
+            let resume = request.kind == .live ? 0 : vlc.position
+            Task {
+                try? await Task.sleep(for: .seconds(2 * retries))
+                guard self.engine == .vlc else { return }
+                self.load(startAt: resume)
+            }
+            return
+        }
+        vlc.stop()
+        phase = .failed(t("The stream could not be played."))
+        Haptics.error()
+    }
+
+    private func handleFailure(_ error: Error?) {
+        if Self.isUnsupportedFormat(error), fallbackToVLC() { return }
         if tryResolvedAddress() { return }
         if model?.settings.autoReconnect == true, retries < 3 {
             retries += 1
@@ -168,12 +248,9 @@ final class PlayerController {
             }
             return
         }
-        let ext = URL(string: request.url)?.pathExtension.lowercased() ?? ""
-        if ["mkv", "avi", "wmv", "flv"].contains(ext) {
-            phase = .failed(t("This video format (%@) is not supported by the iPhone player.", ext.uppercased()))
-        } else {
-            phase = .failed(error?.localizedDescription ?? t("The stream could not be played."))
-        }
+        // Before giving up, VLC gets its turn: it reads many streams the iPhone player refuses.
+        if fallbackToVLC() { return }
+        phase = .failed(error?.localizedDescription ?? t("The stream could not be played."))
         Haptics.error()
     }
 
@@ -225,9 +302,19 @@ final class PlayerController {
     }
     #endif
 
+    /// Where playback is now, whichever engine plays.
+    private var currentSeconds: Double {
+        engine == .vlc ? vlc.position : player.currentTime().seconds
+    }
+
+    private var durationSeconds: Double {
+        engine == .vlc ? vlc.duration : (player.currentItem?.duration.seconds ?? 0)
+    }
+
     func retry() {
         retries = 0
-        load(startAt: request.kind == .live ? 0 : max(player.currentTime().seconds, request.startAt))
+        let now = currentSeconds
+        load(startAt: request.kind == .live ? 0 : max(now.isFinite ? now : 0, request.startAt))
     }
 
     // MARK: Live zapping
@@ -245,6 +332,8 @@ final class PlayerController {
         request.imageUrl = channel.logoUrl
         request.subtitle = model?.nowPlaying(channel)?.title
         retries = 0
+        forceVLC = false
+        resolvedTried = nil
         Haptics.select()
         load(startAt: 0)
     }
@@ -256,9 +345,9 @@ final class PlayerController {
     // MARK: Progress and autoplay
 
     func saveProgress() {
-        guard request.kind != .live, let item = player.currentItem else { return }
-        let position = player.currentTime().seconds
-        let duration = item.duration.seconds
+        guard request.kind != .live else { return }
+        let position = currentSeconds
+        let duration = durationSeconds
         guard position.isFinite, position > 5, duration.isFinite, duration > 0 else { return }
         model?.saveProgress(WatchProgress(
             entryId: request.entryId, title: request.title, imageUrl: request.imageUrl,
@@ -298,6 +387,8 @@ final class PlayerController {
         request.episodeNumber = next.number
         request.subtitle = "S\(next.season) · E\(next.number) — \(next.title)"
         request.nextEpisodes.removeFirst()
+        forceVLC = false
+        resolvedTried = nil
         load(startAt: 0)
     }
 
@@ -316,6 +407,8 @@ final class PlayerController {
         tickObserver = nil
         player.pause()
         player.replaceCurrentItem(with: nil)
+        vlc.onEvent = nil
+        vlc.stop()
     }
 }
 
@@ -360,7 +453,14 @@ struct PlayerView: View {
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
             ZStack {
-                PlayerSurface(player: c.player)
+                if c.engine == .vlc {
+                    VLCSurface(playback: c.vlc)
+                    if c.phase == .playing {
+                        VLCControls(playback: c.vlc, isLive: c.request.kind == .live)
+                    }
+                } else {
+                    PlayerSurface(player: c.player)
+                }
                 switch c.phase {
                 case .loading:
                     ProgressView().controlSize(.large).tint(.white).allowsHitTesting(false)

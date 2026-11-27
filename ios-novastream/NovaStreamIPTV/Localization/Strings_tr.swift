@@ -280,5 +280,10 @@ nonisolated extension Strings {
         "Your own resolver": "Kendi çözümleyicin",
         "System default uses the iPhone's DNS and switches by itself to encrypted DNS (DNS-over-HTTPS) when your operator hides the playlist server. The other choices use encrypted DNS for playlists, TV guide and covers from the start.": "Sistem varsayılanı iPhone'un DNS'ini kullanır ve operatör liste sunucusunu gizlerse kendiliğinden şifreli DNS'e (DNS-over-HTTPS) geçer. Diğer seçenekler listeler, TV rehberi ve kapaklar için baştan şifreli DNS kullanır.",
         "Your operator's DNS hides the playlist server: the app is using encrypted DNS.": "Operatörünüzün DNS'i liste sunucusunu gizliyor: uygulama şifreli DNS kullanıyor.",
+        "Pause": "Duraklat",
+        "Back 10 seconds": "10 saniye geri",
+        "Forward 10 seconds": "10 saniye ileri",
+        "Audio": "Ses",
+        "Subtitles": "Altyazılar",
     ]
 }
