@@ -1,6 +1,6 @@
 import { useEffect, type ReactNode } from "react";
 import { BrandMark } from "@/components/BrandMark";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import { ArrowLeft, FileText, LifeBuoy, ShieldCheck } from "lucide-react";
 
 import { LanguagePicker } from "@/components/LanguagePicker";

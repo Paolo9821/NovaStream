@@ -4,6 +4,9 @@ node_modules
 # build
 dist
 dist-ssr
+.wrangler
+.tanstack
+.dev.vars
 
 # env
 .env

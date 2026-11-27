@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { BrandMark } from "@/components/BrandMark";
-import { Link } from "react-router-dom";
+import { useQueryParams } from "@/hooks/use-query-params";
+import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -75,26 +76,30 @@ const isHttpUrl = (value: string): boolean => /^https?:\/\/\S+\.\S+/i.test(value
 type Start = { identifier: string; key: string; auto: boolean; saved: Session | null };
 
 /** The app's QR code opens this page with the device and key already filled in. */
-function initialSession(): Start {
-  const params = new URLSearchParams(window.location.search);
+function initialSession(params: URLSearchParams): Start {
   const identifier = params.get("device") ?? "";
   const key = params.get("key") ?? "";
   if (identifier && key) return { identifier, key, auto: true, saved: null };
+  return { identifier, key, auto: false, saved: null };
+}
+
+/** Kept for this browser tab only, so a refresh does not log the visitor out. Browser only. */
+function savedSession(): Session | null {
   try {
-    // Kept for this browser tab only, so a refresh does not log the visitor out.
     const saved = JSON.parse(sessionStorage.getItem(SESSION_KEY) ?? "null") as Session | null;
-    if (saved?.identifier && saved.token) return { identifier: saved.identifier, key: "", auto: false, saved };
+    if (saved?.identifier && saved.token) return saved;
   } catch {
     /* nothing saved */
   }
-  return { identifier, key, auto: false, saved: null };
+  return null;
 }
 
 export default function Playlists() {
   const { t } = useI18n();
   // Opened from the Android app: no way back to the shop (Google Play policy).
   const fromApp = useFromApp();
-  const [start] = useState(initialSession);
+  const query = useQueryParams();
+  const [start] = useState(() => initialSession(query));
   const [identifier, setIdentifier] = useState<string>(start.identifier);
   const [key, setKey] = useState<string>(start.key);
   const [session, setSession] = useState<Session | null>(start.saved);
@@ -140,6 +145,14 @@ export default function Playlists() {
   useEffect(() => {
     if (start.auto && isValidDeviceId(start.identifier)) {
       open.mutate({ identifier: start.identifier, key: start.key.trim().toUpperCase() });
+      return;
+    }
+    // The session saved in this tab is read after the first render, which the server cannot know.
+    const saved = savedSession();
+    if (saved) {
+      setIdentifier(saved.identifier);
+      setKey("");
+      setSession(saved);
     }
     // One automatic attempt, only on arrival.
     // eslint-disable-next-line react-hooks/exhaustive-deps

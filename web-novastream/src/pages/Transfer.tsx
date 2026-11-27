@@ -1,6 +1,6 @@
 import { useCallback, useState, type ReactNode } from "react";
 import { BrandMark } from "@/components/BrandMark";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useFromApp } from "@/hooks/use-from-app";
+import { useQueryParams } from "@/hooks/use-query-params";
 import {
   ApiError,
   fetchCaptcha,
@@ -69,7 +70,7 @@ function errorKey(message: string): TranslationKey {
 export default function Transfer() {
   const { t, locale } = useI18n();
   const fromApp = useFromApp();
-  const [params] = useSearchParams();
+  const params = useQueryParams();
 
   const [fromId, setFromId] = useState<string>(params.get("from") ?? "");
   const [toId, setToId] = useState<string>(params.get("device") ?? params.get("to") ?? "");
@@ -153,7 +154,7 @@ export default function Transfer() {
       <div className="pointer-events-none absolute inset-0 grid-veil" aria-hidden />
 
       <header className="relative mx-auto flex max-w-3xl items-center justify-between gap-3 px-5 py-6">
-        <Link to={fromApp ? "#" : "/"} className="flex items-center gap-2.5">
+        <Link to="/" disabled={fromApp} className="flex items-center gap-2.5">
           <BrandMark />
           <span className="text-lg font-bold tracking-tight">NovaStream</span>
         </Link>

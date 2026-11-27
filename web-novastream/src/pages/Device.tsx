@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { BrandMark } from "@/components/BrandMark";
-import { Link } from "react-router-dom";
+import { useQueryParams } from "@/hooks/use-query-params";
+import { Link } from "@tanstack/react-router";
 import { useMutation } from "@tanstack/react-query";
 import {
   ArrowRight,
@@ -50,8 +51,7 @@ const LOOKS: Record<DeviceStatus["status"], Look> = {
 };
 
 /** Device id from the address bar, so a support link can open the page pre-filled. */
-function initialDevice(): string {
-  const params = new URLSearchParams(window.location.search);
+function initialDevice(params: URLSearchParams): string {
   return params.get("device") ?? params.get("deviceId") ?? "";
 }
 
@@ -62,7 +62,8 @@ function initialDevice(): string {
  */
 export default function Device() {
   const { t, locale } = useI18n();
-  const [value, setValue] = useState<string>(initialDevice);
+  const query = useQueryParams();
+  const [value, setValue] = useState<string>(() => initialDevice(query));
   const [inputError, setInputError] = useState<string>("");
 
   const lookup = useMutation({
@@ -207,10 +208,10 @@ function StatusCard({ status, deviceId, locale }: { status: DeviceStatus; device
       {look.needsLicence && (
         <div className="mt-4 border-t border-border/60 pt-4">
           <Button asChild className="h-11 w-full gap-2 font-semibold sm:w-auto">
-            <Link to={`/?device=${encodeURIComponent(deviceId)}`}>
+            <a href={`/?device=${encodeURIComponent(deviceId)}`}>
               {t("dev.plans")}
               <ArrowRight className="h-4 w-4" />
-            </Link>
+            </a>
           </Button>
           <p className="mt-3 text-xs leading-relaxed text-muted-foreground">{t("dev.afterBuy")}</p>
         </div>

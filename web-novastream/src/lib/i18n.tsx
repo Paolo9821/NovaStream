@@ -2513,9 +2513,14 @@ const STORAGE_KEY = "novastream_lang";
 const isLang = (value: string): value is Lang =>
   LANGUAGES.some((entry) => entry.code === value);
 
-/** Saved choice first, then the browser's own language, then Italian. */
+/** Saved choice first, then the browser's own language, then Italian. Browser only. */
 function detectLanguage(): Lang {
-  const saved = localStorage.getItem(STORAGE_KEY);
+  let saved: string | null = null;
+  try {
+    saved = localStorage.getItem(STORAGE_KEY);
+  } catch {
+    /* storage blocked */
+  }
   if (saved && isLang(saved)) return saved;
   for (const candidate of navigator.languages ?? [navigator.language]) {
     const base = candidate.slice(0, 2).toLowerCase();
@@ -2535,11 +2540,20 @@ type I18nValue = {
 const I18nContext = createContext<I18nValue | null>(null);
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [lang, setLangState] = useState<Lang>(detectLanguage);
+  // Pages render in Italian on the server; the visitor's language is picked right after the page loads.
+  const [lang, setLangState] = useState<Lang>("it");
+
+  useEffect(() => {
+    setLangState(detectLanguage());
+  }, []);
 
   const setLang = useCallback((next: Lang): void => {
     setLangState(next);
-    localStorage.setItem(STORAGE_KEY, next);
+    try {
+      localStorage.setItem(STORAGE_KEY, next);
+    } catch {
+      /* storage blocked */
+    }
   }, []);
 
   useEffect(() => {

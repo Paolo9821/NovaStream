@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { BrandMark } from "@/components/BrandMark";
-import { Link } from "react-router-dom";
+import { Link } from "@tanstack/react-router";
 import { useMutation } from "@tanstack/react-query";
 import {
   ArrowRightLeft,

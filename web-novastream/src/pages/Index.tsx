@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BrandMark } from "@/components/BrandMark";
-import { Link } from "react-router-dom";
+import { useQueryParams } from "@/hooks/use-query-params";
+import { Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -87,14 +88,13 @@ const PLAY_BADGE_BY_LANG: Record<string, string> = {
 };
 
 /** Reads the device id Stripe/the app may have put in the URL. */
-function initialDeviceId(): string {
-  const params = new URLSearchParams(window.location.search);
+function initialDeviceId(params: URLSearchParams): string {
   return params.get("device") ?? params.get("deviceId") ?? "";
 }
 
 /** A gift link can carry its code: novastreamapp.com/?code=NOVA-ABCD-1234 */
-function initialCode(): string {
-  return new URLSearchParams(window.location.search).get("code")?.trim() ?? "";
+function initialCode(params: URLSearchParams): string {
+  return params.get("code")?.trim() ?? "";
 }
 
 type Translate = ReturnType<typeof useI18n>["t"];
@@ -148,7 +148,8 @@ function promoErrorText(t: Translate, error: unknown): string {
 
 export default function Index() {
   const { t, lang } = useI18n();
-  const [deviceId, setDeviceId] = useState<string>(initialDeviceId);
+  const query = useQueryParams();
+  const [deviceId, setDeviceId] = useState<string>(() => initialDeviceId(query));
   const [email, setEmail] = useState<string>("");
   const [plan, setPlan] = useState<PlanId>("annual");
   const [purchase, setPurchase] = useState<CheckoutResult | null>(null);
@@ -157,11 +158,9 @@ export default function Index() {
   /** The buyer confirms they tried the app first; payment stays locked until then. */
   const [consented, setConsented] = useState<boolean>(false);
   const [consentAt, setConsentAt] = useState<number | null>(null);
-  const [returning, setReturning] = useState<boolean>(() =>
-    new URLSearchParams(window.location.search).has("session_id"),
-  );
-  const [promoOpen, setPromoOpen] = useState<boolean>(() => initialCode().length > 0);
-  const [promoInput, setPromoInput] = useState<string>(initialCode);
+  const [returning, setReturning] = useState<boolean>(() => query.has("session_id"));
+  const [promoOpen, setPromoOpen] = useState<boolean>(() => initialCode(query).length > 0);
+  const [promoInput, setPromoInput] = useState<string>(() => initialCode(query));
   const [promo, setPromo] = useState<PromoQuote | null>(null);
   const [promoError, setPromoError] = useState<string>("");
   const [promoBusy, setPromoBusy] = useState<boolean>(false);
@@ -205,7 +204,7 @@ export default function Index() {
 
   // Gift links arrive with ?code=…: apply it straight away.
   useEffect(() => {
-    const code = initialCode();
+    const code = initialCode(new URLSearchParams(window.location.search));
     if (code) void applyPromo(code, "annual");
     // Runs once on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps

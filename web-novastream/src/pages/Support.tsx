@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { BrandMark } from "@/components/BrandMark";
-import { Link } from "react-router-dom";
+import { useQueryParams } from "@/hooks/use-query-params";
+import { Link } from "@tanstack/react-router";
 import { useMutation } from "@tanstack/react-query";
 import {
   AlertTriangle,
@@ -37,15 +38,15 @@ const TOPICS: { id: Topic; label: TranslationKey; icon: typeof LifeBuoy }[] = [
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 /** The store may hand the visitor over with their device already known. */
-function initialDeviceId(): string {
-  const params = new URLSearchParams(window.location.search);
+function initialDeviceId(params: URLSearchParams): string {
   return params.get("device") ?? params.get("deviceId") ?? "";
 }
 
 export default function Support() {
   const { t, lang } = useI18n();
   const [email, setEmail] = useState<string>("");
-  const [deviceId, setDeviceId] = useState<string>(initialDeviceId);
+  const query = useQueryParams();
+  const [deviceId, setDeviceId] = useState<string>(() => initialDeviceId(query));
   const [topic, setTopic] = useState<Topic>("subscription");
   const [message, setMessage] = useState<string>("");
   const [error, setError] = useState<string>("");

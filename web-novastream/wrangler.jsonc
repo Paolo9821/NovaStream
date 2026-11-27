@@ -1,0 +1,9 @@
+// The app as one Cloudflare Worker: src/server.ts renders pages and runs server functions and API routes,
+// and the client build is served as static files.
+{
+  "name": "rork-web-app",
+  "main": "./src/server.ts",
+  "compatibility_date": "2026-08-06",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": { "binding": "ASSETS" },
+}
