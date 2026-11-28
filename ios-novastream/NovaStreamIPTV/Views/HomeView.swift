@@ -16,8 +16,8 @@ struct HomeView: View {
                 }
                 trialBanner
                 if model.activeAccount != nil {
-                    sections
                     continueWatching
+                    sections
                     favorites
                     recentChannels
                 }
@@ -102,20 +102,23 @@ struct HomeView: View {
     private var continueWatching: some View {
         let items = model.continueWatching
         if !items.isEmpty {
-            Rail(title: t("Continue watching")) {
+            Rail(title: t("Continue watching"), actionTitle: t("Clear all"), action: {
+                withAnimation(.snappy) { items.forEach { model.clearProgress($0.entryId) } }
+            }) {
                 ForEach(items) { item in
                     Button {
-                        if let entry = model.entry(item.entryId) {
-                            if item.kind == .series {
-                                model.playback = PlaybackRequest(
-                                    entryId: item.entryId, title: item.title,
-                                    subtitle: item.episodeTitle, url: item.streamUrl, kind: .series,
-                                    imageUrl: item.imageUrl, startAt: item.position,
-                                    season: item.season, episodeNumber: item.episodeNumber
-                                )
-                            } else {
-                                model.play(entry)
-                            }
+                        if item.kind == .movie, let entry = model.entry(item.entryId) {
+                            model.play(entry)
+                        } else {
+                            // Series episodes, and titles whose provider entry
+                            // changed after an update, resume from the saved link.
+                            model.playback = PlaybackRequest(
+                                entryId: item.entryId, title: item.title,
+                                subtitle: item.episodeTitle, url: item.streamUrl, kind: item.kind,
+                                imageUrl: item.imageUrl, startAt: item.position,
+                                season: item.season, episodeNumber: item.episodeNumber
+                            )
+                            Haptics.tap()
                         }
                     } label: {
                         ContinueCard(item: item)
@@ -297,11 +300,20 @@ struct SectionCard: View {
 /// Horizontal carousel with a title.
 struct Rail<Content: View>: View {
     let title: String
+    var actionTitle: String? = nil
+    var action: (() -> Void)? = nil
     @ViewBuilder var content: Content
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(title).font(.title3.weight(.bold))
+            HStack(alignment: .firstTextBaseline) {
+                Text(title).font(.title3.weight(.bold))
+                Spacer()
+                if let actionTitle, let action {
+                    Button(actionTitle, action: action)
+                        .font(.subheadline.weight(.semibold))
+                }
+            }
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(alignment: .top, spacing: 12) { content }
                     .padding(.horizontal, 20)
@@ -341,7 +353,7 @@ struct ContinueCard: View {
             .frame(width: 220, height: 124)
             .clipShape(.rect(cornerRadius: 16, style: .continuous))
             Text(item.title).font(.subheadline.weight(.semibold)).lineLimit(1).foregroundStyle(Nova.ink)
-            Text(item.episodeTitle ?? t("%d min left", item.remainingMinutes))
+            Text(item.episodeTitle ?? (item.duration > 0 ? t("%d min left", item.remainingMinutes) : t("Resume")))
                 .font(.caption).foregroundStyle(Nova.inkSecondary).lineLimit(1)
         }
         .frame(width: 220)

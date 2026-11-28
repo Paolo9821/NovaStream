@@ -160,8 +160,19 @@ final class AppModel {
         favorites = Set(UserDefaults.standard.stringArray(forKey: "favorites-\(id)") ?? [])
         progress = FileStore.load([String: WatchProgress].self, from: "progress-\(id).json") ?? [:]
         providerInfo = nil
-        if let account = activeAccount, account.type == .xtream {
+        if let account = activeAccount?.xtreamLine {
             Task { providerInfo = try? await XtreamClient.authenticate(account) }
+        }
+        // Playlists of Xtream panels saved before they were read through the
+        // panel's API are downloaded again once, so details and guide appear.
+        if let account = activeAccount, account.type == .m3u, account.xtreamLine != nil,
+           !catalog.entries.isEmpty,
+           !catalog.entries.contains(where: { $0.id.hasPrefix("movie_") || $0.id.hasPrefix("series_") }),
+           !UserDefaults.standard.bool(forKey: "panel-upgrade-\(account.id)") {
+            UserDefaults.standard.set(true, forKey: "panel-upgrade-\(account.id)")
+            Task { await sync() }
+        } else if guideIsStale {
+            Task { await refreshGuide() }
         }
     }
 
@@ -175,7 +186,30 @@ final class AppModel {
         do {
             let result: Catalog
             var playlistEpg = account.playlistEpgUrl
+            // An m3u link of an Xtream panel is read through the panel's API:
+            // real series, the provider's categories, details and guide. The
+            // plain playlist stays the fallback when the API does not answer.
+            var panelCatalog: XtreamCatalog?
+            if account.type == .m3u, let line = account.xtreamLine {
+                panelCatalog = try? await XtreamClient.loadCatalog(line) { message in
+                    await MainActor.run { self.syncState = .running(message) }
+                }
+                if panelCatalog?.entries.isEmpty == true { panelCatalog = nil }
+            }
             switch account.type {
+            case .m3u where panelCatalog != nil:
+                let loaded = panelCatalog!
+                var entries = loaded.entries
+                var order = loaded.groupOrder
+                if catalog.accountId == account.id {
+                    for kind in [MediaKind.movie, .series] where !entries.contains(where: { $0.kind == kind }) {
+                        let previous = catalog.of(kind).filter { $0.id.hasPrefix("movie_") || $0.id.hasPrefix("series_") }
+                        guard !previous.isEmpty else { continue }
+                        entries += previous
+                        if let saved = catalog.groupOrder[kind.rawValue] { order[kind.rawValue] = saved }
+                    }
+                }
+                result = Catalog(accountId: account.id, entries: entries, synced: Date(), groupOrder: order)
             case .m3u:
                 syncState = .running(t("Downloading playlist…"))
                 let data = try await Net.get(account.m3uUrl)
@@ -251,25 +285,48 @@ final class AppModel {
     }
 
     func refreshGuide() async {
-        guard let account = activeAccount, !account.effectiveEpgUrl.isEmpty else { return }
+        guard let account = activeAccount, !account.epgCandidates.isEmpty, !guideLoading else { return }
         guideLoading = true
         defer { guideLoading = false }
-        guard let data = try? await Net.get(account.effectiveEpgUrl) else { return }
-        let now = Date().timeIntervalSince1970
-        let url = account.effectiveEpgUrl
-        let parsed = await Task.detached(priority: .utility) {
-            XMLTVParser.parse(data: data, sourceUrl: url, from: now - 6 * 3600, to: now + 3 * 86_400)
-        }.value
-        guard account.id == activeAccountId, !parsed.isEmpty else { return }
-        guide = parsed
-        Task.detached(priority: .utility) { FileStore.save(parsed, to: "guide-\(account.id).json") }
+        for url in account.epgCandidates {
+            guard let data = try? await Net.get(url), !data.isEmpty else {
+                #if DEBUG
+                print("epg_source_failed url=\(url.prefix(60))")
+                #endif
+                continue
+            }
+            let now = Date().timeIntervalSince1970
+            let parsed = await Task.detached(priority: .utility) {
+                XMLTVParser.parse(data: data, sourceUrl: url, from: now - 6 * 3600, to: now + 3 * 86_400)
+            }.value
+            guard account.id == activeAccountId else { return }
+            guard !parsed.isEmpty else { continue }
+            guide = parsed
+            Task.detached(priority: .utility) { FileStore.save(parsed, to: "guide-\(account.id).json") }
+            return
+        }
+    }
+
+    /// True when the saved guide no longer covers today, so a phone that
+    /// stays on for days never shows yesterday's schedule.
+    var guideIsStale: Bool {
+        guard let account = activeAccount, !account.epgCandidates.isEmpty else { return false }
+        if guide.isEmpty { return true }
+        if !Calendar.current.isDateInToday(guide.updated) { return true }
+        if Date().timeIntervalSince(guide.updated) > 12 * 3600 { return true }
+        let lastStop = guide.byChannel.values.compactMap { $0.last?.stop }.max() ?? 0
+        return lastStop < Date().timeIntervalSince1970 + 3 * 3600
     }
 
     /// Re-downloads the active playlist when the chosen interval has passed.
     func autoRefreshIfNeeded() async {
-        guard let interval = settings.autoRefresh.interval, let account = activeAccount else { return }
-        let last = account.lastSync ?? .distantPast
-        if Date().timeIntervalSince(last) > interval { await sync() }
+        guard let account = activeAccount else { return }
+        if let interval = settings.autoRefresh.interval,
+           Date().timeIntervalSince(account.lastSync ?? .distantPast) > interval {
+            await sync()
+        } else if guideIsStale {
+            await refreshGuide()
+        }
     }
 
     // MARK: - Website playlist manager
@@ -314,6 +371,33 @@ final class AppModel {
 
     func groups(_ kind: MediaKind) -> [String] {
         catalog.orderedGroups(kind, items: entries(kind))
+    }
+
+    struct GroupCounts {
+        var total = 0
+        var favourites = 0
+        var byGroup: [String: Int] = [:]
+    }
+
+    @ObservationIgnored private var countsCache: [String: (key: String, value: GroupCounts)] = [:]
+
+    /// How many titles each category holds, for the category column. Kept
+    /// until the catalog, favourites or parental lock change, since large
+    /// providers list tens of thousands of titles.
+    func groupCounts(_ kind: MediaKind) -> GroupCounts {
+        let items = entries(kind)
+        let key = "\(catalog.accountId)|\(catalog.synced.timeIntervalSince1970)|\(items.count)|\(favorites.count)|\(parentalUnlocked)|\(settings.parentalEnabled)|\(settings.lockedGroups.count)"
+        if let cached = countsCache[kind.rawValue], cached.key == key { return cached.value }
+        var counts = GroupCounts()
+        for entry in items {
+            counts.byGroup[entry.group, default: 0] += 1
+            for extra in entry.extraGroups where extra != entry.group { counts.byGroup[extra, default: 0] += 1 }
+            guard !isLocked(entry.group) else { continue }
+            counts.total += 1
+            if favorites.contains(entry.id) { counts.favourites += 1 }
+        }
+        countsCache[kind.rawValue] = (key, counts)
+        return counts
     }
 
     func sorted(_ items: [MediaEntry], by sort: SortOption) -> [MediaEntry] {
@@ -361,11 +445,11 @@ final class AppModel {
 
     func details(for entry: MediaEntry) async -> MediaDetails? {
         if let cached = detailsCache[entry.id] { return cached }
-        guard let account = activeAccount, account.type == .xtream else { return nil }
+        guard let account = activeAccount?.xtreamLine else { return nil }
         var result: MediaDetails?
-        if entry.kind == .movie {
+        if entry.kind == .movie, entry.id.hasPrefix("movie_") {
             result = await XtreamClient.movieDetails(account, streamId: String(entry.id.dropFirst("movie_".count)))
-        } else if entry.kind == .series, let sid = entry.seriesId {
+        } else if entry.kind == .series, let sid = entry.seriesId, !sid.hasPrefix("m3u:") {
             if let (info, eps) = try? await XtreamClient.seriesInfo(account, seriesId: sid) {
                 result = info
                 episodesCache[entry.id] = eps
@@ -378,7 +462,7 @@ final class AppModel {
     func episodes(for entry: MediaEntry) async throws -> [Episode] {
         if let cached = episodesCache[entry.id] { return cached }
         if let sid = entry.seriesId, let local = catalog.m3uEpisodes[sid] { return local }
-        guard let account = activeAccount, account.type == .xtream, let sid = entry.seriesId else { return [] }
+        guard let account = activeAccount?.xtreamLine, let sid = entry.seriesId, !sid.hasPrefix("m3u:") else { return [] }
         let (info, eps) = try await XtreamClient.seriesInfo(account, seriesId: sid)
         episodesCache[entry.id] = eps
         if let info { detailsCache[entry.id] = info }

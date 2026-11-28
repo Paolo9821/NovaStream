@@ -10,6 +10,7 @@ struct LiveView: View {
     @State private var guideFor: MediaEntry?
     @State private var didInit = false
     @State private var visible = VisibleRows()
+    @State private var showGuide = false
 
     private func memoryKey(_ group: String) -> String {
         ScrollMemory.key(account: model.activeAccountId, kind: .live, group: group)
@@ -43,19 +44,36 @@ struct LiveView: View {
 
     var body: some View {
         let list = channels
+        CategorySplit(kind: .live, selection: $group, onLocked: { locked in
+            pendingGroup = locked
+            askPin = true
+        }) {
         ScrollViewReader { proxy in
         TimelineView(.periodic(from: .now, by: 60)) { context in
             List {
                 Section {
                     ForEach(Array(list.enumerated()), id: \.element.id) { index, entry in
-                        Button {
-                            remember(group)
-                            model.play(entry, channels: list)
-                        } label: {
-                            ChannelRow(entry: entry, now: context.date)
+                        HStack(spacing: 8) {
+                            Button {
+                                remember(group)
+                                model.play(entry, channels: list)
+                            } label: {
+                                ChannelRow(entry: entry, now: context.date)
+                            }
+                            .buttonStyle(.borderless)
+                            .tint(Nova.ink)
+                            Button { guideFor = entry } label: {
+                                Image(systemName: "list.bullet.rectangle.portrait")
+                                    .font(.footnote.weight(.bold))
+                                    .foregroundStyle(Nova.blue)
+                                    .frame(width: 34, height: 34)
+                                    .background(Nova.blue.opacity(0.14), in: .circle)
+                            }
+                            .buttonStyle(.borderless)
+                            .accessibilityLabel(t("TV guide"))
                         }
-                        .buttonStyle(.plain)
                         .listRowBackground(Color.clear)
+                        .listRowInsets(EdgeInsets(top: 6, leading: 10, bottom: 6, trailing: 10))
                         .onAppear { visible.appeared(entry.id, at: index) }
                         .onDisappear { visible.disappeared(entry.id) }
                         .swipeActions(edge: .trailing) {
@@ -74,19 +92,16 @@ struct LiveView: View {
                         }
                     }
                 } header: {
-                    GroupChips(kind: .live, groups: model.groups(.live), selection: $group) { locked in
-                        pendingGroup = locked
-                        askPin = true
-                    }
-                    .padding(.horizontal, -16)
-                    .textCase(nil)
+                    CategoryHeader(title: GroupFilter.title(group), countLabel: t("%d channels", list.count))
+                        .textCase(nil)
+                        .padding(.vertical, 6)
                 }
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .overlay {
                 if model.activeAccount == nil {
-                    EmptyStateView(symbol: "play.tv", title: t("No playlist"), message: t("Add a playlist from the Home tab to see your channels."))
+                    EmptyView()
                 } else if list.isEmpty, case .running = model.syncState {
                     ProgressView(t("Loading channels…"))
                 } else if list.isEmpty {
@@ -108,13 +123,31 @@ struct LiveView: View {
             if closed { restore(proxy, in: list) }
         }
         }
+        }
         .background(NovaBackdrop())
+        .overlay {
+            if model.activeAccount == nil {
+                EmptyStateView(symbol: "play.tv", title: t("No playlist"), message: t("Add a playlist from the Home tab to see your channels."))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(NovaBackdrop())
+            }
+        }
         .navigationTitle(MediaKind.live.title)
         .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .automatic), prompt: t("Search channels"))
         .toolbar {
-            if model.guideLoading {
-                ToolbarItem(placement: .topBarTrailing) { ProgressView() }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button { showGuide = true } label: {
+                    if model.guideLoading {
+                        ProgressView()
+                    } else {
+                        Label(t("TV guide"), systemImage: "list.bullet.rectangle.portrait")
+                    }
+                }
+                .disabled(model.activeAccount == nil)
             }
+        }
+        .sheet(isPresented: $showGuide) {
+            NavigationStack { GuideOverview(title: GroupFilter.title(group), channels: channels) }
         }
         .refreshable { await model.refreshGuide() }
         .onAppear {
@@ -137,20 +170,20 @@ struct ChannelRow: View {
 
     var body: some View {
         let programme = model.nowPlaying(entry)
-        HStack(spacing: 14) {
+        HStack(spacing: 10) {
             RemoteImage(url: entry.logoUrl, kind: .live, title: entry.title, contentMode: .fit)
-                .padding(6)
-                .frame(width: 64, height: 48)
+                .padding(5)
+                .frame(width: 54, height: 42)
                 .background(Nova.surfaceHigh, in: .rect(cornerRadius: 12, style: .continuous))
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                    Text(entry.title).font(.body.weight(.semibold)).lineLimit(1)
+                    Text(entry.title).font(.subheadline.weight(.semibold)).lineLimit(1).foregroundStyle(Nova.ink)
                     if model.isFavorite(entry.id) {
                         Image(systemName: "star.fill").font(.caption2).foregroundStyle(Nova.amber)
                     }
                 }
                 if let programme {
-                    Text(programme.title).font(.subheadline).foregroundStyle(Nova.inkSecondary).lineLimit(1)
+                    Text(programme.title).font(.footnote).foregroundStyle(Nova.inkSecondary).lineLimit(1)
                     HStack(spacing: 8) {
                         GeometryReader { geo in
                             ZStack(alignment: .leading) {
@@ -164,18 +197,99 @@ struct ChannelRow: View {
                             .foregroundStyle(Nova.inkSecondary)
                     }
                 } else {
-                    Text(entry.group).font(.subheadline).foregroundStyle(Nova.inkSecondary).lineLimit(1)
+                    Text(entry.group).font(.footnote).foregroundStyle(Nova.inkSecondary).lineLimit(1)
                 }
             }
             Spacer(minLength: 0)
-            Image(systemName: "play.fill")
-                .font(.caption.weight(.bold))
-                .foregroundStyle(Nova.green)
-                .frame(width: 30, height: 30)
-                .background(Nova.greenSoft, in: .circle)
         }
         .padding(.vertical, 4)
         .contentShape(.rect)
+    }
+}
+
+/// TV guide for the channels on screen: what is on now and what follows,
+/// with the full schedule of a channel one tap away.
+struct GuideOverview: View {
+    @Environment(AppModel.self) private var model
+    @Environment(\.dismiss) private var dismiss
+    let title: String
+    let channels: [MediaEntry]
+    @State private var selected: MediaEntry?
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 60)) { context in
+            let now = context.date.timeIntervalSince1970
+            List {
+                if model.guide.isEmpty {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(model.activeAccount?.epgCandidates.isEmpty == false
+                             ? (model.guideLoading ? t("Loading the TV guide…") : t("The TV guide is not available yet."))
+                             : t("Add a TV guide (XMLTV) address to the playlist to see programmes."))
+                            .foregroundStyle(Nova.inkSecondary)
+                        if model.activeAccount?.epgCandidates.isEmpty == false, !model.guideLoading {
+                            Button(t("Update TV guide")) { Task { await model.refreshGuide() } }
+                                .buttonStyle(.borderedProminent)
+                        }
+                    }
+                    .padding(.vertical, 6)
+                }
+                ForEach(channels.prefix(400)) { entry in
+                    let programmes = model.guide.programmes(for: entry).filter { $0.stop > now }.prefix(2)
+                    Button { selected = entry } label: {
+                        HStack(alignment: .top, spacing: 12) {
+                            RemoteImage(url: entry.logoUrl, kind: .live, title: entry.title, contentMode: .fit)
+                                .padding(4)
+                                .frame(width: 48, height: 36)
+                                .background(Nova.surfaceHigh, in: .rect(cornerRadius: 9, style: .continuous))
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(entry.title).font(.subheadline.weight(.bold)).foregroundStyle(Nova.ink).lineLimit(1)
+                                if programmes.isEmpty {
+                                    Text(t("No guide data for this channel.")).font(.caption).foregroundStyle(Nova.inkSecondary)
+                                }
+                                ForEach(Array(programmes.enumerated()), id: \.offset) { index, programme in
+                                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                        Text(Date(timeIntervalSince1970: programme.start).formatted(date: .omitted, time: .shortened))
+                                            .font(.caption.monospacedDigit().weight(.semibold))
+                                            .foregroundStyle(programme.isOnAir(now) ? Nova.green : Nova.inkSecondary)
+                                        Text(programme.title)
+                                            .font(index == 0 ? .footnote.weight(.semibold) : .footnote)
+                                            .foregroundStyle(index == 0 ? Nova.ink : Nova.inkSecondary)
+                                            .lineLimit(1)
+                                    }
+                                }
+                            }
+                            Spacer(minLength: 0)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .listStyle(.plain)
+        }
+        .navigationTitle(t("TV guide"))
+        .navigationBarTitleDisplayMode(.inline)
+        .refreshable { await model.refreshGuide() }
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button(t("Close")) { dismiss() }
+            }
+            ToolbarItem(placement: .principal) {
+                VStack(spacing: 0) {
+                    Text(t("TV guide")).font(.headline)
+                    Text(title).font(.caption).foregroundStyle(Nova.inkSecondary).lineLimit(1)
+                }
+            }
+        }
+        .navigationDestination(item: $selected) { entry in
+            GuideSheet(entry: entry) { chosen in
+                dismiss()
+                Task { @MainActor in
+                    try? await Task.sleep(for: .milliseconds(450))
+                    model.play(chosen, channels: channels)
+                }
+            }
+        }
+        .task { if model.guideIsStale { await model.refreshGuide() } }
     }
 }
 
@@ -184,6 +298,7 @@ struct GuideSheet: View {
     @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     let entry: MediaEntry
+    var onWatch: ((MediaEntry) -> Void)? = nil
 
     var body: some View {
         let items = model.upcoming(entry, limit: 40)
@@ -216,8 +331,12 @@ struct GuideSheet: View {
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button(t("Watch")) {
-                    dismiss()
-                    model.play(entry, channels: model.entries(.live))
+                    if let onWatch {
+                        onWatch(entry)
+                    } else {
+                        dismiss()
+                        model.play(entry, channels: model.entries(.live))
+                    }
                 }
             }
         }

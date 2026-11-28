@@ -54,6 +54,155 @@ struct GroupChips: View {
     }
 }
 
+/// Category column on the left of Live TV, Movies and Series, as on Android:
+/// a search field, All categories, Favourites, then the provider's
+/// categories in its own order, each with how many titles it holds.
+struct CategorySidebar: View {
+    @Environment(AppModel.self) private var model
+    let kind: MediaKind
+    @Binding var selection: String
+    var onLocked: (String) -> Void
+    @State private var filter = ""
+
+    var body: some View {
+        let counts = model.groupCounts(kind)
+        let groups = model.groups(kind).filter { filter.trimmed.isEmpty || $0.localizedStandardContains(filter.trimmed) }
+        VStack(spacing: 0) {
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass").font(.caption.weight(.semibold)).foregroundStyle(Nova.inkSecondary)
+                TextField(t("Search categories"), text: $filter)
+                    .font(.footnote)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                if !filter.isEmpty {
+                    Button { filter = "" } label: {
+                        Image(systemName: "xmark.circle.fill").foregroundStyle(Nova.inkSecondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(t("Clear"))
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 9)
+            .background(Nova.surfaceHigh, in: .rect(cornerRadius: 11, style: .continuous))
+            .padding(8)
+
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 2) {
+                        if filter.trimmed.isEmpty {
+                            row(GroupFilter.all, t("All categories"), count: counts.total, symbol: "square.grid.2x2.fill")
+                            row(GroupFilter.favourites, t("Favourites"), count: counts.favourites, symbol: "star.fill")
+                        }
+                        ForEach(groups, id: \.self) { group in
+                            row(group, group, count: counts.byGroup[group] ?? 0, symbol: model.isLocked(group) ? "lock.fill" : nil)
+                        }
+                        if groups.isEmpty && !filter.trimmed.isEmpty {
+                            Text(t("Nothing matches this filter."))
+                                .font(.caption)
+                                .foregroundStyle(Nova.inkSecondary)
+                                .padding(10)
+                        }
+                    }
+                    .padding(.horizontal, 6)
+                    .padding(.bottom, 24)
+                }
+                .scrollIndicators(.hidden)
+                .onAppear { proxy.scrollTo(selection, anchor: .center) }
+            }
+        }
+        .background(Nova.surface.opacity(0.55))
+    }
+
+    private func row(_ value: String, _ label: String, count: Int, symbol: String?) -> some View {
+        let active = selection == value
+        let accent = Nova.accent(for: kind)
+        return Button {
+            if model.isLocked(value) { onLocked(value) } else { selection = value }
+            Haptics.select()
+        } label: {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                if let symbol {
+                    Image(systemName: symbol)
+                        .font(.caption2.weight(.bold))
+                        .foregroundStyle(active ? .white : (value == GroupFilter.favourites ? Nova.amber : accent))
+                }
+                Text(label)
+                    .font(.footnote.weight(active ? .bold : .medium))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                Spacer(minLength: 2)
+                Text("\(count)")
+                    .font(.caption2.monospacedDigit().weight(.semibold))
+                    .foregroundStyle(active ? .white.opacity(0.85) : Nova.inkSecondary)
+            }
+            .foregroundStyle(active ? .white : Nova.ink)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                if active {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous).fill(accent.gradient)
+                }
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(PressableStyle())
+        .id(value)
+        .accessibilityAddTraits(active ? .isSelected : [])
+    }
+}
+
+/// Category column beside the content, sized from the space available so
+/// it works in any window width.
+struct CategorySplit<Content: View>: View {
+    let kind: MediaKind
+    @Binding var selection: String
+    var onLocked: (String) -> Void
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        GeometryReader { geo in
+            let width = min(max(geo.size.width * 0.34, 122), 280)
+            HStack(spacing: 0) {
+                CategorySidebar(kind: kind, selection: $selection, onLocked: onLocked)
+                    .frame(width: width)
+                Rectangle().fill(Nova.hairline).frame(width: 1)
+                content.frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+    }
+}
+
+/// Title of the category on screen with how many titles it holds.
+struct CategoryHeader: View {
+    let title: String
+    let countLabel: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.headline.weight(.bold))
+                .foregroundStyle(Nova.ink)
+                .lineLimit(2)
+            Text(countLabel)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(Nova.inkSecondary)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+extension GroupFilter {
+    static func title(_ value: String) -> String {
+        switch value {
+        case all: t("All categories")
+        case favourites: t("Favourites")
+        default: value
+        }
+    }
+}
+
 /// Four-digit PIN entry used by parental control.
 struct PinPrompt: View {
     let title: String

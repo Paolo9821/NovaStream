@@ -27,13 +27,40 @@ nonisolated struct PlaylistAccount: Codable, Identifiable, Hashable, Sendable {
 
     var typeLabel: String { isPrivateHost ? t("Private host") : (type == .xtream ? "Xtream" : "m3u") }
 
-    var effectiveEpgUrl: String {
-        if !epgUrl.isEmpty { return epgUrl }
-        if !playlistEpgUrl.isEmpty { return playlistEpgUrl }
-        if type == .xtream, !server.isEmpty {
-            return "\(XtreamClient.base(server))/xmltv.php?username=\(username.urlQueryEncoded)&password=\(password.urlQueryEncoded)"
+    var effectiveEpgUrl: String { epgCandidates.first ?? "" }
+
+    /// TV guide sources tried in order: the one the user typed, the panel's
+    /// own guide, then the one the playlist announces. An empty or broken
+    /// source falls through to the next, as on Android.
+    var epgCandidates: [String] {
+        var list: [String] = []
+        if !epgUrl.trimmed.isEmpty { list.append(epgUrl.trimmed) }
+        if let line = xtreamLine, !line.server.isEmpty {
+            list.append("\(XtreamClient.base(line.server))/xmltv.php?username=\(line.username.urlQueryEncoded)&password=\(line.password.urlQueryEncoded)")
         }
-        return ""
+        if !playlistEpgUrl.trimmed.isEmpty { list.append(playlistEpgUrl.trimmed) }
+        var seen = Set<String>()
+        return list.filter { seen.insert($0).inserted }
+    }
+
+    /// An m3u link of an Xtream panel (`…/get.php?username=…&password=…`) read
+    /// as the panel itself, so films and series get their details, series
+    /// their episodes and channels the panel's guide.
+    var xtreamLine: PlaylistAccount? {
+        if type == .xtream { return self }
+        guard let components = URLComponents(string: m3uUrl.trimmed),
+              components.path.hasSuffix("get.php"),
+              let host = components.host, !host.isEmpty else { return nil }
+        let items = components.queryItems ?? []
+        guard let user = items.first(where: { $0.name == "username" })?.value, !user.isEmpty,
+              let pass = items.first(where: { $0.name == "password" })?.value, !pass.isEmpty else { return nil }
+        var line = self
+        line.type = .xtream
+        let port = components.port.map { ":\($0)" } ?? ""
+        line.server = "\(components.scheme ?? "http")://\(host)\(port)"
+        line.username = user
+        line.password = pass
+        return line
     }
 
     var host: String {

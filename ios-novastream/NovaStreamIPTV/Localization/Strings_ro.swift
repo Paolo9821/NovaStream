@@ -285,5 +285,10 @@ nonisolated extension Strings {
         "Forward 10 seconds": "Înainte 10 secunde",
         "Audio": "Audio",
         "Subtitles": "Subtitrări",
+        "Search categories": "Caută în categorii",
+        "All categories": "Toate categoriile",
+        "Loading the TV guide…": "Se încarcă ghidul TV…",
+        "The TV guide is not available yet.": "Ghidul TV nu este încă disponibil.",
+        "Clear all": "Șterge tot",
     ]
 }

@@ -285,5 +285,10 @@ nonisolated extension Strings {
         "Forward 10 seconds": "10 saniye ileri",
         "Audio": "Ses",
         "Subtitles": "Altyazılar",
+        "Search categories": "Kategorilerde ara",
+        "All categories": "Tüm kategoriler",
+        "Loading the TV guide…": "TV rehberi yükleniyor…",
+        "The TV guide is not available yet.": "TV rehberi henüz mevcut değil.",
+        "Clear all": "Tümünü temizle",
     ]
 }

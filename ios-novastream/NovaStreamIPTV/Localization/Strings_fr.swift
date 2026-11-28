@@ -285,5 +285,10 @@ nonisolated extension Strings {
         "Forward 10 seconds": "Avancer de 10 secondes",
         "Audio": "Audio",
         "Subtitles": "Sous-titres",
+        "Search categories": "Rechercher dans les catégories",
+        "All categories": "Toutes les catégories",
+        "Loading the TV guide…": "Chargement du guide TV…",
+        "The TV guide is not available yet.": "Le guide TV n'est pas encore disponible.",
+        "Clear all": "Tout effacer",
     ]
 }

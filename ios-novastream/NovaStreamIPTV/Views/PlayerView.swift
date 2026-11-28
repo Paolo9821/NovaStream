@@ -348,10 +348,13 @@ final class PlayerController {
         guard request.kind != .live else { return }
         let position = currentSeconds
         let duration = durationSeconds
-        guard position.isFinite, position > 5, duration.isFinite, duration > 0 else { return }
+        guard position.isFinite, position > 5 else { return }
+        // Some provider files never report their length: the spot is still
+        // kept so the title shows in Continue watching.
+        let knownDuration = duration.isFinite && duration > 0 ? duration : 0
         model?.saveProgress(WatchProgress(
             entryId: request.entryId, title: request.title, imageUrl: request.imageUrl,
-            streamUrl: request.url, kind: request.kind, position: position, duration: duration,
+            streamUrl: request.url, kind: request.kind, position: position, duration: knownDuration,
             updated: Date(), season: request.season, episodeNumber: request.episodeNumber,
             episodeTitle: request.subtitle
         ))

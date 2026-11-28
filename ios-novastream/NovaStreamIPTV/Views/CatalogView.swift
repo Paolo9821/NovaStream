@@ -46,16 +46,18 @@ struct CatalogView: View {
     var body: some View {
         @Bindable var model = model
         let list = items
+        CategorySplit(kind: kind, selection: $group, onLocked: { locked in
+            pendingGroup = locked
+            askPin = true
+        }) {
         ScrollViewReader { proxy in
         ScrollView {
-            LazyVStack(alignment: .leading, spacing: 12, pinnedViews: [.sectionHeaders]) {
-                Section {
-                    Text(t("%d titles", list.count))
-                        .font(.footnote.weight(.semibold))
-                        .foregroundStyle(Nova.inkSecondary)
-                        .padding(.horizontal, 16)
+            LazyVStack(alignment: .leading, spacing: 12) {
+                    CategoryHeader(title: GroupFilter.title(group), countLabel: t("%d titles", list.count))
+                        .padding(.horizontal, 12)
+                        .padding(.top, 10)
                         .id("catalog-top")
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 108, maximum: 170), spacing: 12, alignment: .top)], spacing: 18) {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 100, maximum: 170), spacing: 10, alignment: .top)], spacing: 16) {
                         ForEach(list) { entry in
                             NavigationLink(value: Route.detail(entry)) {
                                 PosterCard(entry: entry)
@@ -69,14 +71,7 @@ struct CatalogView: View {
                         }
                     }
                     .scrollTargetLayout()
-                    .padding(.horizontal, 16)
-                } header: {
-                    GroupChips(kind: kind, groups: model.groups(kind), selection: $group) { locked in
-                        pendingGroup = locked
-                        askPin = true
-                    }
-                    .background(.bar)
-                }
+                    .padding(.horizontal, 12)
             }
             .padding(.bottom, 30)
         }
@@ -91,14 +86,22 @@ struct CatalogView: View {
             if !empty { restore(proxy, in: list) }
         }
         }
+        .overlay {
+            if list.isEmpty, model.activeAccount != nil {
+                if case .running = model.syncState {
+                    ProgressView(t("Loading catalog…"))
+                } else {
+                    EmptyStateView(symbol: "magnifyingglass", title: t("Nothing here"), message: t("Nothing matches this filter."))
+                }
+            }
+        }
+        }
         .background(NovaBackdrop())
         .overlay {
             if model.activeAccount == nil {
                 EmptyStateView(symbol: kind.symbol, title: t("No playlist"), message: t("Add a playlist from the Home tab to browse the catalog."))
-            } else if list.isEmpty, case .running = model.syncState {
-                ProgressView(t("Loading catalog…"))
-            } else if list.isEmpty {
-                EmptyStateView(symbol: "magnifyingglass", title: t("Nothing here"), message: t("Nothing matches this filter."))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(NovaBackdrop())
             }
         }
         .navigationTitle(kind.title)
